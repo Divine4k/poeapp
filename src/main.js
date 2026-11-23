@@ -35,6 +35,7 @@ const DEFAULT_CONFIG = {
   inventory: { displayId: null, key: 'Tab', onKey: true, timed: false, intervalMs: 1000, autoCopy: true },
   mapRules: DEFAULT_RULES,
   loadout: [],
+  customPrices: {}, // name -> chaos, for items poe.ninja does not list
   shareToken: '', // GitHub token for uploading named items, stored encrypted
 };
 
@@ -155,6 +156,7 @@ function startLog() {
 // ---- prices and item art --------------------------------------------------------
 function setPrices(table) {
   prices = table;
+  prices.setCustom(config.customPrices);
   status.prices.count = prices.size;
   status.prices.updatedAt = prices.updatedAt;
   status.prices.league = prices.league || '';
@@ -550,6 +552,7 @@ function applyConfig(patch) {
     inventory: { ...config.inventory, ...(patch.inventory || {}) },
   };
   writeJson('config.json', config);
+  if (patch.customPrices) prices.setCustom(config.customPrices);
   if (patch.hotkeys) registerHotkeys();
   if (config.logPath !== logBefore) startLog();
   if (config.league !== leagueBefore) refreshPrices();
@@ -582,6 +585,17 @@ const actions = {
     if (u) learnPrint('', u.print);
   },
   saveDiagnostic: () => saveDiagnostic(),
+  setCustomPrice: (a) => {
+    const name = String(a.name || '').trim(), chaos = Number(a.chaos);
+    if (!name || !isFinite(chaos) || chaos < 0) { say('Give the item a name and a price in chaos.', true); return; }
+    applyConfig({ customPrices: { ...config.customPrices, [name]: chaos } });
+    say(`Your price for ${name} is now ${chaos}c.`);
+  },
+  removeCustomPrice: (a) => {
+    const next = { ...config.customPrices };
+    delete next[a.name];
+    applyConfig({ customPrices: next });
+  },
   uploadShared: async () => { if (shared) { await shared.flush(); index.setShared(shared.items); } },
   forget: (a) => {
     const name = a.name === '(ignored items)' ? '' : a.name;
@@ -618,7 +632,7 @@ function setupIpc() {
     icons.Currency = iconOf('Chaos Orb') || icons.Currency;
     return {
       chaosIcon: iconOf('Chaos Orb'), divineIcon: iconOf('Divine Orb'),
-      groups: CATEGORY_LABELS.map(([group, list]) => ({ group, categories: list.filter(([id]) => counts[id]).map(([id, label]) => ({ id, label, count: counts[id], icon: icons[id] || null })) }))
+      groups: CATEGORY_LABELS.map(([group, list]) => ({ group, categories: list.filter(([id]) => counts[id] || id === 'Custom').map(([id, label]) => ({ id, label, count: counts[id], icon: icons[id] || null })) }))
         .filter((g) => g.categories.length),
     };
   });
@@ -639,6 +653,7 @@ function setupIpc() {
 // ---- start ---------------------------------------------------------------------
 app.whenReady().then(() => {
   loadConfig();
+  prices.setCustom(config.customPrices);
   session.restore(readJson('session.json', null));
   ledger.restore(readJson('ledger.json', null));
   loadLearned();

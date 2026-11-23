@@ -40,10 +40,11 @@ const TEMPLATES = require('./mapTemplates.json').map((t) => {
   for (let i = 0; i < v.length; i++) { v[i] -= mean; energy += v[i] * v[i]; }
   const norm = Math.sqrt(energy) || 1;
   for (let i = 0; i < v.length; i++) v[i] /= norm;
-  return { tier: t.tier, v };
+  return { tier: t.tier, name: t.name || `Map (Tier ${t.tier})`, v };
 });
 
-// Returns { tier, score, lead } when the cell holds a map, otherwise null.
+// Returns { tier, name, score, lead } when the cell holds a map, otherwise null. Besides the
+// sixteen plain tiers there are references for special maps that have their own picture.
 function readMapTier(rgb) {
   const scores = TEMPLATES.map(() => -1);
   // A one-pixel shift either way covers rounding at other screen sizes.
@@ -62,9 +63,7 @@ function readMapTier(rgb) {
   for (let t = 1; t < scores.length; t++) if (scores[t] > scores[best]) best = t;
   for (let t = 0; t < scores.length; t++) if (t !== best && scores[t] > second) second = scores[t];
   if (scores[best] < MATCH || scores[best] - second < LEAD) return null;
-  return { tier: TEMPLATES[best].tier, score: scores[best], lead: scores[best] - second };
+  return { tier: TEMPLATES[best].tier, name: TEMPLATES[best].name, score: scores[best], lead: scores[best] - second };
 }
 
-const mapName = (tier) => `Map (Tier ${tier})`;
-
-module.exports = { readMapTier, mapName, REGION: { X0, X1, Y0, Y1 } };
+module.exports = { readMapTier, REGION: { X0, X1, Y0, Y1 } };

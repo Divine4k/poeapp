@@ -288,3 +288,15 @@ test('reader: a real tooltip capture, mouse on the bottom-left slot', () => {
   assert.equal(r.unknown.some((u) => u.cell < 48), false);       // nothing is reported from the covered rows
   assert.equal(r.empties.length, 0);
 });
+
+test('maps: a special map with its own picture is told apart from the plain tier', () => {
+  const cells = require('./fixtures/report_cells.json'); // slots from a report sent by the app
+  const at = (k) => Buffer.from(cells[k], 'base64');
+  assert.equal(readMapTier(at('3,0')).name, 'Originator Map (Tier 16)');
+  assert.equal(readMapTier(at('4,0')).name, 'Map (Tier 16)');
+  assert.equal(readMapTier(at('4,11')).name, 'Map (Tier 16)');
+  assert.equal(readMapTier(at('3,1')).name, 'Map (Tier 12)');
+  assert.equal(readMapTier(at('3,11')).name, 'Map (Tier 15)');
+  assert.equal(readMapTier(at('2,5')), null);
+  assert.equal(readMapTier(at('3,5')), null);
+});

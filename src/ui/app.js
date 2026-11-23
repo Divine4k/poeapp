@@ -308,7 +308,7 @@
     if (b) {
       const d = b.dataset;
       e.stopPropagation();
-      act({ type: d.act, id: d.id, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined });
+      Promise.resolve(act({ type: d.act, id: d.id, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined })).then(() => { if (d.act === 'removeCustomPrice') renderPrices(true); });
       return;
     }
     const lo = e.target.closest('[data-loadout]');
@@ -418,6 +418,8 @@
     const labels = new Map(priceMeta.groups.flatMap((g) => g.categories).map((c) => [c.id, c.label]));
     $('price-title').textContent = everywhere ? `Results for "${global}"` : (labels.get(priceCat) || 'Prices');
     $('price-search').hidden = everywhere;
+    const custom = !everywhere && priceCat === 'Custom';
+    $('custom-price').hidden = !custom;
     $('price-count').textContent = res.total > res.rows.length
       ? `Showing the ${res.rows.length} most valuable of ${res.total.toLocaleString()}. Type more of the name to narrow it down.`
       : `${res.total} ${res.total === 1 ? 'item' : 'items'}, most valuable first.`;
@@ -430,8 +432,8 @@
         <td><div class="pname">${r.icon ? `<img src="${esc(r.icon)}" alt="" loading="lazy" width="36" height="36">` : '<span class="noicon"></span>'}<span>${esc(r.name)}${everywhere ? `<small>${esc(labels.get(r.category) || r.category)}</small>` : ''}</span></div></td>
         <td class="num val">${valueCell(r.chaos)}</td>
         <td class="num"><span class="trend">${sparkline(r.spark, r.change)}${pct}</span></td>
-        <td class="num dim">${traded}</td></tr>`;
-    }).join('') : `<tr><td colspan="4" class="empty">${query.trim() ? 'Nothing matches that name.' : 'No prices in this category yet.'}</td></tr>`;
+        <td class="num dim">${custom ? `<button type="button" class="link" data-act="removeCustomPrice" data-name="${esc(r.name)}">Remove</button>` : traded}</td></tr>`;
+    }).join('') : `<tr><td colspan="4" class="empty">${query.trim() ? 'Nothing matches that name.' : (custom ? 'Set your own price for items poe.ninja does not list, such as special maps. Your price is used wherever the item is counted.' : 'No prices in this category yet.')}</td></tr>`;
   }
 
   // Redraws the price page when it is opened or when new prices have arrived.
@@ -453,6 +455,14 @@
     for (const x of $('price-cats').querySelectorAll('[data-cat]')) x.setAttribute('aria-pressed', String(x === b));
     renderPriceRows();
     document.querySelector('#tab-prices .table-wrap').scrollTop = 0;
+  });
+  $('custom-price').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    await act({ type: 'setCustomPrice', name: f.get('name'), chaos: f.get('chaos') });
+    e.target.reset();
+    priceStamp = '';
+    renderPrices(true);
   });
   for (const id of ['price-search', 'price-global']) {
     $(id).addEventListener('input', () => {

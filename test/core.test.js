@@ -207,3 +207,15 @@ test('prices: divination cards without a picture of their own all get the shared
   assert.equal(t.categoryIcons().DivinationCard, SHARED_ICONS.DivinationCard);
   assert.deepEqual(t.iconEntries(), []);
 });
+
+test('prices: your own prices win and are listed under their own category', () => {
+  const t = new PriceTable();
+  t.load([{ name: 'Map (Tier 16)', chaos: 4, category: 'Map' }]);
+  t.setCustom({ 'Originator Map (Tier 16)': 60, 'Map (Tier 16)': 5, '': 3, Bad: 'x' });
+  assert.equal(t.chaosOf('originator map (tier 16)'), 60);
+  assert.equal(t.chaosOf('Map (Tier 16)'), 5);
+  assert.equal(t.categoryCounts().Custom, 2);
+  assert.deepEqual(t.list('Custom').rows.map((r) => r.name), ['Originator Map (Tier 16)', 'Map (Tier 16)']);
+  t.setCustom({});
+  assert.equal(t.chaosOf('Map (Tier 16)'), 4);
+});

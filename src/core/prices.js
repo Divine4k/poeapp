@@ -141,7 +141,20 @@ class PriceTable {
   }
 
   get size() { return this.byNorm.size; }
-  get(name) { return this.byNorm.get(normalize(name)) || null; }
+
+  // Prices you set yourself, for items poe.ninja does not list. They win over downloaded prices.
+  setCustom(prices) {
+    this.custom = new Map();
+    for (const [name, chaos] of Object.entries(prices || {})) {
+      const v = Number(chaos);
+      if (name && isFinite(v) && v >= 0) this.custom.set(normalize(name), { name, chaos: v, category: 'Custom', icon: null });
+    }
+  }
+
+  get(name) {
+    const k = normalize(name);
+    return (this.custom && this.custom.get(k)) || this.byNorm.get(k) || null;
+  }
   chaosOf(name) { const e = this.get(name); return e ? e.chaos : 0; }
   get divine() { return this.chaosOf('Divine Orb'); }
 
@@ -166,7 +179,7 @@ class PriceTable {
 
   // Number of browsable rows per category: { Currency: 108, ... }
   categoryCounts() {
-    const out = {};
+    const out = { Custom: this.custom ? this.custom.size : 0 };
     for (const e of this.byNorm.values()) if (!e.hasVariants) out[e.category] = (out[e.category] || 0) + 1;
     return out;
   }
@@ -187,6 +200,7 @@ class PriceTable {
   list(category, query = '', limit = 400) {
     const q = normalize(query);
     const rows = [];
+    if (this.custom && (!category || category === 'Custom')) for (const [k, e] of this.custom) if (!q || k.includes(q)) rows.push(e);
     for (const [k, e] of this.byNorm) {
       if (e.hasVariants) continue;
       if (category && e.category !== category) continue;
@@ -264,6 +278,7 @@ class PriceService {
 
 // How categories are named and grouped in the price browser, in display order.
 const CATEGORY_LABELS = [
+  ['Yours', [['Custom', 'Your own prices']]],
   ['General', [['Currency', 'Currency'], ['Fragment', 'Fragments'], ['Thread', 'Threads'], ['Wombgift', 'Wombgifts'], ['Runegraft', 'Runegrafts'],
     ['AllflameEmber', 'Allflame Embers'], ['Corpse', 'Corpses'], ['Viscera', 'Viscera'], ['Tattoo', 'Tattoos'], ['Omen', 'Omens'], ['DjinnCoin', 'Djinn Coins'],
     ['Ducat', 'Ducats'], ['EnshroudingCrystal', 'Enshrouding Crystals'], ['DivinationCard', 'Divination Cards'], ['Artifact', 'Artifacts'], ['Oil', 'Oils'],

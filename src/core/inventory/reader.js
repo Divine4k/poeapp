@@ -3,7 +3,7 @@
 const { COLS, ROWS, gridRect, extractCell, isEmptyCell, isInventoryOpen } = require('./grid');
 const { readStack } = require('./digits');
 const { fingerprint, similarity } = require('./icons');
-const { readMapTier, mapName } = require('./maps');
+const { readMapTier } = require('./maps');
 
 class InventoryReader {
   constructor(index) {
@@ -85,7 +85,7 @@ class InventoryReader {
         // Maps: a single item whose tier is read from the numeral on its picture.
         if (!hit && !stack) {
           const map = readMapTier(rgb);
-          if (map) hit = { name: mapName(map.tier), score: map.score, source: 'map' };
+          if (map) hit = { name: map.name, score: map.score, source: 'map' };
         }
         if (hit) {
           this.memory[k] = { name: hit.name, qty: stack || 1 };
