@@ -19,6 +19,7 @@ const { ArtLoader } = require('./art');
 const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
+const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -51,10 +52,13 @@ let artLoader = null;
 let hook = null;
 let updater = null;
 let shared = null;
+let snapshots = null; // the inventory as read for each map
+let archive = null;   // sessions closed with "Start new session"
 let flushTimer = null;
 let notice = null; // { text, bad, at }
 let lastInventory = { rev: 0, at: 0, cells: [] };
 let singlesBaseline = 0;  // single (unnumbered) items in the inventory when the map was entered
+let carriedIn = null; // { runId, trip, cells } the inventory as it was when this trip into the map began
 let lastSingles = 0; // what the last clean read saw, for the Inventory tab
 let unknownSeq = 1;
 let unknown = []; // [{ id, qty, print, image, guesses }]
@@ -118,6 +122,7 @@ function buildState() {
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
     summary: session.summary(prices),
+    sessions: archive ? archive.list() : [],
   };
 }
 function push() {
@@ -129,7 +134,13 @@ function changed() { scheduleSave(); push(); }
 function syncLedger() {
   const cur = session.current;
   if (cur && cur.segmentStart !== null) {
-    if (!ledger.inMap) singlesBaseline = lastSingles;
+    if (!ledger.inMap) {
+      singlesBaseline = lastSingles;
+      session.nextTrip(cur.id);
+      // Whatever the last reading showed is what goes into the map with you.
+      carriedIn = { runId: cur.id, trip: cur.trip, cells: lastInventory.cells.map((c) => ({ cell: c.cell, name: c.name || null, qty: c.qty || 0, print: c.print || null })) };
+      writeJson('carried.json', { ...carriedIn, cells: carriedIn.cells.map((c) => ({ ...c, print: c.print ? encodePrint(c.print) : null })) });
+    }
     ledger.enterMap();
   } else ledger.leaveMap();
 }
@@ -195,6 +206,37 @@ function thumbnail(rgb) {
   return nativeImage.createFromBitmap(bgra, { width: CANON, height: CANON }).toDataURL();
 }
 
+// The whole inventory as one picture, for keeping with a map. cells: [{ cell, rgb }].
+const EMPTY_SLOT = [16, 19, 23];
+function gridPicture(cells) {
+  const w = COLS * CANON, h = ROWS * CANON;
+  const bgra = Buffer.alloc(w * h * 4);
+  for (let p = 0; p < w * h; p++) { bgra[p * 4] = EMPTY_SLOT[2]; bgra[p * 4 + 1] = EMPTY_SLOT[1]; bgra[p * 4 + 2] = EMPTY_SLOT[0]; bgra[p * 4 + 3] = 255; }
+  for (const c of cells) {
+    const x0 = (c.cell % COLS) * CANON, y0 = Math.floor(c.cell / COLS) * CANON;
+    for (let y = 0; y < CANON; y++) {
+      for (let x = 0; x < CANON; x++) {
+        const s = (y * CANON + x) * 3, d = ((y0 + y) * w + x0 + x) * 4;
+        bgra[d] = c.rgb[s + 2]; bgra[d + 1] = c.rgb[s + 1]; bgra[d + 2] = c.rgb[s];
+      }
+    }
+  }
+  const jpeg = nativeImage.createFromBitmap(bgra, { width: w, height: h }).toJPEG(84);
+  return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+}
+
+// Keeps this reading as the picture of what the current map brought in.
+function keepSnapshot(result) {
+  const run = session.current;
+  if (!snapshots || !run || !(ledger.inMap || ledger.pendingArrival)) return;
+  const trip = run.trip || 1;
+  const base = carriedIn && carriedIn.runId === run.id && carriedIn.trip === trip ? carriedIn.cells : [];
+  const cells = markCarried(result.cells.filter((c) => c.status !== 'covered'), base, (a, b) => similarity(a, b) > 0.9);
+  const growing = ledger.inMap;
+  if (!snapshots.wants(run.id, trip, cells, growing)) return;
+  if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing })) session.markSnapshot(run.id);
+}
+
 function updateUnknown(found) {
   const next = [];
   for (const u of found) {
@@ -255,6 +297,7 @@ async function readInventory() {
     if (session.current && (ledger.inMap || ledger.pendingArrival)) {
       session.setUncounted(session.currentId, result.unknown.length, Math.max(0, lastSingles - singlesBaseline));
     }
+    try { keepSnapshot(result); } catch (e) { console.error('snapshot failed', e.message); }
     scheduleSave();
   } catch (e) {
     status.inventory.error = e.message || String(e);
@@ -563,8 +606,23 @@ function applyConfig(patch) {
 const actions = {
   startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(); },
   endRun: () => { session.endRun(); syncLedger(); },
-  deleteRun: (a) => { session.deleteRun(a.runId); syncLedger(); },
-  newSession: () => { session.reset(); syncLedger(); },
+  deleteRun: (a) => { session.deleteRun(a.runId); if (snapshots) snapshots.remove(a.runId); syncLedger(); },
+  // The session that ends is kept under Sessions, with its values as they are now.
+  newSession: () => {
+    session.endRun();
+    try {
+      const saved = archive && archive.save(session.summary(prices));
+      if (saved) say('The finished session is saved. Find it under Sessions.');
+    } catch (e) {
+      say(`The session could not be saved (${e.message || e}), so it is still open.`, true);
+      return;
+    }
+    session.reset(); syncLedger();
+  },
+  deleteSession: (a) => {
+    if (!archive) return;
+    for (const runId of archive.remove(a.id)) if (snapshots) snapshots.remove(runId);
+  },
   addLoot: (a) => {
     if (!session.current && !a.runId) { session.startRun({ name: 'Manual run', loadout: config.loadout }); syncLedger(); }
     session.addLoot([{ name: a.name, qty: a.qty }], 'manual', a.runId || session.currentId);
@@ -625,6 +683,18 @@ function setupIpc() {
     });
     return { rev: lastInventory.rev, at: lastInventory.at, cols: COLS, rows: ROWS, cells };
   });
+  // The inventory pictures kept for one map, with each slot's value at today's prices.
+  ipcMain.handle('run-snapshot', (_e, runId) => {
+    const data = snapshots ? snapshots.get(String(runId || '')) : { trips: [] };
+    return {
+      cols: COLS, rows: ROWS,
+      trips: data.trips.map((t) => ({
+        trip: t.trip, at: t.at, image: t.image,
+        cells: t.cells.map((c) => { const each = c.name ? prices.chaosOf(c.name) : 0; return { ...c, each, total: each * (c.qty || 0) }; }),
+      })),
+    };
+  });
+  ipcMain.handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
   ipcMain.handle('price-categories', () => {
     const counts = prices.categoryCounts();
     const icons = prices.categoryIcons();
@@ -657,6 +727,12 @@ app.whenReady().then(() => {
   session.restore(readJson('session.json', null));
   ledger.restore(readJson('ledger.json', null));
   loadLearned();
+  snapshots = new SnapshotStore(dataFile('snapshots'));
+  try {
+    const c = readJson('carried.json', null);
+    if (c && Array.isArray(c.cells)) carriedIn = { ...c, cells: c.cells.map((x) => ({ ...x, print: x.print ? decodePrint(x.print) : null })) };
+  } catch (_) { carriedIn = null; }
+  archive = new SessionArchive(dataFile('sessions'));
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
   if (cached.size > 1) { setPrices(cached); syncArt(); }
 

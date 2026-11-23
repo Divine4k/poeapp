@@ -145,6 +145,19 @@ class Session {
     run.uncounted = { stacks: Math.max(u.stacks, stacks), singles: Math.max(u.singles, singles) };
   }
 
+  // A trip is one stay in the map between two visits to the hideout. The inventory picture
+  // kept for a map is kept per trip, because the inventory is stashed in between.
+  nextTrip(runId = this.currentId) {
+    const run = this.runs.find((r) => r.id === runId);
+    if (run) run.trip = (run.trip || 0) + 1;
+  }
+
+  // Notes when the inventory picture for this run last changed, so the window can fetch it again.
+  markSnapshot(runId) {
+    const run = this.runs.find((r) => r.id === runId);
+    if (run) run.snapAt = this.now();
+  }
+
   removeLoot(runId, lootId) {
     const run = this.runs.find((r) => r.id === runId);
     if (run) run.loot = run.loot.filter((l) => l.id !== lootId);
@@ -197,6 +210,7 @@ class Session {
         durationMs: this.runDuration(run), deaths: run.deaths,
         lootValue, costValue, net: lootValue - costValue,
         uncounted: run.uncounted || { stacks: 0, singles: 0 },
+        snapAt: run.snapAt || 0,
         items: [...grouped.values()].sort((a, b) => b.chaos - a.chaos),
         loot: run.loot.map((l) => ({ ...l, chaos: chaosOf(l.name) * l.qty })),
         seen: run.seen.slice(-40).map((s) => ({ ...s, chaos: chaosOf(s.name) * s.qty })),

@@ -8,8 +8,8 @@
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  function fmtValue(c) {
-    const divine = state ? state.summary.divine : 0;
+  // divine: the chaos value of a Divine Orb to show the value in. A saved session brings its own.
+  function fmtValue(c, divine = state ? state.summary.divine : 0) {
     if (!isFinite(c)) return '0c';
     const a = Math.abs(c);
     if (divine > 0 && a >= divine) return `${(c / divine).toFixed(a >= divine * 10 ? 1 : 2)} div`;
@@ -73,6 +73,45 @@
     return `<p class="uncounted">Not in this total: ${parts.join(' and ')}.${help}</p>`;
   }
 
+  // ---- the inventory picture kept for each map --------------------------------
+  const snaps = new Map(); // "run id:when it changed" -> pictures, plus "last:run id" while a newer one loads
+  function snapData(run, redraw) {
+    if (!run || !run.snapAt) return null;
+    const key = `${run.id}:${run.snapAt}`;
+    if (snaps.has(key)) return snaps.get(key) || snaps.get(`last:${run.id}`) || null;
+    snaps.set(key, null);
+    api.runSnapshot(run.id).then((d) => {
+      if (snaps.size > 80) snaps.clear();
+      snaps.set(key, d); snaps.set(`last:${run.id}`, d);
+      redraw();
+    });
+    return snaps.get(`last:${run.id}`) || null;
+  }
+  function snapTip(c, divine) {
+    if (c.carried) return `${c.name ? `${c.name} ×${c.qty}` : 'Single item'}: taken into the map with you, not loot`;
+    if (c.status === 'item' || c.status === 'remembered') return `${c.name} ×${c.qty}${c.each ? `: ${fmtValue(c.total, divine)}` : ', no price'}${c.carriedQty ? `. ${c.carriedQty} of these were taken into the map with you` : ''}`;
+    if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}`;
+    if (c.status === 'ignored') return 'Ignored by you';
+    return 'No stack number, so not counted (gear, gems and other single items)';
+  }
+  // latestOnly: just the newest picture, for the small one beside the timer.
+  function snapHtml(data, latestOnly, divine) {
+    if (!data || !data.trips.length) return '';
+    const trips = latestOnly ? data.trips.slice(-1) : data.trips;
+    return trips.map((t, i) => {
+      const by = new Map(t.cells.map((c) => [c.cell, c]));
+      let cells = '';
+      for (let k = 0; k < data.cols * data.rows; k++) {
+        const c = by.get(k);
+        cells += c ? `<i class="${esc(c.status)}${c.carried ? ' carried' : ''}" title="${esc(snapTip(c, divine))}"></i>` : '<i></i>';
+      }
+      const brought = t.cells.some((c) => c.carried);
+      const which = !latestOnly && trips.length > 1 ? `Trip ${i + 1} of ${trips.length}. ` : '';
+      return `<figure class="snap"><div class="snap-grid"><img src="${esc(t.image)}" alt="Inventory picture"><div class="snap-cells">${cells}</div></div>
+        <figcaption>${which}Inventory at ${clock(t.at)}.${brought ? ' <span class="xkey">Red cross</span>: taken into the map with you, not loot.' : ''}${latestOnly ? '' : ' Hover a slot for its name.'}</figcaption></figure>`;
+    }).join('');
+  }
+
   // ---- current map ------------------------------------------------------------
   function renderNow() {
     const run = currentRun();
@@ -90,6 +129,16 @@
           <span class="value ${run.net < 0 ? 'neg' : ''}">${fmtValue(run.net)}
             <small>Loot ${fmtValue(run.lootValue)}, costs ${fmtValue(run.costValue)}</small></span>
         </div>${uncountedLine(run, true)}`;
+    }
+
+    // The picture is only redrawn when it changes, so it does not flicker with the timer.
+    const snapBox = $('now-snap');
+    const snap = snapData(run, renderNow);
+    const newest = snap && snap.trips.length ? snap.trips[snap.trips.length - 1] : null;
+    const snapKey = newest ? `${run.id}:${newest.trip}:${newest.at}` : '';
+    if (snapBox.dataset.key !== snapKey) {
+      snapBox.dataset.key = snapKey;
+      snapBox.innerHTML = snapHtml(snap, true);
     }
 
     const feed = $('feed');
@@ -141,36 +190,79 @@
   }
 
   // ---- session ------------------------------------------------------------------
-  function renderSession() {
-    const t = state.summary.totals;
-    $('totals').innerHTML = `
-      <div class="${t.net < 0 ? 'neg' : ''}">${fmtValue(t.net)}<span>Net profit</span></div>
-      <div>${t.netPerHour ? fmtValue(t.netPerHour) : 'n/a'}<span>Per hour</span></div>
+  const totalsHtml = (t, divine) => `
+      <div class="${t.net < 0 ? 'neg' : ''}">${fmtValue(t.net, divine)}<span>Net profit</span></div>
+      <div>${t.netPerHour ? fmtValue(t.netPerHour, divine) : 'n/a'}<span>Per hour</span></div>
       <div>${t.maps}<span>Maps run</span></div>
       <div>${t.maps ? fmtTime(t.avgMapMs) : 'n/a'}<span>Average map</span></div>
       <div>${t.deaths}<span>Deaths</span></div>`;
-    const runs = state.summary.runs.slice().reverse();
-    if (!runs.length) {
-      $('runs').innerHTML = '<tr><td colspan="7" class="empty">Finished maps are listed here.</td></tr>';
-      return;
-    }
-    $('runs').innerHTML = runs.map((r) => {
-      const live = r.id === state.summary.currentId;
-      let html = `<tr class="run ${live ? 'live' : ''}" data-expand="${esc(r.id)}">
+
+  // The rows of a map table, newest first. open: the id of the row showing its details.
+  // readonly: no Delete button (saved sessions). redraw: called when a map's picture has loaded.
+  function runsHtml(sum, { open, readonly, redraw, divine }) {
+    const runs = sum.runs.slice().reverse();
+    if (!runs.length) return '<tr><td colspan="7" class="empty">Finished maps are listed here.</td></tr>';
+    return runs.map((r) => {
+      const live = r.id === sum.currentId;
+      let html = `<tr class="run ${live ? 'live' : ''} ${open === r.id ? 'open' : ''}" data-expand="${esc(r.id)}">
         <td>${esc(r.name)}${r.uncounted && (r.uncounted.stacks || r.uncounted.singles) ? ' <span class="flag" title="Some items in this map were not counted. Click the row for details.">incomplete</span>' : ''}</td>
         <td class="num">${fmtTime(live ? liveDuration(r) : r.durationMs)}</td>
-        <td class="num">${fmtValue(r.lootValue)}</td>
-        <td class="num">${fmtValue(r.costValue)}</td>
-        <td class="num ${r.net < 0 ? 'neg' : 'pos'}">${fmtValue(r.net)}</td>
+        <td class="num">${fmtValue(r.lootValue, divine)}</td>
+        <td class="num">${fmtValue(r.costValue, divine)}</td>
+        <td class="num ${r.net < 0 ? 'neg' : 'pos'}">${fmtValue(r.net, divine)}</td>
         <td class="num">${r.deaths}</td>
-        <td><button type="button" class="link" data-act="deleteRun" data-run="${esc(r.id)}" aria-label="Delete ${esc(r.name)}">Delete</button></td></tr>`;
-      if (expanded === r.id) {
-        const items = r.items.length ? r.items.map((i) => `<b>${esc(i.name)}</b> ×${i.qty} (${fmtValue(i.chaos)})`).join(', ') : 'No loot recorded.';
-        const costs = r.costs.length ? r.costs.map((c) => `${esc(c.name)} ×${c.qty} (${fmtValue(c.total)})`).join(', ') : 'none';
-        html += `<tr class="detail"><td colspan="7">${items}<br>Costs: ${costs}${uncountedLine(r, false)}</td></tr>`;
+        <td>${readonly ? '' : `<button type="button" class="link" data-act="deleteRun" data-run="${esc(r.id)}" aria-label="Delete ${esc(r.name)}">Delete</button>`}</td></tr>`;
+      if (open === r.id) {
+        const items = r.items.length ? r.items.map((i) => `<b>${esc(i.name)}</b> ×${i.qty} (${fmtValue(i.chaos, divine)})`).join(', ') : 'No loot recorded.';
+        const costs = r.costs.length ? r.costs.map((c) => `${esc(c.name)} ×${c.qty} (${fmtValue(c.total, divine)})`).join(', ') : 'none';
+        const snap = snapHtml(snapData(r, redraw), false, divine);
+        html += `<tr class="detail"><td colspan="7">${snap ? `<div class="snaps">${snap}</div>` : ''}${items}<br>Costs: ${costs}${uncountedLine(r, false)}</td></tr>`;
       }
       return html;
     }).join('');
+  }
+
+  function renderSession() {
+    $('totals').innerHTML = totalsHtml(state.summary.totals);
+    $('runs').innerHTML = runsHtml(state.summary, { open: expanded, redraw: renderSession });
+  }
+
+  // ---- sessions page: the running session and every saved one ---------------------
+  let sessionSel = 'current';
+  let sessionOpen = null; // the map row showing its details there
+  const saved = new Map(); // id -> the full saved session
+  const dayOf = (ts) => new Date(ts).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  const mapsWord = (n) => `${n} ${n === 1 ? 'map' : 'maps'}`;
+
+  function renderSessions() {
+    if ($('tab-sessions').hidden) return;
+    const list = state.sessions || [];
+    if (sessionSel !== 'current' && !list.some((x) => x.id === sessionSel)) sessionSel = 'current';
+    const entry = (id, title, when, t, divine) => `<button type="button" data-session="${esc(id)}" aria-pressed="${id === sessionSel}">
+      <b>${esc(title)}</b><span>${esc(when)}</span><span>${mapsWord(t.maps)}, <em class="${t.net < 0 ? 'neg' : ''}">${fmtValue(t.net, divine)}</em></span></button>`;
+    const live = state.summary;
+    $('session-list').innerHTML = `<h3>Now</h3>${entry('current', 'Current session', live.runs.length ? `since ${clock(live.runs[0].startedAt)}` : 'no maps yet', live.totals, live.divine)}
+      <h3>Saved</h3>${list.length ? list.map((x) => entry(x.id, dayOf(x.startedAt), `${clock(x.startedAt)} to ${clock(x.endedAt)}`, x.totals, x.divine)).join('')
+    : '<p class="map-meta">Nothing saved yet. A session is saved here when you press Start new session.</p>'}`;
+
+    let sum = live, head;
+    if (sessionSel === 'current') {
+      head = `<h2 class="pagetitle">Current session</h2>
+        <p class="map-meta">Still running. Values follow today's prices until you start a new session.</p>`;
+    } else {
+      sum = saved.get(sessionSel);
+      if (!sum) {
+        const id = sessionSel;
+        api.savedSession(id).then((x) => { if (x) { saved.set(id, x); renderSessions(); } });
+        return;
+      }
+      head = `<div class="session-title"><h2 class="pagetitle">${esc(dayOf(sum.startedAt))}, ${clock(sum.startedAt)} to ${clock(sum.endedAt)}</h2>
+          <button type="button" class="link" data-act="deleteSession" data-id="${esc(sum.id)}" data-confirm="Delete this saved session? This cannot be undone.">Delete session</button></div>
+        <p class="map-meta">${fmtTime(sum.totals.elapsedMs)} from the first map to the end, ${fmtTime(sum.totals.mapMs)} of it in maps. Values are as they were when the session ended${sum.divine ? `, at 1 Divine = ${Math.round(sum.divine)}c` : ''}.</p>`;
+    }
+    $('session-head').innerHTML = head;
+    $('session-totals').innerHTML = totalsHtml(sum.totals, sum.divine);
+    $('session-runs').innerHTML = runsHtml(sum, { open: sessionOpen, readonly: true, redraw: renderSessions, divine: sum.divine });
   }
 
   // ---- tools ----------------------------------------------------------------------
@@ -282,7 +374,7 @@
 
   function render() {
     if (!state) return;
-    renderStatus(); renderNow(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false); renderPrices(false);
+    renderStatus(); renderNow(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false); renderPrices(false); renderSessions();
   }
 
   function setState(s) {
@@ -297,9 +389,10 @@
 
   function showTab(name) {
     for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
-    for (const id of ['mapping', 'inventory', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
+    for (const id of ['mapping', 'inventory', 'sessions', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
     if (name === 'inventory') renderInventory(true);
     if (name === 'prices') renderPrices(true);
+    if (name === 'sessions') renderSessions();
   }
 
   // ---- events ---------------------------------------------------------------------
@@ -308,6 +401,7 @@
     if (b) {
       const d = b.dataset;
       e.stopPropagation();
+      if (d.confirm && !window.confirm(d.confirm)) return;
       Promise.resolve(act({ type: d.act, id: d.id, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined })).then(() => { if (d.act === 'removeCustomPrice') renderPrices(true); });
       return;
     }
@@ -320,8 +414,11 @@
     }
     const tab = e.target.closest('[data-tab]');
     if (tab) { showTab(tab.dataset.tab); return; }
+    const pick = e.target.closest('[data-session]');
+    if (pick) { sessionSel = pick.dataset.session; sessionOpen = null; renderSessions(); return; }
     const row = e.target.closest('[data-expand]');
-    if (row) { expanded = expanded === row.dataset.expand ? null : row.dataset.expand; renderSession(); }
+    if (row && row.closest('#session-runs')) { sessionOpen = sessionOpen === row.dataset.expand ? null : row.dataset.expand; renderSessions(); }
+    else if (row) { expanded = expanded === row.dataset.expand ? null : row.dataset.expand; renderSession(); }
   });
 
   $('btn-read').addEventListener('click', () => act({ type: 'readInventory' }));
@@ -330,7 +427,7 @@
   $('btn-diagnostic').addEventListener('click', () => { act({ type: 'saveDiagnostic' }); dlg.close(); });
   $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));
   $('btn-new-session').addEventListener('click', () => {
-    if (!state.summary.runs.length || window.confirm('Start a new session? The current list of maps is cleared.')) act({ type: 'newSession' });
+    if (!state.summary.runs.length || window.confirm('Start a new session? The current one is saved under Sessions.')) act({ type: 'newSession' });
   });
 
   async function suggest(q) {

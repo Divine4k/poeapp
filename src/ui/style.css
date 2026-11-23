@@ -36,6 +36,14 @@ button.link:hover { color: var(--blood); }
 :focus-visible { outline: 2px solid var(--portal); outline-offset: 2px; }
 input::placeholder { color: #6f7a86; }
 
+/* scrollbars: a thin bar in the app's own colours, no arrows */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--seam); background-clip: padding-box; border: 3px solid transparent; border-radius: 6px; min-height: 40px; }
+::-webkit-scrollbar-thumb:hover { background-color: #4b5766; }
+::-webkit-scrollbar-thumb:active { background-color: var(--gold); }
+::-webkit-scrollbar-button { display: none; }
+
 /* sidebar: pages on the left, settings at the bottom */
 .side { flex: 0 0 180px; display: flex; flex-direction: column; gap: 4px; padding: 20px 12px 14px; background: var(--slab); border-right: 1px solid var(--seam); overflow-y: auto; }
 .side-brand { font-family: var(--display); font-size: 18px; font-stretch: 85%; font-weight: 600; padding: 0 0 20px 13px; white-space: nowrap; }
@@ -73,6 +81,34 @@ input::placeholder { color: #6f7a86; }
 .session { display: flex; flex-direction: column; }
 
 /* current map: the one loud element */
+.now-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 24px; }
+#now-head { flex: 1 1 300px; min-width: 0; }
+#now-snap { flex: 0 1 300px; min-width: 220px; }
+#now-snap:empty { display: none; }
+
+/* the inventory picture kept for a map: one image with a frame per slot laid over it */
+.snap { margin: 0; }
+.snap-grid { position: relative; aspect-ratio: 12 / 5; background: #101317; border: 1px solid var(--seam); }
+.snap-grid img { display: block; width: 100%; height: 100%; }
+.snap-cells { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(5, 1fr); }
+.snap-cells i { box-shadow: inset 0 0 0 1px #101317; }
+.snap-cells i.item { box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--moss); }
+.snap-cells i.remembered { box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--gold); }
+.snap-cells i.unknown { box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--blood); }
+.snap-cells i.skipped, .snap-cells i.ignored { box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--seam); }
+/* taken into the map, so not loot: dimmed, with a red cross */
+.snap-cells i.carried {
+  box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--seam);
+  background:
+    linear-gradient(45deg, transparent 45%, var(--blood) 45%, var(--blood) 55%, transparent 55%),
+    linear-gradient(-45deg, transparent 45%, var(--blood) 45%, var(--blood) 55%, transparent 55%),
+    rgba(16, 19, 23, 0.55);
+}
+.xkey { color: var(--blood); font-weight: 600; }
+.snap figcaption { margin-top: 4px; font-size: 12px; color: var(--ash); }
+.snaps { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; }
+.snaps .snap { flex: 1 1 320px; max-width: 460px; }
+tr.run.open td { background: var(--slab); }
 .map-name { font-family: var(--display); font-size: 26px; font-stretch: 85%; line-height: 1.1; }
 .map-meta { color: var(--ash); font-size: 14px; margin-top: 2px; }
 .map-meta .paused { color: var(--gold); }
@@ -129,6 +165,25 @@ tr.run:hover td { background: var(--slab); }
 tr.run.live td:first-child { box-shadow: inset 3px 0 0 var(--gold); padding-left: 10px; }
 tr.detail td { background: var(--slab); padding: 8px 12px; font-size: 14px; color: var(--ash); }
 tr.detail b { color: var(--bone); font-weight: 500; }
+
+/* sessions page */
+#tab-sessions { display: flex; flex-direction: column; }
+#tab-sessions[hidden] { display: none; }
+.sessions { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px 1fr; gap: 26px; }
+.session-list { overflow-y: auto; padding-right: 6px; }
+.session-list h3 { margin: 16px 0 6px 10px; font: 600 12px/1.3 var(--body); color: var(--ash); }
+.session-list h3:first-child { margin-top: 0; }
+.session-list .map-meta { margin: 0 10px; font-size: 13px; }
+.session-list button { display: flex; flex-direction: column; gap: 1px; width: 100%; border: 0; border-radius: 8px; background: transparent; padding: 8px 10px; text-align: left; margin-bottom: 2px; }
+.session-list button:hover { background: rgba(233, 226, 211, 0.06); }
+.session-list button[aria-pressed=true] { background: rgba(209, 173, 98, 0.18); box-shadow: inset 3px 0 0 var(--gold); }
+.session-list b { font-size: 15px; font-weight: 600; }
+.session-list span { font-size: 13px; color: var(--ash); font-variant-numeric: tabular-nums; }
+.session-list em { font-style: normal; color: var(--gold); }
+.session-view { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.session-view .pagetitle { margin-bottom: 4px; }
+.session-view > #session-head .map-meta { margin: 0 0 16px; }
+.session-title { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 
 /* tools */
 .verdict { font-family: var(--display); font-size: 24px; font-stretch: 85%; }
@@ -218,6 +273,6 @@ fieldset label { margin-bottom: 8px; }
   .view.mapping { grid-template-columns: 1fr; overflow: auto; }
   .big .timer { font-size: 60px; }
   .totals { grid-template-columns: repeat(2, 1fr); }
-  .cost-cols, .settings-grid, .rules { grid-template-columns: 1fr; }
+  .cost-cols, .settings-grid, .rules, .sessions { grid-template-columns: 1fr; }
   .mods { columns: 1; }
 }

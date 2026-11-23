@@ -10,7 +10,7 @@
   const run = (id, name, min, lootValue, costValue, deaths, live) => ({
     id, name, level: 83, startedAt: now - min * 60000, endedAt: live ? null : now, activeMs: min * 60000,
     segmentStart: live ? now : null, durationMs: min * 60000, deaths, lootValue, costValue, net: lootValue - costValue,
-    items: [{ name: 'Chaos Orb', qty: 9, chaos: 9 }], loot: [], seen: [],
+    items: [{ name: 'Chaos Orb', qty: 9, chaos: 9 }], loot: [], seen: [], snapAt: now,
     costs: [{ id: 'c1', name: 'Ambush Scarab of Containment', qty: 2, each: 9, total: 18, chaos: null }],
   });
   const cur = run('r4', 'Strand', 3.2, 0, 22, 0, true);
@@ -51,9 +51,23 @@
     },
     inventoryRev: 1,
     summary: { now, startedAt: now, currentId: 'r4', away: false, location: {}, divine: 212, runs, totals },
+    sessions: [
+      { id: 's2', startedAt: now - 26 * 3600000, endedAt: now - 24 * 3600000, divine: 205, totals: { ...totals, maps: 3, net: 1890, netPerHour: 945, elapsedMs: 2 * 3600000 } },
+      { id: 's1', startedAt: now - 51 * 3600000, endedAt: now - 50 * 3600000, divine: 198, totals: { ...totals, maps: 3, net: -40, netPerHour: -40, elapsedMs: 3600000 } },
+    ],
   };
+  // A stand-in inventory picture: coloured dots on the slot background.
+  const gridImage = () => {
+    const cols = ['#c9a227', '#8e6bd1', '#3aa6a6', '#a83232', '#5b8dd9', '#6aa84f'];
+    let dots = '';
+    for (let k = 0; k < 47; k++) dots += `<circle cx="${(k % 12) * 52 + 26}" cy="${Math.floor(k / 12) * 52 + 26}" r="17" fill="${cols[k % 6]}"/>`;
+    return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 624 260"><rect width="624" height="260" fill="#04041d"/>${dots}</svg>`)}`;
+  };
+  const snapCells = () => Array.from({ length: 47 }, (_, k) => ({ cell: k, status: k % 11 === 4 ? 'skipped' : k === 17 ? 'unknown' : k % 9 === 3 ? 'remembered' : 'item', name: k % 11 === 4 || k === 17 ? null : 'Chaos Orb', qty: (k % 20) + 1, each: 1, total: (k % 20) + 1, carried: k < 3 || k === 4, carriedQty: k < 3 || k === 4 ? (k % 20) + 1 : (k === 5 ? 2 : 0) }));
   window.api = {
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
+    runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
+    savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },
     inventory: async () => {
       const img = state.unknown[0].image;
       const mk = (cell, status, name, qty, each, source, score) => ({ cell, status, name, qty, each, total: each * qty, source, score, guess: status === 'unknown' ? { name: 'Vaal Orb', score: 61 } : null, image: img });
