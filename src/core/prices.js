@@ -4,9 +4,10 @@ const { normalize } = require('./fuzzy');
 
 const BASE = 'https://poe.ninja/poe1/api/economy';
 
-// Currency-exchange based categories (stackables).
+// Currency-exchange based categories (stackables). 'Thread' (Threads of Creation) replaced
+// scarabs in 3.30; 'Scarab' stays for older data and simply comes back empty.
 const EXCHANGE_TYPES = [
-  'Currency', 'Fragment', 'Scarab', 'DivinationCard', 'Oil', 'Fossil', 'Resonator', 'Essence',
+  'Currency', 'Fragment', 'Thread', 'Scarab', 'DivinationCard', 'Oil', 'Fossil', 'Resonator', 'Essence',
   'DeliriumOrb', 'Omen', 'Tattoo', 'Artifact', 'AllflameEmber', 'Runegraft', 'Astrolabe', 'DjinnCoin',
 ];
 // Stash-listing based categories.
