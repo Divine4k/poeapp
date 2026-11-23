@@ -14,7 +14,7 @@ const { IconIndex, similarity, fingerprint, encodePrint, decodePrint } = require
 const { readStack } = require('./core/inventory/digits');
 const { InventoryReader } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
-const { captureFrame, cursorInFrame } = require('./capture');
+const { captureFrame, cursorInFrame, cursorOnDisplay } = require('./capture');
 const { ArtLoader } = require('./art');
 const { Updater } = require('./updater');
 const { webFetch } = require('./http');
@@ -271,25 +271,22 @@ function learnPrint(typed, print) {
 }
 
 // Ctrl+C on an item in game, then the check hotkey: the item under the mouse gets that name.
-async function nameUnderCursor(name) {
-  try {
-    const frame = await captureFrame(config.inventory.displayId);
-    const rect = gridRect(frame.width, frame.height);
-    if (!isInventoryOpen(frame, rect)) return;
-    const cur = cursorInFrame(frame);
-    if (!cur) return;
-    const col = Math.floor((cur.x - rect.x0) / rect.cell), row = Math.floor((cur.y - rect.y0) / rect.cell);
-    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
-    const print = reader.prints[row * COLS + col];
-    if (!print) { say('Move the mouse off the inventory for a second so the app can see it, then try again.', true); return; }
-    const hit = index.match(print);
-    if (hit && hit.name === name) return; // already known
-    learnPrint(name, print);
-  } catch (e) {
-    say(`Could not name the item: ${e.message || e}`, true);
-  } finally {
-    changed();
+// No screen capture is needed: the picture comes from the last clean inventory read, because
+// the item's own tooltip covers part of the inventory while you hover it.
+function nameUnderCursor(name) {
+  const cur = cursorOnDisplay(config.inventory.displayId);
+  if (!cur) return;
+  const rect = gridRect(cur.width, cur.height);
+  const col = Math.floor((cur.x - rect.x0) / rect.cell), row = Math.floor((cur.y - rect.y0) / rect.cell);
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return; // not over the inventory: a plain price check
+  const print = reader.prints[row * COLS + col];
+  if (!print) {
+    say(`Could not name ${name}: the app has not seen that inventory slot yet. Move the mouse off the inventory, press your inventory key twice (close and open), then try again.`, true);
+    return;
   }
+  const hit = index.match(print);
+  if (hit && hit.name === name) { say(`${name} is already recognised.`); return; }
+  learnPrint(name, print);
 }
 
 async function loadShared() {
@@ -416,7 +413,7 @@ function registerHotkeys() {
   status.hotkeys = { clipboard: false };
   if (!config.hotkeys.clipboard) return;
   try {
-    status.hotkeys.clipboard = globalShortcut.register(config.hotkeys.clipboard, () => { checkText(clipboard.readText()); push(); });
+    status.hotkeys.clipboard = globalShortcut.register(config.hotkeys.clipboard, () => { checkText(clipboard.readText()); changed(); });
   } catch (_) { status.hotkeys.clipboard = false; }
 }
 

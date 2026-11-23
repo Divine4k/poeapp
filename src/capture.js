@@ -28,4 +28,15 @@ function cursorInFrame(frame) {
   return { x: (p.x - b.x) * (frame.width / b.width), y: (p.y - b.y) * (frame.height / b.height) };
 }
 
-module.exports = { captureFrame, cursorInFrame };
+// Mouse position in physical pixels of the chosen screen, with that screen's size, without
+// taking a capture. null when the mouse is on another screen.
+function cursorOnDisplay(displayId) {
+  const display = pickDisplay(displayId);
+  const p = screen.getCursorScreenPoint();
+  const b = display.bounds;
+  if (p.x < b.x || p.y < b.y || p.x >= b.x + b.width || p.y >= b.y + b.height) return null;
+  const f = display.scaleFactor;
+  return { x: (p.x - b.x) * f, y: (p.y - b.y) * f, width: Math.round(display.size.width * f), height: Math.round(display.size.height * f) };
+}
+
+module.exports = { captureFrame, cursorInFrame, cursorOnDisplay };

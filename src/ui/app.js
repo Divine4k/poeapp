@@ -91,7 +91,7 @@
         <button type="button" class="link" data-act="removeLoot" data-run="${esc(run.id)}" data-loot="${esc(l.id)}" aria-label="Remove ${esc(l.name)}">Remove</button></li>`).join('');
     }
     const n = state.notice, note = $('notice');
-    if (n && Date.now() - n.at < 15000) { note.hidden = false; note.className = n.bad ? 'notice bad' : 'notice'; note.textContent = n.text; }
+    if (n && Date.now() - n.at < 30000) { note.hidden = false; note.className = n.bad ? 'notice bad' : 'notice'; note.textContent = n.text; }
     else note.hidden = true;
 
     const un = state.unknown || [];

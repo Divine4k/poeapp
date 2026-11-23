@@ -71,6 +71,8 @@ input::placeholder { color: #6f7a86; }
 .now-actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
 .notice { margin: 0 0 10px; padding: 8px 10px; background: var(--slab); border-left: 3px solid var(--portal); font-size: 14px; }
 .notice.bad { border-left-color: var(--blood); }
+#notice { font-size: 16px; border-left-width: 5px; border-left-color: var(--moss); }
+#notice.bad { border-left-color: var(--blood); }
 .inline-form { display: flex; gap: 6px; }
 .inline-form input:first-child { flex: 1; min-width: 0; }
 .inline-form input[type=number] { width: 78px; }

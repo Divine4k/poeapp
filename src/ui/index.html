@@ -25,6 +25,7 @@
       <button type="button" id="btn-read">Read inventory now</button>
       <button type="button" id="btn-run-toggle">Start a map manually</button>
     </div>
+    <p class="notice" id="notice" hidden></p>
     <form id="add-loot" class="inline-form" autocomplete="off">
       <input id="add-loot-name" list="price-names" placeholder="Add loot by name" aria-label="Item name">
       <input id="add-loot-qty" type="number" min="1" value="1" aria-label="Quantity">
@@ -33,7 +34,6 @@
     <datalist id="price-names"></datalist>
     <h2>Loot this map</h2>
     <ul class="feed" id="feed"></ul>
-    <p class="notice" id="notice" hidden></p>
     <div id="unknown-wrap" hidden>
       <h2>In your inventory, not recognised yet</h2>
       <p class="hint small">Fastest: hover the item in game, press Ctrl+C, then <span id="hk-name">F8</span>. Or pick a suggestion here.</p>
