@@ -595,6 +595,7 @@
   $('btn-update').addEventListener('click', () => act({ type: 'applyUpdate' }));
   $('btn-check-update').addEventListener('click', () => act({ type: 'checkUpdate' }));
   $('btn-diagnostic').addEventListener('click', () => { act({ type: 'saveDiagnostic' }); dlg.close(); });
+  $('btn-shortcut').addEventListener('click', () => { act({ type: 'makeShortcut' }); dlg.close(); });
   $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));
   $('btn-new-session').addEventListener('click', () => {
     if (!state.summary.runs.length || window.confirm('Start a new session? The current one is saved and stays in the row of sessions above the map list.')) act({ type: 'newSession' });

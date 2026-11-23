@@ -70,6 +70,7 @@ Named items are kept on your PC. They can also be uploaded to the shared list, w
 1. Install [Node.js LTS](https://nodejs.org).
 2. Download this repository (Code > Download ZIP) and unzip it.
 3. Double-click `start.bat`. The first start installs what it needs and takes a few minutes.
+4. Optional: in Settings, click "Add a Desktop shortcut". The shortcut starts the app directly, without the command window flashing up.
 
 On first start the app downloads item pictures once (a few minutes in the background).
 

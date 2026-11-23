@@ -559,6 +559,28 @@ async function checkUpdate() {
   }
 }
 
+// Starts the app again after it has fully closed. On Windows this goes through a short hidden
+// helper that waits a moment first: starting the new copy while the old one is still shutting
+// down left it without a window, because the old one still held the app's files.
+function restartApp() {
+  if (process.platform === 'win32') {
+    const { spawn } = require('child_process');
+    const cmd = `ping -n 3 127.0.0.1 >nul & start "" "${process.execPath}" "${app.getAppPath()}"`;
+    spawn('cmd.exe', ['/d', '/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true, cwd: app.getAppPath() }).unref();
+  } else {
+    app.relaunch();
+  }
+  app.exit(0);
+}
+
+// Puts a shortcut on the Desktop that starts the app directly, with no command window.
+function makeShortcut() {
+  if (process.platform !== 'win32') { say('Shortcuts are only made on Windows.', true); return; }
+  const link = path.join(app.getPath('desktop'), 'Map Companion.lnk');
+  const ok = shell.writeShortcutLink(link, { target: process.execPath, args: `"${app.getAppPath()}"`, cwd: app.getAppPath(), description: 'Map Companion' });
+  say(ok ? 'A "Map Companion" shortcut is on your Desktop. Start the app with it from now on.' : 'The shortcut could not be made.', !ok);
+}
+
 async function applyUpdate() {
   if (!updater || status.update.applying) return;
   status.update.applying = true;
@@ -571,8 +593,7 @@ async function applyUpdate() {
     if (depsChanged) { status.update.step = 'Installing new parts (this can take a minute)'; push(); await updater.installDeps(); }
     writeJson('session.json', session.toJSON());
     writeJson('ledger.json', ledger.toJSON());
-    app.relaunch();
-    app.exit(0);
+    restartApp();
   } catch (e) {
     status.update.applying = false;
     status.update.step = '';
@@ -968,6 +989,7 @@ const actions = {
     if (u) learnPrint('', u.print);
   },
   saveDiagnostic: () => saveDiagnostic(),
+  makeShortcut: () => makeShortcut(),
   setCustomPrice: (a) => {
     const name = String(a.name || '').trim(), chaos = Number(a.chaos);
     if (!name || !isFinite(chaos) || chaos < 0) { say('Give the item a name and a price in chaos.', true); return; }

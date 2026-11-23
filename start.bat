@@ -15,4 +15,9 @@ if not exist node_modules (
     exit /b 1
   )
 )
-call npm start
+rem Start the app on its own, so this window closes straight away.
+if exist "node_modules\electron\dist\electron.exe" (
+  start "" "node_modules\electron\dist\electron.exe" "%~dp0."
+) else (
+  call npm start
+)
