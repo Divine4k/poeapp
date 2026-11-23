@@ -194,6 +194,26 @@ tr.run.live td:first-child { box-shadow: inset 3px 0 0 var(--gold); padding-left
 tr.detail td { background: var(--slab); padding: 8px 12px; font-size: 14px; color: var(--ash); }
 tr.detail b { color: var(--bone); font-weight: 500; }
 
+/* trade page: open offers on the left, totals, settings and history on the right */
+#tab-trade { padding: 0; overflow: hidden; }
+.trade { height: 100%; display: grid; gap: 1px; background: var(--seam); grid-template-columns: minmax(380px, 5fr) 6fr; }
+.trade > section { background: var(--stone); padding: 18px 22px; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.trade-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.trade-offers { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.trade-offers .tc { max-width: 620px; }
+.trade-totals { grid-template-columns: repeat(2, 1fr); }
+.trade-settings { border: 1px solid var(--seam); border-radius: 4px; padding: 8px 12px; }
+.trade-settings summary { cursor: pointer; color: var(--bone); }
+.trade-settings form { margin-top: 12px; }
+.trade-settings label.check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.trade-settings .settings-grid { margin-top: 12px; }
+.trade-settings .row label { flex: 1; }
+.trade-settings input:not([type=checkbox]), .trade-settings select { width: 100%; }
+.trade-side .table-wrap { flex: 1 1 200px; }
+.kind { font-size: 12px; border: 1px solid var(--seam); border-radius: 3px; padding: 0 5px; color: var(--ash); }
+.kind.sold { color: var(--moss); border-color: var(--moss); }
+.kind.bought { color: var(--portal); border-color: var(--portal); }
+
 /* tools */
 .verdict { font-family: var(--display); font-size: 24px; font-stretch: 85%; }
 .verdict.safe { color: var(--moss); }
@@ -283,6 +303,8 @@ fieldset label { margin-bottom: 8px; }
   .view.mapping > section { overflow: visible; }
   .big .timer { font-size: 56px; }
   .totals { grid-template-columns: repeat(2, 1fr); }
-  .cost-cols, .settings-grid, .rules { grid-template-columns: 1fr; }
+  .cost-cols, .settings-grid, .rules, .trade { grid-template-columns: 1fr; }
+  #tab-trade { overflow: auto; }
+  .trade { height: auto; }
   .mods { columns: 1; }
 }

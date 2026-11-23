@@ -1,6 +1,6 @@
 # Map Companion for Path of Exile 1
 
-A second-screen app for mapping: map timer, loot value read from your inventory, map mod check, cost tracking and price lookup.
+A second-screen app for mapping: map timer, loot value read from your inventory, map mod check, cost tracking, price lookup, and trade offers with buttons on top of the game.
 
 Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures come from [poe.ninja](https://poe.ninja).
 
@@ -14,6 +14,7 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures
 | Price check | Hover any item and press F8, or browse the Prices page |
 | Net profit | A cost loadout (scarabs, map, chisels) charged to every new map |
 | What was counted per map | The inventory picture from each map is kept and shown beside the timer and under the map's row |
+| Trade offers with an overlay on the game | Reads trade whispers from the game log; each button types one chat line |
 | Session history | **Start new session** saves the finished one; pick it from the row of sessions on the Mapping page to see its totals and maps |
 
 ## How loot is counted
@@ -31,6 +32,22 @@ Items are recognised by their picture, and the stack number is read from the cor
 - Divination cards, maps, gems and uniques cannot be told apart by picture. Hover one and press F8 to count that slot.
 - Rares are not priced.
 - Each map shows what it could not count, and is marked "incomplete" in the list.
+
+## Trading
+
+When someone whispers you from the trade site, the offer appears on the **Trade** page and in a small overlay on top of the game: who, what, the price, and where the item sits in your stash. Your own whispers to sellers are listed the same way.
+
+- **Buttons:** Invite, Trade, Thanks, Kick, Busy, "Interested?" and Sold for buyers; Hideout, Trade, Thanks and Leave when you are the buyer. The gold button is the next step.
+- **It follows the trade for you.** The log says when the buyer arrives and when the trade is accepted, so the gold button moves from Invite to Trade to Thanks to Kick by itself.
+- **Keys:** F2 presses the gold button of the oldest offer, F3 dismisses it. Change them under Trade settings; they must not be bound in game.
+- **Repeat and late buyers:** the same buyer asking twice stays one offer ("Asked 2 times"). A buyer for something you just sold is marked, and the gold button tells them it is sold.
+- **Value check:** offers below 80% of the poe.ninja price, for items poe.ninja lists under the same name, are marked "Below market".
+- **Finished trades** are listed with totals for today and overall, once the game reports "Trade accepted".
+- **Show a test offer** puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
+
+The overlay sits on the screen chosen under Settings ("Screen the game runs on") and needs Windowed Fullscreen. Buttons on the overlay do not take the keyboard away from the game. Buttons on the Trade page switch to the game window first, which takes about half a second.
+
+Limits: only English trade whispers are recognised, the slot is shown as a small picture of the stash tab and is not outlined inside the game's stash, and the overlay stays visible when you switch from the game to another window on the same screen.
 
 ## Naming items and the shared list
 
@@ -59,7 +76,7 @@ The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so a
 ## Game settings
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.
-- F8 and F9 must not be bound to anything in game. Change them in Settings if they are.
+- F8 and F9 must not be bound to anything in game, and neither must the trade keys F2 and F3. Change them in Settings (trade keys: Trade, Trade settings) if they are.
 - F9 sends a report of what the app sees (the inventory slots, how each was read) to the `data` branch of this repository under `reports/`, for troubleshooting. That needs the GitHub token from Settings; without one the report is kept in the app's own folder.
 - If your inventory key is not Tab, set it in Settings.
 
@@ -70,6 +87,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 - The app never touches game memory or files.
 - **F8** sends a single Ctrl+C to the game when you press it, then reads the clipboard once. That is the same pattern price-check tools use. You can switch the Ctrl+C off in Settings and press it yourself.
 - **Reading on your inventory key** is one read per key press. The app listens for that one key without blocking it.
+- **Trade buttons and trade keys** type one chat line (such as `/invite Name`) per click or key press, the way PoE Lurker and Awakened PoE Trade do. Nothing is typed without a click or key press, and no button sends two lines.
 - **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
 - With "check by itself" off, press your inventory key once after arriving in the hideout, before you stash.
 - GGG has never officially approved any local third-party tool, so no tool is guaranteed safe.
@@ -78,6 +96,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 
 - Tested on two real 1920x1080 captures: finding the grid, telling empty from filled cells, reading every stack number (68 of 68), recognising the same item across captures, and the loot counting.
 - Rescaled copies of those captures (900p, 1440p, 4K) also read correctly, but real captures at those sizes have not been tried.
+- **Trading:** the whisper reading, the steps of a trade and the overlay window were run on Linux against a made-up log. Typing in the game, switching to the game window and the overlay on top of the real game have not been tried on Windows.
 - **Not tested:** the app running against the live game, matching against downloaded item pictures, the key listener, and poe.ninja's live data. Expect to report problems on first use.
 
 ## Development

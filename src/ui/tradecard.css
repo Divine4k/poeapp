@@ -1,0 +1,34 @@
+/* One trade offer. Used by the Trade page and by the overlay on top of the game. */
+.tc { background: var(--slab); border: 1px solid var(--seam); border-left: 4px solid var(--gold); border-radius: 6px; padding: 9px 11px 10px; }
+.tc.out { border-left-color: var(--portal); }
+.tc.done { border-left-color: var(--moss); }
+.tc header { display: flex; align-items: baseline; gap: 8px; }
+.tc-dir { font-size: 12px; color: var(--ash); }
+.tc-player { font-size: 15px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-age { margin-left: auto; font-size: 12px; color: var(--ash); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tc-x { border: 0; background: none; color: var(--ash); padding: 0 2px; font-size: 14px; line-height: 1; }
+.tc-x:hover { color: var(--blood); }
+.tc-what { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 3px; }
+.tc-item { font-family: var(--display); font-size: 18px; font-stretch: 85%; line-height: 1.2; min-width: 0; overflow-wrap: anywhere; }
+.tc-qty { color: var(--ash); }
+.tc-price { font-family: var(--display); font-size: 18px; font-weight: 600; color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tc-price small { font: 12px var(--body); color: var(--ash); font-weight: 400; }
+.tc-price.none { font: 13px var(--body); color: var(--ash); font-weight: 400; }
+.tc-note { margin: 3px 0 0; font-size: 13px; color: var(--ash); overflow-wrap: anywhere; }
+.tc-info { display: flex; align-items: center; gap: 12px; margin-top: 7px; min-height: 0; }
+.tc-info:empty { display: none; }
+.tc-stash { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; }
+.tc-stash svg { flex: 0 0 auto; }
+.tc-tab { fill: #101317; stroke: var(--seam); }
+.tc-slot { fill: var(--gold); }
+.tc-stash span { min-width: 0; }
+.tc-stash b { display: block; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-stash small { display: block; font-size: 12px; color: var(--ash); white-space: nowrap; }
+.tc-flags { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-left: auto; justify-content: flex-end; }
+.tc-flags li { font-size: 12px; color: var(--ash); border: 1px solid var(--seam); border-radius: 3px; padding: 0 5px; white-space: nowrap; }
+.tc-flags li.bad { color: var(--blood); border-color: var(--blood); }
+.tc-flags li.wait { color: var(--gold); border-color: var(--gold); }
+.tc-flags li.ok { color: var(--moss); border-color: var(--moss); }
+.tc-btns { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.tc-btns button { padding: 4px 9px; font-size: 13px; }
+.tc-gap { flex: 1 1 8px; }

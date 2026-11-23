@@ -65,7 +65,28 @@
     return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 624 260"><rect width="624" height="260" fill="#04041d"/>${dots}</svg>`)}`;
   };
   const snapCells = () => Array.from({ length: 47 }, (_, k) => ({ cell: k, status: k % 11 === 4 ? 'skipped' : k === 17 ? 'unknown' : k % 9 === 3 ? 'remembered' : 'item', name: k % 11 === 4 || k === 17 ? null : 'Chaos Orb', qty: (k % 20) + 1, each: 1, total: (k % 20) + 1, carried: k < 3 || k === 4, carriedQty: k < 3 || k === 4 ? (k % 20) + 1 : (k === 5 ? 2 : 0) }));
+  const offer = (id, dir, player, item, qty, price, tab, left, top, more) => ({
+    id, dir, player, item, qty, price, league: 'Demo', tab, left, top, note: '', at: now - id * 47000, lastAt: now, asks: 1,
+    state: 'new', here: false, thanked: false, soldAlready: false, value: null, market: null, low: false, next: dir === 'in' ? 'invite' : 'hideout', nextLabel: '', waiting: '', grid: tab ? 12 : 0, ...more,
+  });
+  state.config.trade = { enabled: true, overlay: true, position: 'top', offsetX: 0, offsetY: 0, sound: false, hotkeys: { next: 'F2', dismiss: 'F3' }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
+  state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
+  state.trade = {
+    afk: false, divine: 212, canSend: true, enabled: true, hotkeys: state.config.trade.hotkeys,
+    labels: { invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party', busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?' },
+    offers: [
+      offer(3, 'in', 'Zana_Mapper', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, state: 'here', here: true, next: 'trade', waiting: 'In your hideout', grid: 24 }),
+      offer(2, 'in', 'xXCurrencyFlipXx', 'Chaos Orb', 400, { amount: 1.5, currency: 'Divine Orb' }, '', 0, 0, { value: 318, market: 400, low: true, asks: 2 }),
+      offer(1, 'out', 'KiracsApprentice', 'The Nurse', 1, { amount: 75, currency: 'chaos' }, 'cards', 4, 9, { value: 75, market: 78, state: 'there', next: null, waiting: 'Waiting for the seller to trade' }),
+    ],
+    history: [
+      { id: 'h2', dir: 'in', player: 'Einhar_Fan', item: 'Tabula Rasa Simple Robe', qty: 1, price: { amount: 12, currency: 'chaos' }, at: now - 9 * 60000, value: 12 },
+      { id: 'h1', dir: 'out', player: 'NikoTheMad', item: 'Ambush Scarab of Containment', qty: 20, price: { amount: 1, currency: 'divine' }, at: now - 55 * 60000, value: 212 },
+    ],
+    totals: { soldToday: { count: 4, chaos: 1320, unpriced: 0 }, boughtToday: { count: 1, chaos: 212, unpriced: 0 }, soldAll: { count: 31, chaos: 20400, unpriced: 2 }, boughtAll: { count: 9, chaos: 3150, unpriced: 0 } },
+  };
   window.api = {
+    onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
     runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },

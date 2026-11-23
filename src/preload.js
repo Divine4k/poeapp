@@ -12,4 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   savedSession: (id) => ipcRenderer.invoke('saved-session', id),
   priceCategories: () => ipcRenderer.invoke('price-categories'),
   priceList: (a) => ipcRenderer.invoke('price-list', a),
+  // the trade overlay window
+  onTrade: (cb) => ipcRenderer.on('trade', (_e, data) => cb(data)),
+  overlaySize: (height) => ipcRenderer.send('overlay-size', height),
 });
