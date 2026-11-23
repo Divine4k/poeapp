@@ -1,16 +1,19 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage } = require('electron');
 
 const { LogTail, findLogPath } = require('./core/clientLog');
 const { PriceTable, PriceService } = require('./core/prices');
-const { NameMatcher } = require('./core/fuzzy');
 const { parseItemText, priceName } = require('./core/itemText');
 const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
 const { Session } = require('./core/session');
-const { detect, LabelTracker } = require('./core/labelTracker');
-const { ScreenScanner } = require('./screen');
+const { CANON, COLS, ROWS, gridRect, isInventoryOpen } = require('./core/inventory/grid');
+const { IconIndex, similarity, encodePrint, decodePrint } = require('./core/inventory/icons');
+const { InventoryReader } = require('./core/inventory/reader');
+const { LootLedger } = require('./core/inventory/ledger');
+const { captureFrame, cursorInFrame } = require('./capture');
+const { ArtLoader } = require('./art');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 
@@ -18,8 +21,10 @@ const DEFAULT_CONFIG = {
   league: '',
   logPath: '',
   characterName: '',
-  hotkeys: { scan: 'F7', clipboard: 'F8' },
-  screen: { displayId: null, scale: 1, cropBottom: 0.82, timed: false, intervalMs: 1000, centerY: 0.44, radius: 0.3 },
+  hotkeys: { clipboard: 'F8' },
+  // key: the key that opens your inventory in game. onKey: read once each time you press it.
+  // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
+  inventory: { displayId: null, key: 'Tab', onKey: true, timed: false, intervalMs: 1000 },
   mapRules: DEFAULT_RULES,
   loadout: [],
 };
@@ -27,26 +32,30 @@ const DEFAULT_CONFIG = {
 let win = null;
 let config = null;
 let logTail = null;
-let scanner = null;
-let matcher = new NameMatcher([]);
 let prices = new PriceTable();
 let leagues = [];
-let timedTimer = null;
-let timedGen = 0;
 let saveTimer = null;
+let timedTimer = null;
+let invBusy = false;
+let artLoader = null;
+let hook = null;
+let unknownSeq = 1;
+let unknown = []; // [{ id, qty, print, image }]
+let learned = []; // [{ name, print(base64) }]
 const session = new Session();
-const tracker = new LabelTracker();
+const index = new IconIndex();
+const reader = new InventoryReader(index);
+const ledger = new LootLedger();
 const priceService = new PriceService();
 
 const status = {
   log: { ok: false, path: '', error: 'Not started' },
   prices: { count: 0, updatedAt: 0, league: '', errors: [], loading: false },
-  screen: { ready: false, error: null, lastScanAt: 0, lastMs: 0, lastFound: 0, loading: false },
-  hotkeys: { scan: false, clipboard: false },
+  inventory: { keyHook: 'off', open: false, lastReadAt: 0, recognised: 0, error: null, art: { known: 0, done: 0, total: 0, failed: 0 } },
+  hotkeys: { clipboard: false },
 };
 let mapCheck = null;
 let priceCheck = null;
-let lastBatch = null;
 
 // ---- files ----------------------------------------------------------------
 const dataFile = (name) => path.join(app.getPath('userData'), name);
@@ -62,7 +71,7 @@ function loadConfig() {
   config = {
     ...DEFAULT_CONFIG, ...saved,
     hotkeys: { ...DEFAULT_CONFIG.hotkeys, ...(saved.hotkeys || {}) },
-    screen: { ...DEFAULT_CONFIG.screen, ...(saved.screen || {}) },
+    inventory: { ...DEFAULT_CONFIG.inventory, ...(saved.inventory || {}) },
   };
   // Keep the user's rule choices but pick up rules added in newer versions.
   const byId = new Map((saved.mapRules || []).map((r) => [r.id, r]));
@@ -79,9 +88,11 @@ function scheduleSave() {
 
 // ---- state to the window ---------------------------------------------------
 function buildState() {
-  status.screen.ready = scanner ? scanner.ready : false;
+  status.inventory.art.known = index.art.length;
   return {
-    config, status, leagues, mapCheck, priceCheck, lastBatch,
+    config, status, leagues, mapCheck, priceCheck,
+    unknown: unknown.map((u) => ({ id: u.id, qty: u.qty, image: u.image })),
+    learned: [...new Set(learned.map((l) => l.name))].sort(),
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
     summary: session.summary(prices),
   };
@@ -92,6 +103,12 @@ function push() {
 function changed() { scheduleSave(); push(); }
 
 // ---- game log ----------------------------------------------------------------
+function syncLedger(runChanged) {
+  const cur = session.current;
+  if (cur && cur.segmentStart !== null) ledger.enterMap(runChanged);
+  else ledger.leaveMap();
+}
+
 function startLog() {
   if (logTail) { logTail.stop(); logTail = null; }
   const p = config.logPath || findLogPath();
@@ -105,22 +122,24 @@ function startLog() {
   logTail.on('event', (ev) => {
     const before = session.currentId;
     session.handleLogEvent(ev, { characterName: config.characterName, loadout: config.loadout });
-    if (ev.type === 'area') {
-      if (session.currentId !== before) tracker.reset();
-      syncTimedScan();
-    }
+    if (ev.type === 'area') syncLedger(session.currentId !== before);
     changed();
   });
   logTail.start();
 }
 
-// ---- prices --------------------------------------------------------------------
+// ---- prices and item art --------------------------------------------------------
 function setPrices(table) {
   prices = table;
-  matcher = new NameMatcher(prices.screenNames());
   status.prices.count = prices.size;
   status.prices.updatedAt = prices.updatedAt;
   status.prices.league = prices.league || '';
+}
+
+function syncArt() {
+  if (!artLoader) artLoader = new ArtLoader({ cacheFile: dataFile('art.json') });
+  artLoader.sync(prices.iconEntries(), index, (p) => { status.inventory.art = { ...status.inventory.art, ...p }; push(); })
+    .catch((e) => console.error('art sync failed', e.message));
 }
 
 async function refreshPrices() {
@@ -132,7 +151,7 @@ async function refreshPrices() {
     if (!config.league) throw new Error('No league selected');
     const { table, errors } = await priceService.refresh(config.league);
     status.prices.errors = errors;
-    if (table.size > 1) { setPrices(table); writeJson('prices.json', table.toJSON()); }
+    if (table.size > 1) { setPrices(table); writeJson('prices.json', table.toJSON()); syncArt(); }
     else status.prices.errors = ['No prices came back for this league.', ...errors];
   } catch (e) {
     status.prices.errors = [e.message || String(e)];
@@ -141,65 +160,81 @@ async function refreshPrices() {
   }
 }
 
-// ---- screen scanning -----------------------------------------------------------
-async function runScan(mode) {
-  if (!scanner) scanner = new ScreenScanner({ cachePath: app.getPath('userData') });
-  if (!scanner.ready) { status.screen.loading = true; push(); }
-  let result;
-  try {
-    result = await scanner.scan(config.screen);
-  } catch (e) {
-    status.screen.error = e.message || String(e);
-    status.screen.loading = false; push();
-    return;
+// ---- inventory reading -----------------------------------------------------------
+function thumbnail(rgb) {
+  const bgra = Buffer.alloc(CANON * CANON * 4);
+  for (let p = 0; p < CANON * CANON; p++) {
+    bgra[p * 4] = rgb[p * 3 + 2]; bgra[p * 4 + 1] = rgb[p * 3 + 1]; bgra[p * 4 + 2] = rgb[p * 3]; bgra[p * 4 + 3] = 255;
   }
-  status.screen.loading = false;
-  if (!result) return; // previous scan still running
-  status.screen.error = null;
-  status.screen.lastScanAt = Date.now();
-  status.screen.lastMs = result.ms;
-  const found = detect(result.lines, matcher);
-  status.screen.lastFound = found.length;
-
-  if (mode === 'manual') {
-    // One press = "count what is on the ground right now".
-    const grouped = new Map();
-    for (const f of found) grouped.set(f.name, (grouped.get(f.name) || 0) + f.qty);
-    const entries = [...grouped].map(([name, qty]) => ({ name, qty }));
-    if (entries.length) {
-      if (!session.current) session.startRun({ name: session.location.name || 'Manual run', loadout: config.loadout });
-      const runId = session.currentId;
-      const batch = session.addLoot(entries, 'scan');
-      lastBatch = { runId, batch, count: entries.length, at: Date.now() };
-    } else {
-      lastBatch = { runId: null, batch: null, count: 0, at: Date.now() };
-    }
-  } else {
-    const frame = { width: result.width, height: result.height };
-    tracker.centerY = config.screen.centerY;
-    tracker.radius = config.screen.radius;
-    const events = tracker.update(found, frame);
-    const seen = events.filter((e) => e.type === 'seen');
-    const picked = events.filter((e) => e.type === 'pickup');
-    if (seen.length) session.addSeen(seen);
-    if (picked.length) session.addLoot(picked, 'pickup');
-  }
-  changed();
+  return nativeImage.createFromBitmap(bgra, { width: CANON, height: CANON }).toDataURL();
 }
 
-// Timed scanning only runs while you are inside a map and only when switched on in Settings.
-function syncTimedScan() {
-  const cur = session.current;
-  const want = !!config.screen.timed && !!cur && cur.segmentStart !== null;
-  if (!want) { clearTimeout(timedTimer); timedTimer = null; timedGen += 1; return; }
-  if (timedTimer) return;
-  const gen = ++timedGen;
-  const tick = async () => {
-    await runScan('timed');
-    // Stop if scanning was switched off or restarted while this scan was running.
-    if (gen === timedGen && timedTimer !== null) timedTimer = setTimeout(tick, Math.max(500, Number(config.screen.intervalMs) || 1000));
-  };
-  timedTimer = setTimeout(tick, 200);
+function updateUnknown(found) {
+  const next = [];
+  for (const u of found) {
+    if (next.some((n) => similarity(n.print, u.print) > 0.95)) continue; // same item in several cells
+    const prev = unknown.find((o) => similarity(o.print, u.print) > 0.95);
+    next.push(prev ? { ...prev, qty: u.qty } : { id: unknownSeq++, qty: u.qty, print: u.print, image: thumbnail(u.rgb) });
+    if (next.length >= 8) break;
+  }
+  unknown = next;
+}
+
+async function readInventory() {
+  if (invBusy) return;
+  invBusy = true;
+  try {
+    const frame = await captureFrame(config.inventory.displayId);
+    const rect = gridRect(frame.width, frame.height);
+    status.inventory.error = null;
+    status.inventory.open = isInventoryOpen(frame, rect);
+    if (!status.inventory.open) return;
+    // While the mouse is over the grid a tooltip covers some cells, so wait for a clean view.
+    const cur = cursorInFrame(frame);
+    if (cur && cur.x > rect.x0 - rect.cell * 0.5 && cur.y > rect.y0 - rect.cell * 0.5
+      && cur.x < rect.x0 + rect.cell * (COLS + 0.5) && cur.y < rect.y0 + rect.cell * (ROWS + 0.5)) return;
+    const result = reader.read(frame);
+    if (!result) return;
+    status.inventory.lastReadAt = Date.now();
+    status.inventory.recognised = result.recognised;
+    updateUnknown(result.unknown);
+    const gains = ledger.reading(result.counts);
+    if (gains.length && session.current) session.addLoot(gains, 'inventory');
+    scheduleSave();
+  } catch (e) {
+    status.inventory.error = e.message || String(e);
+  } finally {
+    invBusy = false;
+    push();
+  }
+}
+
+function syncTimedWatch() {
+  clearInterval(timedTimer);
+  timedTimer = null;
+  if (config.inventory.timed) timedTimer = setInterval(readInventory, Math.max(500, Number(config.inventory.intervalMs) || 1000));
+}
+
+// Listens for your inventory key without blocking it, and reads once per press.
+// Nothing is ever sent to the game.
+const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape', enter: 'Enter', backquote: 'Backquote', '`': 'Backquote' };
+function syncKeyHook() {
+  if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
+  status.inventory.keyHook = 'off';
+  if (!config.inventory.onKey) return;
+  let lib;
+  try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; }
+  const raw = String(config.inventory.key || 'Tab').trim();
+  const name = KEY_ALIASES[raw.toLowerCase()] || (raw.length === 1 ? raw.toUpperCase() : raw);
+  const code = lib.UiohookKey[name];
+  if (code === undefined) { status.inventory.keyHook = 'badkey'; return; }
+  lib.uIOhook.on('keydown', (e) => { if (e.keycode === code) setTimeout(readInventory, 200); });
+  try { lib.uIOhook.start(); hook = lib; status.inventory.keyHook = 'ok'; } catch (_) { status.inventory.keyHook = 'missing'; }
+}
+
+function loadLearned() {
+  learned = readJson('learned.json', []);
+  for (const l of learned) { try { index.addLearned(l.name, decodePrint(l.print)); } catch (_) { /* skip a broken entry */ } }
 }
 
 // ---- clipboard (read once per hotkey press or button click) --------------------
@@ -223,16 +258,13 @@ function checkText(text) {
   };
 }
 
-// ---- hotkeys -------------------------------------------------------------------
 function registerHotkeys() {
   globalShortcut.unregisterAll();
-  status.hotkeys = { scan: false, clipboard: false };
-  const reg = (key, accel, fn) => {
-    if (!accel) return;
-    try { status.hotkeys[key] = globalShortcut.register(accel, fn); } catch (_) { status.hotkeys[key] = false; }
-  };
-  reg('scan', config.hotkeys.scan, () => runScan('manual'));
-  reg('clipboard', config.hotkeys.clipboard, () => { checkText(clipboard.readText()); push(); });
+  status.hotkeys = { clipboard: false };
+  if (!config.hotkeys.clipboard) return;
+  try {
+    status.hotkeys.clipboard = globalShortcut.register(config.hotkeys.clipboard, () => { checkText(clipboard.readText()); push(); });
+  } catch (_) { status.hotkeys.clipboard = false; }
 }
 
 // ---- window --------------------------------------------------------------------
@@ -258,33 +290,46 @@ function applyConfig(patch) {
   config = {
     ...config, ...patch,
     hotkeys: { ...config.hotkeys, ...(patch.hotkeys || {}) },
-    screen: { ...config.screen, ...(patch.screen || {}) },
+    inventory: { ...config.inventory, ...(patch.inventory || {}) },
   };
   writeJson('config.json', config);
   if (patch.hotkeys) registerHotkeys();
   if (config.logPath !== logBefore) startLog();
   if (config.league !== leagueBefore) refreshPrices();
-  if (patch.screen) syncTimedScan();
+  if (patch.inventory) { syncTimedWatch(); syncKeyHook(); }
   push();
 }
 
 const actions = {
-  startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); tracker.reset(); syncTimedScan(); },
-  endRun: () => { session.endRun(); syncTimedScan(); },
-  deleteRun: (a) => { session.deleteRun(a.runId); syncTimedScan(); },
-  newSession: () => { session.reset(); tracker.reset(); lastBatch = null; syncTimedScan(); },
+  startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(true); },
+  endRun: () => { session.endRun(); syncLedger(false); },
+  deleteRun: (a) => { session.deleteRun(a.runId); syncLedger(false); },
+  newSession: () => { session.reset(); syncLedger(false); },
   addLoot: (a) => {
-    if (!session.current && !a.runId) session.startRun({ name: 'Manual run', loadout: config.loadout });
+    if (!session.current && !a.runId) { session.startRun({ name: 'Manual run', loadout: config.loadout }); syncLedger(true); }
     session.addLoot([{ name: a.name, qty: a.qty }], 'manual', a.runId || session.currentId);
   },
   removeLoot: (a) => session.removeLoot(a.runId, a.lootId),
-  removeBatch: (a) => { session.removeBatch(a.runId, a.batch); if (lastBatch && lastBatch.batch === a.batch) lastBatch = null; },
   addCost: (a) => session.addCost(a.runId, a.cost),
   removeCost: (a) => session.removeCost(a.runId, a.costId),
-  scanNow: () => runScan('manual'),
+  readInventory: () => readInventory(),
+  learn: (a) => {
+    const u = unknown.find((x) => String(x.id) === String(a.id));
+    const entry = prices.get(a.name);
+    if (!u || !entry) return;
+    index.addLearned(entry.name, u.print);
+    learned.push({ name: entry.name, print: encodePrint(u.print) });
+    writeJson('learned.json', learned);
+    unknown = unknown.filter((x) => x !== u);
+  },
+  forget: (a) => {
+    index.forget(a.name);
+    learned = learned.filter((l) => l.name !== a.name);
+    writeJson('learned.json', learned);
+    reader.forgetCells();
+  },
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),
-  clearChecks: () => { mapCheck = null; priceCheck = null; },
   refreshPrices: () => { refreshPrices(); },
   browseLog: async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose Client.txt', properties: ['openFile'], filters: [{ name: 'Client.txt', extensions: ['txt'] }] });
@@ -295,7 +340,7 @@ const actions = {
 function setupIpc() {
   ipcMain.handle('get-state', () => buildState());
   ipcMain.handle('set-config', (_e, patch) => { applyConfig(patch || {}); return true; });
-  ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40));
+  ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];
     if (!fn) return false;
@@ -309,13 +354,16 @@ function setupIpc() {
 app.whenReady().then(() => {
   loadConfig();
   session.restore(readJson('session.json', null));
+  loadLearned();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
-  if (cached.size > 1) setPrices(cached);
+  if (cached.size > 1) { setPrices(cached); syncArt(); }
 
   setupIpc();
   createWindow();
   registerHotkeys();
   startLog();
+  syncKeyHook();
+  syncTimedWatch();
   refreshPrices();
   setInterval(refreshPrices, PRICE_REFRESH_MS);
   setInterval(push, 5000);
@@ -323,8 +371,8 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
-  clearTimeout(timedTimer); timedTimer = null;
+  clearInterval(timedTimer);
+  if (hook) { try { hook.uIOhook.stop(); } catch (_) { /* closing anyway */ } }
   writeJson('session.json', session.toJSON());
-  if (scanner) scanner.stop();
 });
 app.on('window-all-closed', () => app.quit());

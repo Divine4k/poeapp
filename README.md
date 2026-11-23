@@ -1,18 +1,34 @@
 # Map Companion for Path of Exile 1
 
-A second-screen app for mapping: map timer, loot value, map mod check, cost tracking and price lookup.
+A second-screen app for mapping: map timer, loot value read from your inventory, map mod check, cost tracking and price lookup.
 
-Not affiliated with or endorsed by Grinding Gear Games. Prices come from [poe.ninja](https://poe.ninja).
+Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures come from [poe.ninja](https://poe.ninja).
 
 ## What it does
 
 | Feature | How it gets its data |
 |---|---|
 | Map timer, maps run, deaths, session totals, profit per hour | Reads the game log (`Client.txt`) automatically |
-| Loot value per map | Screen scan of loot labels, on a hotkey (F7) or on a timer |
+| Loot value per map | Reads your inventory from the screen whenever it is open |
 | Map mod check | You press Ctrl+C on a map in game, then F8 |
 | Price check | Same: Ctrl+C on an item, then F8. Or search by name |
 | Net profit | A cost loadout (scarabs, map, chisels) charged to every new map |
+
+## How loot is counted
+
+The app compares each inventory reading with the one before.
+
+- **In a map:** anything that went up since the baseline is loot for that map.
+- **Arriving in the hideout:** the first reading still counts for the map you just left.
+- **After that, in the hideout:** nothing counts. Stashing, or taking scarabs out, only moves the baseline.
+- **Several inventories from one map:** a map stays current until you open a different one, so every trip adds to it.
+
+Items are recognised by their picture, and the stack number is read from the corner of the cell.
+
+- Currency, scarabs, fragments, essences, fossils, oils and similar are recognised.
+- Divination cards all share one picture, so they cannot be told apart. The same goes for maps and gems.
+- Rares and uniques are not priced.
+- A stack the app does not recognise shows up under the loot list with its picture. Type its name once and it is recognised from then on.
 
 ## Install (Windows)
 
@@ -20,45 +36,36 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices come from [poe.ni
 2. Download this repository (Code > Download ZIP) and unzip it.
 3. Double-click `start.bat`. The first start installs what it needs and takes a few minutes.
 
-The first screen scan downloads the text reader's English data (about 10 MB), so it needs internet once.
+On first start the app downloads item pictures once (a few minutes in the background).
 
 ## Game settings
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.
-- Use a loot filter with clear, readable labels. Bigger label text reads better.
-- F7 and F8 must not be bound to anything in game. Change them in Settings if they are.
-
-## Using it
-
-- Enter a map: the timer starts. Go to your hideout: it pauses. Open a different map: the previous one is closed and a new one starts.
-- Press **F7** when drops are on screen. Every priced label on screen is added to the current map. Press it once per loot pile, before you pick it up. "Undo scan" removes the last scan.
-- **Timed scanning** (Settings, off by default) scans by itself while you are in a map. A label that disappears close to your character counts as picked up.
-- Open **Settings** and tick the map mods your build cannot run. Then Ctrl+C a map and press **F8**.
-- In the **Costs** tab, list what you put into every map.
+- F8 must not be bound to anything in game. Change it in Settings if it is.
+- If your inventory key is not Tab, set it in Settings.
 
 ## Rules and risk
 
 GGG's developer guidelines say an app may read the screen or clipboard **once per manual key press**, may read the game log, and must not send input to the game or touch its memory or files.
 
 - This app sends nothing to the game and never touches game memory or files.
-- The hotkey scan, the clipboard check and the log reading stay inside those rules.
-- **Timed scanning does not.** It reads the screen without a key press. It is off by default, and switching it on is your own risk.
+- **Reading on your inventory key** is one read per key press, so it stays inside the rule. The app listens for that one key without blocking it.
+- **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
+- With "check by itself" off, press your inventory key once after arriving in the hideout, before you stash.
 - GGG has never officially approved any local third-party tool, so no tool is guaranteed safe.
 
-## Limits
+## What has and has not been tested
 
-- The screen scan and log handling have been unit tested, but **not yet tested against the live game**. Expect to tune things on first use.
-- Screen reading makes mistakes. It can miss labels, and timed mode can count a label as picked up when it was only hidden. Use Remove or Undo to correct it.
-- Unidentified uniques only show their base type, so the scan cannot price them. Rares are not priced at all.
-- Exact, automatic loot tracking needs GGG's account API. GGG is not accepting new app registrations at the moment, so it is not included.
-- Prices refresh every 30 minutes.
+- Tested on two real 1920x1080 captures: finding the grid, telling empty from filled cells, reading every stack number (68 of 68), recognising the same item across captures, and the loot counting.
+- Rescaled copies of those captures (900p, 1440p, 4K) also read correctly, but real captures at those sizes have not been tried.
+- **Not tested:** the app running against the live game, matching against downloaded item pictures, the key listener, and poe.ninja's live data. Expect to report problems on first use.
 
 ## Development
 
 ```
 npm install
 npm start      # run the app
-npm test       # unit tests for the logic in src/core
+npm test       # unit tests
 ```
 
 Opening `src/ui/index.html` in a browser shows the dashboard with demo data.

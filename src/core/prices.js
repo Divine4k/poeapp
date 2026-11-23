@@ -14,14 +14,22 @@ const ITEM_TYPES = [
   'Incubator', 'Vial', 'Invitation', 'Memory', 'Wombgift', 'UniqueMap',
   'UniqueWeapon', 'UniqueArmour', 'UniqueAccessory', 'UniqueFlask', 'UniqueJewel',
 ];
-// Unidentified uniques only show their base type on the ground, so the screen scan ignores them.
+// Uniques are multi-cell or share art with their base type, so they are not matched by picture.
 const NOT_ON_SCREEN = new Set(['UniqueMap', 'UniqueWeapon', 'UniqueArmour', 'UniqueAccessory', 'UniqueFlask', 'UniqueJewel']);
+
+// poe.ninja gives item art either as a full URL or as a path on GGG's image CDN.
+function iconUrl(v) {
+  if (!v || typeof v !== 'string') return null;
+  if (/^https?:\/\//.test(v)) return v;
+  return v.startsWith('/') ? `https://web.poecdn.com${v}` : null;
+}
 
 function parseExchange(json, category) {
   const out = [];
   if (!json || !Array.isArray(json.lines) || !json.core) return out;
   const names = new Map();
-  for (const it of json.core.items || []) names.set(it.id, it.name);
+  const icons = new Map();
+  for (const it of json.core.items || []) { names.set(it.id, it.name); icons.set(it.id, iconUrl(it.image || it.icon)); }
   const primary = json.core.primary;
   let factor = 1;
   if (primary && primary !== 'chaos') {
@@ -32,7 +40,7 @@ function parseExchange(json, category) {
     const name = names.get(line.id);
     const v = Number(line.primaryValue);
     if (!name || !isFinite(v) || v <= 0) continue;
-    out.push({ name, chaos: v * factor, category });
+    out.push({ name, chaos: v * factor, category, icon: icons.get(line.id) || null });
   }
   return out;
 }
@@ -45,7 +53,7 @@ function parseItemOverview(json, category) {
     if (!line.name || !isFinite(v) || v <= 0) continue;
     if (line.links && line.links >= 5) continue; // 5/6-link prices would overstate a normal drop
     const prev = best.get(line.name);
-    if (!prev || v < prev.chaos) best.set(line.name, { name: line.name, chaos: v, category });
+    if (!prev || v < prev.chaos) best.set(line.name, { name: line.name, chaos: v, category, icon: iconUrl(line.icon) });
   }
   return [...best.values()];
 }
@@ -71,9 +79,10 @@ class PriceTable {
   chaosOf(name) { const e = this.get(name); return e ? e.chaos : 0; }
   get divine() { return this.chaosOf('Divine Orb'); }
 
-  screenNames() {
+  // Items that can be recognised by their inventory picture.
+  iconEntries() {
     const out = [];
-    for (const e of this.byNorm.values()) if (!NOT_ON_SCREEN.has(e.category)) out.push(e.name);
+    for (const e of this.byNorm.values()) if (e.icon && !NOT_ON_SCREEN.has(e.category)) out.push({ name: e.name, icon: e.icon });
     return out;
   }
 
@@ -154,4 +163,4 @@ class PriceService {
   }
 }
 
-module.exports = { PriceTable, PriceService, parseExchange, parseItemOverview, EXCHANGE_TYPES, ITEM_TYPES };
+module.exports = { PriceTable, PriceService, parseExchange, parseItemOverview, iconUrl, EXCHANGE_TYPES, ITEM_TYPES };

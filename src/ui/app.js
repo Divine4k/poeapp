@@ -33,11 +33,14 @@
     if (st.prices.loading) items.push(['busy', 'Loading prices']);
     else if (st.prices.count > 1) items.push(['ok', `${st.prices.count} prices for ${st.prices.league}, updated ${clock(st.prices.updatedAt)}`]);
     else items.push(['bad', st.prices.errors[0] || 'No prices loaded']);
-    if (st.screen.error) items.push(['bad', `Screen scan failed: ${st.screen.error}`]);
-    else if (st.screen.loading) items.push(['busy', 'Loading the text reader (first scan only)']);
-    else if (st.screen.lastScanAt) items.push(['ok', `${state.config.screen.timed ? 'Timed scan on. ' : ''}Last scan found ${st.screen.lastFound} loot labels in ${st.screen.lastMs} ms`]);
-    else items.push(['', state.config.screen.timed ? 'Timed scan starts when you enter a map' : `Press ${hk.scan} in game to scan loot`]);
-    if (!st.hotkeys.scan) items.push(['bad', `Hotkey ${hk.scan} is taken by another app`]);
+    const inv = st.inventory, ic = state.config.inventory;
+    if (inv.error) items.push(['bad', `Inventory reading failed: ${inv.error}`]);
+    else if (inv.keyHook === 'missing' && ic.onKey && !ic.timed) items.push(['bad', 'Key listener not installed, so the inventory key is not noticed. Turn on checking by itself in Settings, or use Read inventory now']);
+    else if (inv.keyHook === 'badkey') items.push(['bad', `Inventory key "${ic.key}" is not a key name the app knows`]);
+    else if (inv.lastReadAt) items.push(['ok', `Inventory read at ${clock(inv.lastReadAt)}: ${inv.recognised} item stacks recognised`]);
+    else items.push(['', `Open your inventory in game (${ic.key}) to start reading it`]);
+    if (inv.art.total > inv.art.done) items.push(['busy', `Learning item pictures: ${inv.art.done} of ${inv.art.total}`]);
+    else if (!inv.art.known && !state.learned.length && st.prices.count > 1) items.push(['bad', 'No item pictures loaded. Name items yourself under the loot list']);
     if (!st.hotkeys.clipboard) items.push(['bad', `Hotkey ${hk.clipboard} is taken by another app`]);
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
     $('status').innerHTML = items.map(([cls, text]) => `<li class="${cls}">${esc(text)}</li>`).join('');
@@ -46,8 +49,6 @@
   // ---- current map ------------------------------------------------------------
   function renderNow() {
     const run = currentRun();
-    const hk = state.config.hotkeys;
-    $('btn-scan').textContent = `Scan loot on screen (${hk.scan})`;
     $('btn-run-toggle').textContent = run ? 'End this map' : 'Start a map manually';
     if (!run) {
       $('now-head').innerHTML = `<div class="map-name">Not in a map</div>
@@ -64,30 +65,28 @@
         </div>`;
     }
 
-    const note = $('scan-note');
-    const lb = state.lastBatch;
-    if (lb && Date.now() - lb.at < 20000) {
-      note.hidden = false;
-      note.className = 'notice';
-      note.innerHTML = lb.count
-        ? `Scan added ${lb.count} ${lb.count === 1 ? 'item' : 'items'}. <button type="button" class="link" data-act="removeBatch" data-run="${esc(lb.runId)}" data-batch="${esc(lb.batch)}">Undo scan</button>`
-        : 'Scan found no priced loot labels on screen.';
-    } else note.hidden = true;
-
     const feed = $('feed');
     if (!run || !run.loot.length) {
-      feed.innerHTML = `<li class="empty">${run ? `No loot yet. Press ${esc(hk.scan)} in game when drops are on screen, or add items by name.` : 'Loot shows up here once a map is running.'}</li>`;
+      feed.innerHTML = `<li class="empty">${run ? `No loot yet. Open your inventory (${esc(state.config.inventory.key)}) after picking things up.` : 'Loot shows up here once a map is running.'}</li>`;
     } else {
-      const label = { scan: 'scan', pickup: 'picked up', manual: 'added', clipboard: 'copied' };
+      const label = { inventory: '', manual: 'added by hand' };
       feed.innerHTML = run.loot.slice().reverse().map((l) => `<li>
         <span>${esc(l.name)} <span class="qty">×${l.qty}</span><span class="src">${label[l.source] || ''}</span></span>
         <span class="val">${l.chaos > 0 ? fmtValue(l.chaos) : 'no price'}</span>
         <button type="button" class="link" data-act="removeLoot" data-run="${esc(run.id)}" data-loot="${esc(l.id)}" aria-label="Remove ${esc(l.name)}">Remove</button></li>`).join('');
     }
-    const showSeen = !!(run && state.config.screen.timed && run.seen.length);
-    $('seen-wrap').hidden = !showSeen;
-    if (showSeen) {
-      $('seen').innerHTML = run.seen.slice().reverse().slice(0, 12).map((s) => `<li><span>${esc(s.name)} ×${s.qty}</span><span class="val">${fmtValue(s.chaos)}</span></li>`).join('');
+    const un = state.unknown || [];
+    $('unknown-wrap').hidden = !un.length;
+    const list = $('unknown');
+    // Rebuild only when the set of items changes, so typing a name is not interrupted.
+    const key = un.map((u) => u.id).join(',');
+    if (list.dataset.key !== key) {
+      list.dataset.key = key;
+      list.innerHTML = un.map((u) => `<li>
+        <img src="${esc(u.image)}" alt="Unrecognised item">
+        <span class="qty">×${u.qty}</span>
+        <input list="price-names" placeholder="Type this item's name" aria-label="Item name" data-learn-input="${u.id}">
+        <button type="button" data-learn="${u.id}">Save name</button></li>`).join('');
     }
   }
 
@@ -200,6 +199,12 @@
       act({ type: d.act, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined });
       return;
     }
+    const learn = e.target.closest('[data-learn]');
+    if (learn) {
+      const input = document.querySelector(`[data-learn-input="${learn.dataset.learn}"]`);
+      if (input && input.value.trim()) act({ type: 'learn', id: learn.dataset.learn, name: input.value.trim() });
+      return;
+    }
     const lo = e.target.closest('[data-loadout]');
     if (lo) {
       const list = (state.config.loadout || []).slice();
@@ -213,7 +218,7 @@
     if (row) { expanded = expanded === row.dataset.expand ? null : row.dataset.expand; renderSession(); }
   });
 
-  $('btn-scan').addEventListener('click', () => act({ type: 'scanNow' }));
+  $('btn-read').addEventListener('click', () => act({ type: 'readInventory' }));
   $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));
   $('btn-new-session').addEventListener('click', () => {
     if (!state.summary.runs.length || window.confirm('Start a new session? The current list of maps is cleared.')) act({ type: 'newSession' });
@@ -275,11 +280,15 @@
     el.characterName.value = c.characterName || '';
     el.logPath.value = c.logPath || '';
     el.logPath.placeholder = state.status.log.path || 'Found automatically when empty';
-    el.hkScan.value = c.hotkeys.scan; el.hkClip.value = c.hotkeys.clipboard;
-    el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.screen.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
-    el.cropBottom.value = c.screen.cropBottom;
-    el.timed.checked = !!c.screen.timed;
-    el.intervalSec.value = (c.screen.intervalMs || 1000) / 1000;
+    el.hkClip.value = c.hotkeys.clipboard;
+    el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.inventory.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
+    el.invKey.value = c.inventory.key || 'Tab';
+    el.onKey.checked = !!c.inventory.onKey;
+    el.timed.checked = !!c.inventory.timed;
+    el.intervalSec.value = (c.inventory.intervalMs || 1000) / 1000;
+    $('learned').innerHTML = state.learned.length
+      ? state.learned.map((n) => `<li><span>${esc(n)}</span><span></span><button type="button" class="link" data-act="forget" data-name="${esc(n)}">Forget</button></li>`).join('')
+      : '<li class="empty">Nothing yet. Items the app cannot recognise show up under the loot list, where you can name them.</li>';
     $('rules').innerHTML = c.mapRules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled ? 'checked' : ''}> ${esc(r.label)}</label>`).join('');
     dlg.showModal();
   });
@@ -292,10 +301,11 @@
       league: el.league.value || c.league,
       characterName: el.characterName.value.trim(),
       logPath: el.logPath.value.trim(),
-      hotkeys: { scan: el.hkScan.value.trim() || 'F7', clipboard: el.hkClip.value.trim() || 'F8' },
-      screen: {
+      hotkeys: { clipboard: el.hkClip.value.trim() || 'F8' },
+      inventory: {
         displayId: el.displayId.value || null,
-        cropBottom: Math.min(1, Math.max(0.3, Number(el.cropBottom.value) || 0.82)),
+        key: el.invKey.value.trim() || 'Tab',
+        onKey: el.onKey.checked,
         timed: el.timed.checked,
         intervalMs: Math.max(500, Math.round((Number(el.intervalSec.value) || 1) * 1000)),
       },
@@ -309,8 +319,6 @@
     const run = currentRun();
     const t = $('timer');
     if (run && t) t.textContent = fmtTime(liveDuration(run));
-    const note = $('scan-note');
-    if (!note.hidden && state.lastBatch && Date.now() - state.lastBatch.at >= 20000) note.hidden = true;
   }, 500);
 
   api.onState(setState);

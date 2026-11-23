@@ -2,26 +2,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { NameMatcher, splitStack, distance } = require('../src/core/fuzzy');
+const { normalize } = require('../src/core/fuzzy');
 const { parseLine, classifyArea } = require('../src/core/clientLog');
 const { parseExchange, parseItemOverview, PriceTable } = require('../src/core/prices');
 const { parseItemText, priceName } = require('../src/core/itemText');
 const { DEFAULT_RULES, checkMods } = require('../src/core/mapMods');
 const { Session } = require('../src/core/session');
-const { detect, LabelTracker } = require('../src/core/labelTracker');
-const { grayInvert } = require('../src/core/imaging');
 
-test('fuzzy: exact, near and non matches', () => {
-  const m = new NameMatcher(['Chaos Orb', 'Divine Orb', 'Orb of Alteration', 'Ambush Scarab of Containment', 'The Doctor']);
-  assert.equal(m.match('chaos orb'), 'Chaos Orb');
-  assert.equal(m.match('Ambush Scarab of Contaimnent'), 'Ambush Scarab of Containment');
-  assert.equal(m.match('Orb of Alteratlon'), 'Orb of Alteration');
-  assert.equal(m.match('Chaos Orc'), 'Chaos Orb'); // one OCR mistake allowed from 8 characters
-  assert.equal(m.match('The Doc'), null); // too short to allow a mistake
-  assert.equal(m.match('Leather Belt'), null);
-  assert.equal(distance('kitten', 'sitting', 5), 3);
-  assert.deepEqual(splitStack('12x Chaos Orb'), { qty: 12, text: 'Chaos Orb' });
-  assert.deepEqual(splitStack('Divine Orb'), { qty: 1, text: 'Divine Orb' });
+test('normalize: case, punctuation and spacing', () => {
+  assert.equal(normalize('  Orb  of-Alteration '), 'orb of alteration');
+  assert.equal(normalize('Kalandra’s Touch'), "kalandra's touch");
 });
 
 test('client log: areas, entering, deaths, chat is ignored', () => {
@@ -61,7 +51,7 @@ test('prices: exchange and item overview parsing', () => {
   assert.equal(t.chaosOf('Chaos Orb'), 1);
   assert.equal(t.divine, 200);
   assert.equal(t.search('orb')[0].name, 'Orb of Alteration'); // prefix matches first
-  assert.ok(!t.screenNames().includes('Headhunter'));
+  assert.deepEqual(t.iconEntries(), []); // no art URLs in this sample
   assert.equal(PriceTable.fromJSON(JSON.parse(JSON.stringify(t))).chaosOf('Headhunter'), 8000);
 });
 
@@ -163,34 +153,3 @@ test('session: run lifecycle, timing, deaths, loot and costs', () => {
   assert.equal(s2.current.segmentStart, null);
 });
 
-test('label tracker: seen, pickup near centre, ignore edge exits and mass vanish', () => {
-  const matcher = new NameMatcher(['Chaos Orb', 'Divine Orb', 'Exalted Orb', 'Vaal Orb', 'Orb of Fusing']);
-  const frame = { width: 1920, height: 1080 };
-  const line = (text, x, y) => ({ text, bbox: { x0: x - 50, y0: y - 10, x1: x + 50, y1: y + 10 } });
-  const tr = new LabelTracker();
-  const step = (lines) => tr.update(detect(lines, matcher), frame);
-
-  assert.deepEqual(step([line('3x Chaos Orb', 900, 500), line('garbage text', 10, 10)]), []);
-  assert.deepEqual(step([line('3x Chaos Orb', 920, 480)]), [{ type: 'seen', name: 'Chaos Orb', qty: 3 }]);
-  assert.deepEqual(step([]), []); // one miss is tolerated
-  assert.deepEqual(step([]), [{ type: 'pickup', name: 'Chaos Orb', qty: 3 }]);
-
-  // leaves at the edge: no pickup
-  step([line('Divine Orb', 60, 100)]);
-  assert.equal(step([line('Divine Orb', 40, 90)])[0].type, 'seen');
-  step([]);
-  assert.deepEqual(step([]), []);
-
-  // five labels vanish together: label toggle, no pickups
-  const five = ['Chaos Orb', 'Divine Orb', 'Exalted Orb', 'Vaal Orb', 'Orb of Fusing'].map((n, i) => line(n, 800 + i * 60, 450 + i * 20));
-  step(five);
-  assert.equal(step(five).length, 5);
-  step([]);
-  assert.deepEqual(step([]), []);
-});
-
-test('imaging: grey invert', () => {
-  const b = Buffer.from([10, 200, 30, 0, 0, 0, 0, 7]);
-  grayInvert(b);
-  assert.deepEqual([...b], [55, 55, 55, 255, 255, 255, 255, 255]);
-});

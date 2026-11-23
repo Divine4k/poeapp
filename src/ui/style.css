@@ -85,7 +85,9 @@ input::placeholder { color: #6f7a86; }
 .feed .qty { color: var(--ash); }
 .feed .src { font-size: 12px; color: var(--ash); margin-left: 8px; }
 .feed .val, .rows .val { font-family: var(--display); font-variant-numeric: tabular-nums; }
-.feed.seen li { font-size: 14px; color: var(--ash); grid-template-columns: 1fr auto; }
+.unknown li { display: grid; grid-template-columns: 52px auto 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--slab); }
+.unknown img { width: 52px; height: 52px; image-rendering: auto; border: 1px solid var(--seam); }
+.unknown input { min-width: 0; }
 .empty { color: var(--ash); padding: 10px 0; display: block !important; border: 0 !important; font-size: 14px !important; }
 
 /* session */
@@ -133,7 +135,8 @@ dialog h2 { font-size: 20px; color: var(--bone); margin: 0 0 14px; }
 fieldset { border: 1px solid var(--seam); border-radius: 4px; margin: 16px 0 0; padding: 12px 14px; }
 legend { padding: 0 6px; color: var(--bone); }
 fieldset label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--bone); font-size: 15px; margin-bottom: 8px; }
-fieldset input[type=number] { width: 110px; }
+fieldset input[type=number], fieldset input[name=invKey] { width: 110px; }
+fieldset label { margin-bottom: 8px; }
 .warn { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid var(--blood); background: rgba(224, 101, 90, 0.1); font-size: 13px; }
 .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
 .rules label { flex-direction: row; align-items: center; gap: 8px; color: var(--bone); font-size: 14px; }
