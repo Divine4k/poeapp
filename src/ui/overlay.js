@@ -15,11 +15,11 @@
     const offers = (t && t.offers) || [];
     const shown = offers.slice(0, MAX);
     if (open !== null && !shown.some((o) => String(o.id) === open)) open = null;
-    const key = JSON.stringify([shown, offers.length, t && t.divine, t && t.locateId, open]);
+    const key = JSON.stringify([shown, offers.length, t && t.divine, open]);
     if (key !== drawn) {
       drawn = key;
       const more = offers.length - shown.length;
-      const opt = { divine: t.divine, labels: t.labels, locateId: t.locateId };
+      const opt = { divine: t.divine, labels: t.labels };
       stack.innerHTML = shown.map((o) => (String(o.id) === open ? cardHtml(o, opt) : tileHtml(o, opt))).join('')
         + (more > 0 ? `<p class="ov-more">${more} more in the app</p>` : '');
     }
