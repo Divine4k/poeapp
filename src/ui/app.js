@@ -427,6 +427,65 @@
     } catch (_) { /* no sound device */ }
   }
 
+  // Sold per day for the last two weeks: one column per day, today on the right.
+  let salesDrawn = '';
+  function renderSales(t) {
+    const days = t.days || [], plot = $('sales-plot'), tip = $('sales-tip');
+    const key = JSON.stringify([days, t.divine]);
+    if (key === salesDrawn) return;
+    salesDrawn = key;
+    tip.hidden = true;
+    const total = days.reduce((a, x) => a + x.sold, 0), count = days.reduce((a, x) => a + x.soldCount, 0);
+    $('sales-sub').textContent = count ? `last ${days.length} days: ${count} ${count === 1 ? 'sale' : 'sales'}, ${fmtValue(total, t.divine)}` : `last ${days.length} days`;
+    const max = Math.max(0, ...days.map((x) => x.sold));
+    if (!count || max <= 0) {
+      plot.innerHTML = `<p class="sales-empty">${count ? 'Sales in this period have no known value to chart.' : 'No sales in this period yet. Each finished sale adds to its day here.'}</p>`;
+      return;
+    }
+    // One unit for the whole axis: divine once the tallest day is worth a few, chaos otherwise.
+    const inDiv = t.divine > 0 && max >= t.divine * 3, unit = inDiv ? t.divine : 1, word = inDiv ? 'div' : 'c';
+    const top = max / unit;
+    const step = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].find((s) => top / s <= 3) || Math.ceil(top / 3);
+    const ceil = Math.ceil(top / step) * step;
+    const W = 560, H = 150, L = 44, R = 6, T = 14, B = 22, pw = W - L - R, ph = H - T - B;
+    const band = pw / days.length, bw = Math.min(24, band - 2);
+    const y = (v) => T + ph - (v / unit / ceil) * ph;
+    const peak = days.reduce((a, x) => (x.sold > a.sold ? x : a), days[0]);
+    let grid = '', cols = '';
+    for (let v = 0; v <= ceil; v += step) {
+      const gy = T + ph - (v / ceil) * ph;
+      grid += `<line class="${v ? 'grid' : 'axis'}" x1="${L}" x2="${W - R}" y1="${gy}" y2="${gy}"/><text x="${L - 6}" y="${gy + 4}" text-anchor="end">${v}${v ? ` ${word}` : ''}</text>`;
+    }
+    days.forEach((x, i) => {
+      const cx = L + band * i + band / 2, h = x.sold > 0 ? Math.max(2, T + ph - y(x.sold)) : 0, by = T + ph - h, r = Math.min(4, h, bw / 2);
+      const date = new Date(x.day);
+      // rounded at the data end, square on the baseline
+      const bar = h ? `<path class="bar" d="M${cx - bw / 2},${T + ph} V${by + r} Q${cx - bw / 2},${by} ${cx - bw / 2 + r},${by} H${cx + bw / 2 - r} Q${cx + bw / 2},${by} ${cx + bw / 2},${by + r} V${T + ph} Z"/>` : '';
+      const label = i % 2 === (days.length - 1) % 2 ? `<text x="${cx}" y="${H - 6}" text-anchor="middle">${date.getDate()}</text>` : '';
+      const value = x === peak ? `<text class="peak" x="${cx}" y="${by - 4}" text-anchor="middle">${esc(fmtValue(x.sold, t.divine))}</text>` : '';
+      cols += `<g class="col" tabindex="0" data-day="${i}">${bar}${value}${label}<rect class="hit" x="${L + band * i}" y="${T}" width="${band}" height="${ph + B}"/></g>`;
+    });
+    plot.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Value sold per day over the last ${days.length} days. The same trades are listed under Finished trades.">${grid}${cols}</svg>`;
+    const show = (g) => {
+      const x = days[Number(g.dataset.day)];
+      tip.textContent = '';
+      const head = document.createElement('b'); head.textContent = x.soldCount ? fmtValue(x.sold, t.divine) : 'Nothing sold';
+      const when = document.createElement('span'); when.textContent = `${dayOf(x.day)}: ${x.soldCount} ${x.soldCount === 1 ? 'sale' : 'sales'}`;
+      tip.append(head, when);
+      if (x.boughtCount) { const b = document.createElement('span'); b.textContent = `Bought ${x.boughtCount} for ${fmtValue(x.bought, t.divine)}`; tip.append(b); }
+      tip.hidden = false;
+      const box = g.querySelector('.hit').getBoundingClientRect(), host = $('sales').getBoundingClientRect();
+      const left = Math.max(0, Math.min(box.left - host.left + box.width / 2 - tip.offsetWidth / 2, host.width - tip.offsetWidth));
+      tip.style.left = `${left}px`; tip.style.top = `${Math.max(0, box.top - host.top - tip.offsetHeight + 16)}px`;
+    };
+    for (const g of plot.querySelectorAll('.col')) {
+      g.addEventListener('pointerenter', () => show(g));
+      g.addEventListener('focus', () => show(g));
+      g.addEventListener('pointerleave', () => { tip.hidden = true; });
+      g.addEventListener('blur', () => { tip.hidden = true; });
+    }
+  }
+
   function renderTrade() {
     const t = state.trade, cfg = state.config.trade;
     if (!t || !cfg) return;
@@ -460,6 +519,7 @@
         : '<p class="empty">No open offers. When someone whispers you about an item, it appears here with the buttons to invite, trade and thank them.</p>';
     }
 
+    renderSales(t);
     const tot = t.totals, d = t.divine;
     const cell = (x, label) => `<div>${fmtValue(x.chaos, d)}<span>${label}: ${x.count} ${x.count === 1 ? 'trade' : 'trades'}${x.unpriced ? `, ${x.unpriced} without a known value` : ''}</span></div>`;
     $('trade-totals').innerHTML = cell(tot.soldToday, 'Sold today') + cell(tot.boughtToday, 'Bought today') + cell(tot.soldAll, 'Sold in total') + cell(tot.boughtAll, 'Bought in total');

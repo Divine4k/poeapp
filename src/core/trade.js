@@ -11,6 +11,53 @@ const RE_UNPRICED = /^Hi, I would like to buy your (.+) in ([^(]+?) \(stash tab 
 // The league ends the message. Older versions of the site put a full stop after it.
 const RE_BULK = /^Hi, I'd like to buy your ([\d.,]+) (.+?) for my ([\d.,]+) (.+?) in ([^.]+?)(?:\.\s*(.*))?$/;
 
+// Whispers written by the trade site in other languages. A buyer's whisper is in the language
+// of the trade site they use, whatever language your own game is in. Each entry: the greeting
+// that marks it, and the full pattern with the groups it captures, in order.
+// These patterns are from memory of the site's wording and are not confirmed against real
+// whispers. When a greeting matches but the full pattern does not, the whisper is still listed,
+// read roughly: see roughTrade().
+const FOREIGN = [
+  { lang: 'Russian', hi: /^Здравствуйте, хочу купить у вас /, order: 'item amount currency league tab left top note',
+    re: /^Здравствуйте, хочу купить у вас (.+?)(?: за ([\d.,]+) (.+?))? в лиге (.+?) \(секция "(.*?)"; позиция: (\d+) столбец, (\d+) ряд\)\s*(.*)$/ },
+  { lang: 'German', hi: /^Hi, ich möchte /, order: 'item amount currency league tab left top note',
+    re: /^Hi, ich möchte dein (.+?)(?: für ([\d.,]+) (.+?))? in der (.+?)-Liga kaufen \(Truhenfach "(.*?)"; Position: (\d+) von links, (\d+) von oben\)\s*(.*)$/ },
+  { lang: 'French', hi: /^Bonjour, je souhaiterais t'acheter /, order: 'item amount currency league tab left top note',
+    re: /^Bonjour, je souhaiterais t'acheter (.+?)(?: pour ([\d.,]+) (.+?))? dans la ligue (.+?) \(onglet de réserve "(.*?)" ?; (\d+)e en partant de la gauche, (\d+)e en partant du haut\)\s*(.*)$/ },
+  { lang: 'Spanish', hi: /^Hola, quisiera comprar tu /, order: 'item amount currency league tab left top note',
+    re: /^Hola, quisiera comprar tu (.+?)(?: listado por ([\d.,]+) (.+?))? en (.+?) \(pestaña de alijo "(.*?)"; posición: izquierda (\d+), arriba (\d+)\)\s*(.*)$/ },
+  { lang: 'Portuguese', hi: /^Olá, eu gostaria de comprar o seu item /, order: 'item amount currency league tab left top note',
+    re: /^Olá, eu gostaria de comprar o seu item (.+?)(?: listado por ([\d.,]+) (.+?))? na (.+?) \(aba do baú:? "(.*?)"; posição: esquerda (\d+), topo (\d+)\)\s*(.*)$/ },
+  { lang: 'Thai', hi: /^สวัสดี, เราต้องการจะชื้อของคุณ /, order: 'item amount currency league tab left top note',
+    re: /^สวัสดี, เราต้องการจะชื้อของคุณ (.+?)(?: ในราคา ([\d.,]+) (.+?))? ใน (.+?) \(stash tab "(.*?)"; ตำแหน่ง: ซ้าย (\d+), บน (\d+)\)\s*(.*)$/ },
+  { lang: 'Korean', hi: /^안녕하세요, /, order: 'league item amount currency tab left top note',
+    re: /^안녕하세요, (.+?) 리그의 (.+?)\(을\)를 (?:([\d.,]+) (.+?)\(으\)로 )?구매하고 싶습니다 \(보관함 탭 "(.*?)", 위치: 왼쪽 (\d+), 상단 (\d+)\)\s*(.*)$/ },
+];
+
+// A whisper whose greeting is known but whose wording is not: keep what can be told for sure.
+// The tab is the quoted text in the brackets and the slot is the last two numbers in them;
+// everything between the greeting and the brackets is shown as the item, price included.
+function roughTrade(text, entry) {
+  const rest = text.replace(entry.hi, '');
+  const m = /^(.*?)\s*\(([^()]*"(.*?)"[^()]*)\)\s*(.*)$/.exec(rest);
+  if (!m) return rest.trim() ? { item: rest.trim().replace(/[.。]\s*$/, ''), qty: 1, price: null, league: '', tab: '', left: 0, top: 0, note: '', lang: entry.lang, rough: true } : null;
+  const nums = m[2].replace(/"(.*?)"/, '').match(/\d+/g) || [];
+  const [left, top] = nums.length >= 2 ? nums.slice(-2).map(Number) : [0, 0];
+  return { item: m[1].trim(), qty: 1, price: null, league: '', tab: m[3], left, top, note: m[4] || '', lang: entry.lang, rough: true };
+}
+
+function parseForeign(t) {
+  for (const entry of FOREIGN) {
+    if (!entry.hi.test(t)) continue;
+    const m = entry.re.exec(t);
+    if (!m) return roughTrade(t, entry);
+    const g = {};
+    entry.order.split(' ').forEach((name, i) => { g[name] = m[i + 1]; });
+    return { item: g.item, qty: 1, price: g.amount ? { amount: num(g.amount), currency: g.currency } : null, league: g.league, tab: g.tab, left: +g.left, top: +g.top, note: g.note || '', lang: entry.lang };
+  }
+  return null;
+}
+
 const num = (s) => {
   const v = parseFloat(String(s).replace(/,(\d{3})(?!\d)/g, '$1').replace(',', '.'));
   return isFinite(v) ? v : 0;
@@ -27,7 +74,7 @@ function parseTradeMessage(text) {
   if (m) return { item: m[1], qty: 1, price: null, league: m[2], tab: m[3], left: +m[4], top: +m[5], note: m[6] || '' };
   m = RE_BULK.exec(t);
   if (m) return { item: m[2], qty: num(m[1]), price: { amount: num(m[3]), currency: m[4] }, league: m[5], tab: '', left: 0, top: 0, note: m[6] || '' };
-  return null;
+  return parseForeign(t);
 }
 
 // The short currency words the trade site uses, as the names prices are listed under.
@@ -280,8 +327,25 @@ class TradeBook {
     return {
       afk: this.afk, offers, seen: { ...this.seen },
       history: this.history.slice(0, 100).map((h) => ({ ...h, value: value(h) })),
+      days: this.days(value, now),
       totals: { soldToday: sum('in', start), boughtToday: sum('out', start), soldAll: sum('in', 0), boughtAll: sum('out', 0) },
     };
+  }
+
+  // Trades per day for the last n days, oldest first, today last:
+  // [{ day (start of the day), sold, soldCount, bought, boughtCount }], values in chaos.
+  days(value, now = Date.now(), n = 14) {
+    const start = new Date(now); start.setHours(0, 0, 0, 0);
+    const out = [];
+    for (let i = n - 1; i >= 0; i--) { const d = new Date(start); d.setDate(d.getDate() - i); out.push({ day: d.getTime(), sold: 0, soldCount: 0, bought: 0, boughtCount: 0 }); }
+    for (const h of this.history) {
+      const d = new Date(h.at); d.setHours(0, 0, 0, 0);
+      const slot = out.find((x) => x.day === d.getTime());
+      if (!slot) continue;
+      const v = value(h) || 0;
+      if (h.dir === 'in') { slot.sold += v; slot.soldCount++; } else { slot.bought += v; slot.boughtCount++; }
+    }
+    return out;
   }
 
   toJSON() {
