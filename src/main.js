@@ -25,7 +25,7 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
-const { checkMessage } = require('./core/checkMessage');
+const { checkMessage, noteMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
 const { Overlay, Toast } = require('./overlay');
@@ -359,6 +359,7 @@ async function readInventory() {
     if (!result) return;
     status.inventory.lastReadAt = Date.now();
     status.inventory.recognised = result.recognised;
+    settlePendingNames();
     updateUnknown(result.unknown);
     const before = new Map(lastInventory.cells.map((c) => [c.cell, c]));
     lastInventory = {
@@ -455,9 +456,34 @@ function nameUnderCursor(item, name, entry) {
   const k = at.row * COLS + at.col;
   const print = reader.prints[k];
   if (!print) {
-    say(`Could not count ${name}: the app has not had a clear view of that slot yet. Move the mouse off the inventory for a second, then try again.`, true);
+    // The slot has only been seen with the mouse on it, and a hovered slot does not look like
+    // the item at rest. The name is kept and put to the slot's picture at the next clear look.
+    pendingNames.set(k, { item, name, entry, at: Date.now() });
+    const how = config.inventory.timed ? 'Move the mouse off the inventory for a second' : `Move the mouse off the inventory and press ${config.inventory.key || 'Tab'} twice (close and open it)`;
+    say(`Noted: ${name}. It is saved at the next clear look at that slot. ${how}; nothing else to press.`);
     return;
   }
+  applyName(k, item, name, entry, print);
+}
+
+// Names waiting for a clear picture of their slot: cell -> { item, name, entry, at }.
+const pendingNames = new Map();
+const PENDING_NAME_MS = 3 * 60 * 1000;
+
+// After an inventory read: every waiting name whose slot now has a clear picture is put to it.
+function settlePendingNames() {
+  for (const [k, p] of [...pendingNames]) {
+    if (Date.now() - p.at > PENDING_NAME_MS) { pendingNames.delete(k); continue; }
+    const print = reader.prints[k];
+    if (!print) continue;
+    pendingNames.delete(k);
+    applyName(k, p.item, p.name, p.entry, print);
+    showToast(noteMessage(notice));
+  }
+}
+
+// print: the picture of slot k at rest.
+function applyName(k, item, name, entry, print) {
   const sharedPicture = /Divination Card|Map/i.test(item.itemClass) || item.isMap;
   if (item.stackable && !sharedPicture) {
     const hit = index.match(print);
@@ -683,9 +709,10 @@ async function checkHovered() {
 
 // What the check key just did, in a line or two, shown in game for a moment.
 function showCheckToast(started) {
-  if (!toast || config.checkToast === false) return;
-  const message = checkMessage({ mapCheck, priceCheck, notice, divine: prices.divine }, started);
-  if (!message) return;
+  showToast(checkMessage({ mapCheck, priceCheck, notice, divine: prices.divine }, started));
+}
+function showToast(message) {
+  if (!toast || config.checkToast === false || !message) return;
   if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
   // Tall enough for a two-line headline and three lines of small print; a problem stays longer.
   toast.show(overlayBounds(overlay.display(), 112, toastPlacement()), message, message.bad ? 6000 : 2500);
