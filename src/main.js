@@ -25,7 +25,7 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
-const { TradeBook, chatCommand, nextAction, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
+const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
 const { Overlay } = require('./overlay');
 const { GameWatch } = require('./gamewin');
@@ -56,7 +56,12 @@ const DEFAULT_CONFIG = {
   // line per press); hotkeys.dismiss removes the oldest offer.
   trade: {
     enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
-    hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2' },
+    // The keys after layout are unset until you choose them. invite, trade, busy, still and
+    // whisper act on the newest buyer; hideout and remaining type /hideout and /remaining.
+    hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: '', remaining: '' },
+    // Steps taken without a key press once the game reports "Trade accepted", and around it.
+    // All off unless switched on: GGG's rule is one action per key press or click.
+    auto: { thankSold: false, kickSold: false, thankBought: false, leaveBought: false, homeBought: false, joinHideout: false, ignoreSold: false, closeBoughtSec: 0 },
     messages: { ...DEFAULT_MESSAGES },
   },
   // Where each thing on the overlay sits, once it has been dragged in layout mode: id -> { x, y, grow }.
@@ -120,7 +125,7 @@ function writeJson(name, value) {
 
 function mergeTrade(base, patch) {
   const p = patch || {};
-  return { ...base, ...p, hotkeys: { ...base.hotkeys, ...(p.hotkeys || {}) }, messages: { ...base.messages, ...(p.messages || {}) } };
+  return { ...base, ...p, hotkeys: { ...base.hotkeys, ...(p.hotkeys || {}) }, messages: { ...base.messages, ...(p.messages || {}) }, auto: { ...base.auto, ...(p.auto || {}) } };
 }
 
 function loadConfig() {
@@ -223,8 +228,19 @@ function startLog() {
     const before = session.currentId;
     session.handleLogEvent(ev, { characterName: config.characterName, loadout: config.loadout });
     if (ev.type === 'area') syncLedger();
-    if (config.trade.enabled && book.onLog(ev)) saveTradesSoon();
-    else if (ev.type === 'whisper') return; // ordinary chat: nothing to redraw
+    if (config.trade.enabled && ev.type === 'party' && config.trade.auto.joinHideout) {
+      const buy = book.pendingPurchase();
+      if (buy) autoRun(buy, ['hideout']);
+    }
+    const doneBefore = book.lastDone;
+    book.ignoreSold = !!config.trade.auto.ignoreSold;
+    const tookIn = config.trade.enabled && book.onLog(ev);
+    if (tookIn && ev.type === 'trade' && ev.result === 'accepted' && book.lastDone !== doneBefore) {
+      const sold = book.get(book.lastDone);
+      autoRun(sold, autoSteps(sold, config.trade.auto));
+    }
+    if (tookIn) saveTradesSoon();
+    else if (ev.type === 'whisper' || ev.type === 'party') return; // nothing to redraw
     changed();
   });
   logTail.start();
@@ -656,6 +672,14 @@ function registerHotkeys() {
   if (config.trade.enabled) {
     reg('tradeNext', config.trade.hotkeys.next, () => { const o = book.firstActionable(); if (o) tradeDo(o.id, 'next').then(changed); });
     reg('layout', config.trade.hotkeys.layout, () => toggleLayout());
+    const hk = config.trade.hotkeys, taken = [];
+    const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, fn)) taken.push(accel); } catch (_) { taken.push(accel); } };
+    for (const action of ['invite', 'trade', 'busy', 'still', 'whisper']) {
+      extra(hk[action], () => { const o = book.latestIncoming(); if (o) tradeDo(o.id, action).then(changed); else { say('No buyer to act on.'); changed(); } });
+    }
+    extra(hk.hideout, () => sendChat('/hideout').then(changed));
+    extra(hk.remaining, () => sendChat('/remaining').then(changed));
+    status.hotkeys.tradeTaken = taken;
     reg('tradeDismiss', config.trade.hotkeys.dismiss, () => { const o = book.offers[0]; if (o) { book.remove(o.id); saveTradesSoon(); changed(); } });
   }
 }
@@ -734,13 +758,16 @@ function syncOverlay() {
 // Sends one chat line to the game. Returns true when it went out.
 // Nothing is typed unless Path of Exile is confirmed to be the window in front: keys go to
 // whatever window has the keyboard, so typing blind could put the line in a browser or a chat.
-async function sendChat(text) {
+// auto: the line is not the result of a click or key press, so the game window is never pulled
+// to the front for it and failures stay quiet. send: false leaves the line unsent in the chat box.
+async function sendChat(text, { auto = false, send = true } = {}) {
   if (chatBusy) return false;
+  if (auto && !(hook && watch.gameInFront())) return false;
   if (!hook) { say('Nothing was sent: the keyboard helper is not installed, so the app cannot type in the game. Run npm install in the app folder.', true); return false; }
   if (!watch.running) { say('Nothing was sent: the app cannot tell which window is in front on this PC, so it will not type. Offers are still listed.', true); return false; }
   chatBusy = true;
   try {
-    if (!watch.gameInFront()) {
+    if (!auto && !watch.gameInFront()) {
       // The click came from another window (this app's own, usually): hand the keyboard to the game.
       const asked = Date.now();
       const got = await focusGame();
@@ -752,13 +779,36 @@ async function sendChat(text) {
       await sleep(120);
     }
     if (!watch.gameInFront()) { say('Nothing was sent: the game is not the window in front.', true); return false; }
-    return await typeChat(hook, clipboard, text);
+    return await typeChat(hook, clipboard, text, { send });
   } catch (e) {
-    say(`Nothing was sent: ${e.message || e}`, true);
+    if (!auto) say(`Nothing was sent: ${e.message || e}`, true);
     return false;
   } finally {
     chatBusy = false;
   }
+}
+
+// Steps the app takes by itself (after a trade, or on a party invite), one chat line each with
+// a pause between. Only while the game is in front; whatever cannot be sent stays on the
+// offer's buttons for you to press.
+let autoQueue = Promise.resolve();
+function autoRun(offer, steps) {
+  if (!offer || !steps.length || offer.test) return;
+  const opts = { messages: config.trade.messages, characterName: config.characterName };
+  const lines = steps.map((action) => ({ action, text: chatCommand(action, offer, opts) })).filter((l) => l.text);
+  autoQueue = autoQueue.then(async () => {
+    await sleep(350); // let the trade window close first
+    for (const { action, text } of lines) {
+      for (let wait = 0; chatBusy && wait < 20; wait++) await sleep(100);
+      if (!(await sendChat(text, { auto: true }))) {
+        say(`Trade with ${offer.player} is done, but "${text}" was not sent by itself because the game was not in front. Use the offer's buttons.`, true);
+        break;
+      }
+      book.applied(offer.id, action);
+      await sleep(450);
+    }
+    saveTradesSoon(); changed();
+  }).catch(() => {});
 }
 
 // One click or key press on an offer: at most one chat line goes to the game.
@@ -778,6 +828,7 @@ async function tradeDo(id, what) {
   }
   const text = chatCommand(action, offer, { messages: config.trade.messages, characterName: config.characterName });
   if (!text) { say('That message is empty. Set its text under Trade, Settings.', true); return; }
+  if (action === 'whisper') { await sendChat(text, { send: false }); return; }
   if (await sendChat(text)) { book.applied(id, action); saveTradesSoon(); }
 }
 
@@ -926,6 +977,7 @@ const actions = {
   layoutCancel: () => { if (layoutWin) layoutWin.close(); },
   layoutReset: () => applyConfig({ overlayLayout: {}, trade: { position: 'bottom', offsetX: 0, offsetY: 0 } }),
   tradeTest: () => addTestOffer(),
+  tradeDismissAll: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeClear: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeForget: (a) => { book.removeHistory(String(a.id || '')); saveTradesSoon(); },
   readClipboard: () => checkText(clipboard.readText()),
@@ -1016,7 +1068,11 @@ app.whenReady().then(() => {
   syncTimedWatch();
   refreshPrices();
   setInterval(refreshPrices, PRICE_REFRESH_MS);
-  setInterval(push, 5000);
+  setInterval(() => {
+    const sec = Number(config.trade.auto.closeBoughtSec) || 0;
+    if (sec > 0 && book.closeBought(sec * 1000)) saveTradesSoon();
+    push();
+  }, 5000);
 
   shared = new SharedItems({ fetchImpl: webFetch, token: readToken() });
   loadShared();

@@ -113,12 +113,32 @@
             <label class="wide">Key: open layout mode, to drag the overlay where you want it <input name="hkLayout" placeholder="Shift+F2"></label>
             <label>Key: next step for the oldest offer <input name="hkNext" placeholder="F2"></label>
             <label>Key: dismiss the oldest offer <input name="hkDismiss" placeholder="F3"></label>
+            <label>Key: invite the newest buyer <input name="hkInvite" placeholder="not set"></label>
+            <label>Key: trade with the newest buyer <input name="hkTrade" placeholder="not set"></label>
+            <label>Key: tell the newest buyer you are busy <input name="hkBusy" placeholder="not set"></label>
+            <label>Key: ask the newest buyer if still interested <input name="hkStill" placeholder="not set"></label>
+            <label>Key: start a whisper to the newest buyer <input name="hkWhisper" placeholder="not set"></label>
+            <label>Key: go to my hideout <input name="hkHideout" placeholder="not set"></label>
+            <label>Key: show remaining monsters <input name="hkRemaining" placeholder="not set"></label>
+            <span></span>
             <label class="wide">Thanks message <input name="msgThanks"></label>
             <label class="wide">Busy message <input name="msgBusy"></label>
             <label class="wide">Sold message <input name="msgSold"></label>
             <label class="wide">Still interested message <input name="msgStill"></label>
           </div>
-          <p class="fine">In messages, {item} and {price} are filled in from the offer. Every button and key press types one chat line in the game, never more, and nothing is sent without a click or key press from you.</p>
+          <fieldset>
+            <legend>Done by itself</legend>
+            <label class="check"><input type="checkbox" name="autoThankSold"> After I sell: whisper the thanks message</label>
+            <label class="check"><input type="checkbox" name="autoKickSold"> After I sell: kick the buyer from the party</label>
+            <label class="check"><input type="checkbox" name="autoThankBought"> After I buy: whisper the thanks message</label>
+            <label class="check"><input type="checkbox" name="autoLeaveBought"> After I buy: leave the party</label>
+            <label class="check"><input type="checkbox" name="autoHomeBought"> After I buy: go back to my hideout</label>
+            <label class="check"><input type="checkbox" name="autoJoinHideout"> When a seller's party invite is accepted: go to their hideout</label>
+            <label class="check"><input type="checkbox" name="autoIgnoreSold"> Do not list buyers for an item I sold in the last hour</label>
+            <label>Close a finished purchase after this many seconds (0 = keep it) <input name="autoCloseSec" type="number" min="0" max="600" step="5"></label>
+            <p class="warn">These type in the game without a key press from you, as PoE Lurker does. GGG's rule is one action per key press or click, so the first six are outside it and are your own risk. They are off until you tick them. They only ever type while the game is the window in front.</p>
+          </fieldset>
+          <p class="fine">In messages, {item} and {price} are filled in from the offer. Every button and key press types one chat line in the game, never more. Nothing is sent without a click or key press from you unless you tick something under "Done by itself". Ctrl+click on an offer's cross dismisses every offer.</p>
           <div class="dialog-actions"><span></span><button type="submit" class="primary">Save trade settings</button></div>
         </form>
       </details>
