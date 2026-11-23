@@ -435,20 +435,24 @@
     const warn = $('trade-warn');
     const problems = [];
     if (!cfg.enabled) problems.push('Trade offers are switched off. Turn them on under Trade settings.');
-    else if (!t.canSend) problems.push('The buttons cannot type in the game: the keyboard helper is not installed. Offers are still listed.');
+    else if (!t.canSend) problems.push(`The buttons cannot type in the game: ${t.sendProblem || 'something is missing'}. Offers are still listed.`);
     if (t.afk) problems.push('You are marked AFK in game, so buyers get your auto-reply.');
     warn.hidden = !problems.length;
     warn.textContent = problems.join(' ');
     const hk = cfg.hotkeys;
     $('trade-hint').textContent = `Whispers from the trade site show up here${cfg.overlay ? ' and on top of the game' : ''}. The gold button is the next step${hk.next ? `; ${hk.next} presses it for the oldest offer` : ''}${hk.dismiss ? `, ${hk.dismiss} dismisses it` : ''}.`;
+    const seen = t.seen || { whispers: 0, offers: 0 };
+    $('trade-seen').textContent = !state.status.log.ok ? 'The game log is not connected, so no whispers can be read.'
+      : seen.whispers ? `Since the app started: ${seen.whispers} ${seen.whispers === 1 ? 'whisper' : 'whispers'} read from the game log, ${seen.offers} of them trade offers. Last one at ${clock(seen.lastWhisperAt)}.`
+        : 'No whispers read from the game log since the app started.';
     $('btn-trade-clear').hidden = !t.offers.length;
 
     const box = $('trade-offers');
-    const key = JSON.stringify([t.offers, t.divine]);
+    const key = JSON.stringify([t.offers, t.divine, t.locateId]);
     if (key !== tradeDrawn) {
       tradeDrawn = key;
       box.innerHTML = t.offers.length
-        ? t.offers.map((o) => TradeCard.cardHtml(o, { divine: t.divine, labels: t.labels })).join('')
+        ? t.offers.map((o) => TradeCard.cardHtml(o, { divine: t.divine, labels: t.labels, locateId: t.locateId })).join('')
         : '<p class="empty">No open offers. When someone whispers you about an item, it appears here with the buttons to invite, trade and thank them.</p>';
     }
 
@@ -749,8 +753,8 @@
   $('trade-settings').addEventListener('toggle', (e) => {
     if (!e.target.open) return;
     const c = state.config.trade, el = tradeForm.elements;
-    el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound;
-    el.position.value = c.position || 'top';
+    el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound; el.highlight.checked = c.highlight !== false;
+    el.position.value = c.position || 'bottom';
     el.offsetX.value = c.offsetX || 0; el.offsetY.value = c.offsetY || 0;
     el.hkNext.value = c.hotkeys.next || ''; el.hkDismiss.value = c.hotkeys.dismiss || '';
     el.msgThanks.value = c.messages.thanks; el.msgBusy.value = c.messages.busy; el.msgSold.value = c.messages.sold; el.msgStill.value = c.messages.still;
@@ -760,7 +764,7 @@
     const el = tradeForm.elements;
     const pct = (v) => Math.max(-50, Math.min(50, Number(v) || 0));
     api.setConfig({ trade: {
-      enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked,
+      enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked, highlight: el.highlight.checked,
       position: el.position.value, offsetX: pct(el.offsetX.value), offsetY: pct(el.offsetY.value),
       hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim() },
       messages: { thanks: el.msgThanks.value.trim(), busy: el.msgBusy.value.trim(), sold: el.msgSold.value.trim(), still: el.msgStill.value.trim() },

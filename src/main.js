@@ -4,7 +4,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage, safeStorage } = require('electron');
 
-const { LogTail, findLogPath } = require('./core/clientLog');
+const { LogTail, findLogPath, readRecent } = require('./core/clientLog');
 const { PriceTable, PriceService, CATEGORY_LABELS } = require('./core/prices');
 const { parseItemText, priceName } = require('./core/itemText');
 const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
@@ -20,9 +20,10 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
-const { TradeBook, chatCommand, nextAction, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
+const { TradeBook, chatCommand, nextAction, stashCellRect, overlayAllowed, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
-const { Overlay } = require('./overlay');
+const { Overlay, Highlight } = require('./overlay');
+const { GameWatch } = require('./gamewin');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -48,7 +49,7 @@ const DEFAULT_CONFIG = {
   // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat
   // line per press); hotkeys.dismiss removes the oldest offer.
   trade: {
-    enabled: true, overlay: true, position: 'top', offsetX: 0, offsetY: 0, sound: true,
+    enabled: true, overlay: true, highlight: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
     hotkeys: { next: 'F2', dismiss: 'F3' },
     messages: { ...DEFAULT_MESSAGES },
   },
@@ -84,6 +85,8 @@ const ledger = new LootLedger();
 const priceService = new PriceService({ fetchImpl: webFetch });
 const book = new TradeBook();
 let overlay = null;
+let highlight = null;
+const watch = new GameWatch();
 let chatBusy = false;
 let tradeSaveTimer = null;
 
@@ -205,12 +208,17 @@ function startLog() {
     return;
   }
   status.log = { ok: false, path: p, error: 'Waiting for the file' };
+  if (config.trade.enabled && book.catchUp(readRecent(p))) saveTradesSoon();
   logTail = new LogTail(p);
   logTail.on('status', (s) => { status.log = { ok: s.ok, path: p, error: s.ok ? null : `Cannot read the log (${s.error})` }; push(); });
   logTail.on('event', (ev) => {
     const before = session.currentId;
     session.handleLogEvent(ev, { characterName: config.characterName, loadout: config.loadout });
     if (ev.type === 'area') syncLedger();
+    if (config.trade.enabled && ev.type === 'joined') {
+      const arrived = book.offers.find((o) => o.dir === 'in' && o.player === ev.name && o.tab);
+      if (arrived) setLocate(arrived.id, 90000);
+    }
     if (config.trade.enabled && book.onLog(ev)) saveTradesSoon();
     else if (ev.type === 'whisper') return; // ordinary chat: nothing to redraw
     changed();
@@ -624,7 +632,8 @@ function registerHotkeys() {
 // ---- trade offers ---------------------------------------------------------------
 function tradeState() {
   const s = book.summary(prices);
-  return { ...s, divine: prices.divine, labels: LABELS, canSend: !!hook, hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
+  const shown = locatedOffer();
+  return { ...s, divine: prices.divine, labels: LABELS, canSend: !!hook && watch.running, sendProblem: !hook ? 'the keyboard helper is not installed' : (watch.running ? '' : 'the app cannot tell which window is in front on this PC'), locateId: shown ? shown.id : null, hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
 }
 function saveTradesSoon() {
   clearTimeout(tradeSaveTimer);
@@ -634,30 +643,39 @@ function syncOverlay() {
   if (!overlay) return;
   const t = config.trade;
   const data = tradeState();
+  // Away from the game (alt-tab, another program in front) nothing is drawn over the screen.
+  const allowed = overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() });
+  const on = t.enabled && t.overlay && allowed;
   overlay.update(data, {
-    show: t.enabled && t.overlay && data.offers.length > 0,
+    show: on && data.offers.length > 0,
     displayId: config.inventory.displayId,
     placement: { position: t.position, offsetX: t.offsetX, offsetY: t.offsetY },
   });
+  const o = on && t.highlight !== false ? locatedOffer() : null;
+  highlight.show(o ? stashCellRect(overlay.display(), book.quadTabs.has(o.tab) ? 24 : 12, o.left, o.top) : null);
 }
 
 // Sends one chat line to the game. Returns true when it went out.
+// Nothing is typed unless Path of Exile is confirmed to be the window in front: keys go to
+// whatever window has the keyboard, so typing blind could put the line in a browser or a chat.
 async function sendChat(text) {
   if (chatBusy) return false;
   if (!hook) { say('Nothing was sent: the keyboard helper is not installed, so the app cannot type in the game. Run npm install in the app folder.', true); return false; }
+  if (!watch.running) { say('Nothing was sent: the app cannot tell which window is in front on this PC, so it will not type. Offers are still listed.', true); return false; }
   chatBusy = true;
   try {
-    // A click in this app's own window took the keyboard away from the game: hand it back first.
-    if (BrowserWindow.getFocusedWindow()) {
+    if (!watch.gameInFront()) {
+      // The click came from another window (this app's own, usually): hand the keyboard to the game.
+      const asked = Date.now();
       const got = await focusGame();
       if (got === 'none') { say('Nothing was sent: Path of Exile is not running.', true); return false; }
-      if (win && !win.isDestroyed()) win.blur();
-      await sleep(180);
-      if (got !== 'ok' || BrowserWindow.getFocusedWindow()) {
-        say('Nothing was sent: the app could not switch to the game window. Click the game, then use the buttons on the overlay or the next-step key.', true);
+      if (!(await watch.waitForGame(2500, asked))) {
+        say('Nothing was sent: the app could not bring the game window to the front. Click the game first, then use the button or the next-step key.', true);
         return false;
       }
+      await sleep(120);
     }
+    if (!watch.gameInFront()) { say('Nothing was sent: the game is not the window in front.', true); return false; }
     return await typeChat(hook, clipboard, text);
   } catch (e) {
     say(`Nothing was sent: ${e.message || e}`, true);
@@ -667,16 +685,34 @@ async function sendChat(text) {
   }
 }
 
+// The stash slot to frame in game: set when you invite a buyer, when they arrive, or when you
+// press Locate on an offer. It goes away by itself.
+let locate = null; // { id, until }
+let locateTimer = null;
+function setLocate(id, ms) {
+  locate = ms ? { id, until: Date.now() + ms } : null;
+  clearTimeout(locateTimer);
+  if (ms) locateTimer = setTimeout(push, ms + 50);
+}
+function locatedOffer() {
+  if (!locate || Date.now() > locate.until) return null;
+  const o = book.get(locate.id);
+  return o && o.tab && o.left > 0 && o.top > 0 && o.state !== 'done' ? o : null;
+}
+
 // One click or key press on an offer: at most one chat line goes to the game.
 async function tradeDo(id, what) {
   const offer = book.get(id);
   if (!offer) return;
   if (what === 'dismiss') { book.remove(id); saveTradesSoon(); return; }
+  if (what === 'locate') { setLocate(id, locatedOffer() && locate.id === offer.id ? 0 : 30000); return; }
+  if (what === 'quad') { book.toggleQuad(id); saveTradesSoon(); return; }
   const action = what === 'next' ? nextAction(offer) : what;
   if (!action) { say(`Nothing to do for ${offer.player} yet: waiting for them.`); return; }
   if (offer.test) {
     // A test offer walks through the steps without typing anything in the game.
     book.applied(id, action);
+    if (action === 'invite' && offer.dir === 'in') setLocate(id, 60000);
     if (action === 'invite') book.onLog({ type: 'joined', name: offer.player });
     else if (action === 'trade') book.onLog({ type: 'trade', result: 'accepted' });
     say(`Test offer: "${chatCommand(action, offer, { messages: config.trade.messages, characterName: config.characterName })}" would be typed in the game. Nothing was sent.`);
@@ -684,7 +720,10 @@ async function tradeDo(id, what) {
   }
   const text = chatCommand(action, offer, { messages: config.trade.messages, characterName: config.characterName });
   if (!text) { say('That message is empty. Set its text under Trade, Settings.', true); return; }
-  if (await sendChat(text)) { book.applied(id, action); saveTradesSoon(); }
+  if (await sendChat(text)) {
+    book.applied(id, action); saveTradesSoon();
+    if (action === 'invite' && offer.dir === 'in') setLocate(id, 60000);
+  }
 }
 
 let testSeq = 1;
@@ -712,7 +751,7 @@ function createWindow() {
   if (second) win.maximize();
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); });
+  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (highlight) highlight.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
@@ -899,6 +938,9 @@ app.whenReady().then(() => {
   archive = new SessionArchive(dataFile('sessions'));
   book.restore(readJson('trades.json', null));
   overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
+  highlight = new Highlight({ page: path.join(__dirname, 'ui', 'highlight.html') });
+  watch.on('change', syncOverlay);
+  watch.start();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
   if (cached.size > 1) { setPrices(cached); syncArt(); }
 
@@ -924,6 +966,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  watch.stop();
   clearInterval(timedTimer);
   if (hook) { try { hook.uIOhook.stop(); } catch (_) { /* closing anyway */ } }
   writeJson('session.json', session.toJSON());

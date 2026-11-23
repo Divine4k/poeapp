@@ -18,14 +18,17 @@
   }
 
   // A small picture of the stash tab with the item's slot marked.
-  function stashHtml(o) {
+  function stashHtml(o, locateId) {
     if (!o.grid) return '';
+    const on = String(locateId) === String(o.id);
     const size = 40, cell = size / o.grid, mark = Math.max(cell, 4);
     const x = Math.min(size - mark, (o.left - 1) * cell), y = Math.min(size - mark, (o.top - 1) * cell);
     const where = `Left ${o.left}, top ${o.top}${o.grid === 24 ? ' (quad tab)' : ''}`;
     return `<div class="tc-stash" title="${esc(where)}">
       <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" aria-hidden="true"><rect class="tc-tab" x="0.5" y="0.5" width="${size - 1}" height="${size - 1}"/><rect class="tc-slot" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${mark.toFixed(1)}" height="${mark.toFixed(1)}"/></svg>
-      <span><b>${esc(o.tab)}</b><small>${esc(where)}</small></span></div>`;
+      <span><b>${esc(o.tab)}</b><small>${esc(where)}</small></span>
+      <span class="tc-stashbtns"><button type="button" class="${on ? 'on' : ''}" data-trade="locate" data-id="${esc(o.id)}" title="Frame this slot in the game's stash for 30 seconds">${on ? 'Framed' : 'Locate'}</button>
+      <button type="button" data-trade="quad" data-id="${esc(o.id)}" title="Wrong slot framed? Switch this tab between a normal tab (12 slots wide) and a quad tab (24)">${o.grid === 24 ? 'Quad tab' : 'Normal tab'}</button></span></div>`;
   }
 
   const SETS = {
@@ -56,7 +59,7 @@
         <button type="button" class="tc-x" data-trade="dismiss" data-id="${esc(o.id)}" aria-label="Dismiss the offer from ${esc(o.player)}">✕</button></header>
       <div class="tc-what"><span class="tc-item">${amount}${esc(o.item)}</span>${price}</div>
       ${o.note ? `<p class="tc-note">${esc(o.note)}</p>` : ''}
-      <div class="tc-info">${stashHtml(o)}<ul class="tc-flags">${flags.map(([c, t]) => `<li class="${c}">${esc(t)}</li>`).join('')}</ul></div>
+      <div class="tc-info">${stashHtml(o, opt.locateId)}<ul class="tc-flags">${flags.map(([c, t]) => `<li class="${c}">${esc(t)}</li>`).join('')}</ul></div>
       <div class="tc-btns">${main.map(btn).join('')}${extra.length ? `<span class="tc-gap"></span>${extra.map(btn).join('')}` : ''}</div>
     </article>`;
   }
@@ -67,5 +70,23 @@
     for (const el of root.querySelectorAll('[data-at]')) el.textContent = ago(now - Number(el.dataset.at));
   }
 
-  window.TradeCard = { esc, ago, chaosText, cardHtml, tick };
+  const shortPrice = (p) => (p ? `${p.amount} ${String(p.currency).replace(/ Orb$/i, '').replace(/^Orb of /i, '').toLowerCase()}` : '?');
+
+  // The small version for the overlay: the next step, the item and the price on one line.
+  function tileHtml(o, opt = {}) {
+    const labels = opt.labels || {};
+    const step = o.next
+      ? `<button type="button" class="primary" data-trade="${o.next}" data-id="${esc(o.id)}" title="${esc(labels[o.next] || o.next)} (${esc(o.player)})">${esc(SHORT[o.next] || labels[o.next] || o.next)}</button>`
+      : `<span class="tt-wait" title="${esc(o.waiting)}">…</span>`;
+    const warn = o.soldAlready ? 'Already sold' : (o.low ? 'Below market' : '');
+    const on = String(opt.locateId) === String(o.id);
+    return `<div class="tt ${o.dir === 'out' ? 'out' : 'in'} ${esc(o.state)}">
+      ${step}
+      <button type="button" class="tt-open" data-open="${esc(o.id)}" title="${esc(`${o.dir === 'out' ? 'You buy from' : 'Buyer:'} ${o.player}. ${o.waiting || 'Click for all buttons'}`)}">
+        <span class="tt-item">${o.qty > 1 ? `${esc(o.qty)}× ` : ''}${esc(o.item)}</span>${warn ? `<span class="tt-warn">${warn}</span>` : ''}<span class="tt-price">${esc(shortPrice(o.price))}</span></button>
+      ${o.grid && o.dir !== 'out' ? `<button type="button" class="tt-ico ${on ? 'on' : ''}" data-trade="locate" data-id="${esc(o.id)}" title="Frame the slot in the stash: ${esc(o.tab)}, left ${o.left}, top ${o.top}" aria-label="Frame the slot in the stash">▣</button>` : ''}
+      <button type="button" class="tt-ico" data-trade="dismiss" data-id="${esc(o.id)}" aria-label="Dismiss the offer from ${esc(o.player)}">✕</button></div>`;
+  }
+
+  window.TradeCard = { esc, ago, chaosText, cardHtml, tileHtml, tick };
 })();

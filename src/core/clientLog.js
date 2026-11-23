@@ -66,6 +66,26 @@ function findLogPath(candidates = DEFAULT_LOG_PATHS) {
   return null;
 }
 
+// The events in the last part of the log, oldest first. Used once at start to pick up what was
+// written while the app was not running.
+function readRecent(filePath, maxBytes = 256 * 1024) {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    const size = fs.fstatSync(fd).size;
+    const start = Math.max(0, size - maxBytes);
+    const buf = Buffer.alloc(size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    const lines = buf.toString('utf8').split(/\r?\n/);
+    if (start > 0) lines.shift(); // the first line is cut off
+    return lines.map(parseLine).filter(Boolean);
+  } catch (_) {
+    return [];
+  } finally {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch (_) { /* nothing to close */ }
+  }
+}
+
 // Follows the file by polling its size. fs.watch misses writes from the game on Windows.
 class LogTail extends EventEmitter {
   constructor(filePath, { intervalMs = 400 } = {}) {
@@ -117,4 +137,4 @@ class LogTail extends EventEmitter {
   }
 }
 
-module.exports = { parseLine, parseTimestamp, classifyArea, findLogPath, LogTail, DEFAULT_LOG_PATHS };
+module.exports = { readRecent, parseLine, parseTimestamp, classifyArea, findLogPath, LogTail, DEFAULT_LOG_PATHS };
