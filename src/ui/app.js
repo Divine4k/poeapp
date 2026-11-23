@@ -40,7 +40,9 @@
     else if (inv.lastReadAt) items.push(['ok', `Inventory read at ${clock(inv.lastReadAt)}: ${inv.recognised} item stacks recognised`]);
     else items.push(['', `Open your inventory in game (${ic.key}) to start reading it`]);
     if (inv.art.total > inv.art.done) items.push(['busy', `Learning item pictures: ${inv.art.done} of ${inv.art.total}`]);
-    else if (!inv.art.known && !state.learned.length && st.prices.count > 1) items.push(['bad', 'No item pictures loaded. Name items yourself under the loot list']);
+    else if (inv.art.failed && !inv.art.known) items.push(['bad', `${inv.art.failed} item pictures failed to download`]);
+    else if (!inv.art.known && st.prices.count > 1) items.push(['bad', 'Prices loaded but no item pictures came with them']);
+    else if (inv.art.known) items.push(['ok', `${inv.art.known} item pictures known`]);
     if (!st.hotkeys.clipboard) items.push(['bad', `Hotkey ${hk.clipboard} is taken by another app`]);
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
     const up = st.update, btn = $('btn-update');

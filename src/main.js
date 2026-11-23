@@ -15,6 +15,7 @@ const { LootLedger } = require('./core/inventory/ledger');
 const { captureFrame, cursorInFrame } = require('./capture');
 const { ArtLoader } = require('./art');
 const { Updater } = require('./updater');
+const { webFetch } = require('./http');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -49,7 +50,7 @@ const session = new Session();
 const index = new IconIndex();
 const reader = new InventoryReader(index);
 const ledger = new LootLedger();
-const priceService = new PriceService();
+const priceService = new PriceService({ fetchImpl: webFetch });
 
 const status = {
   log: { ok: false, path: '', error: 'Not started' },
@@ -141,7 +142,7 @@ function setPrices(table) {
 }
 
 function syncArt() {
-  if (!artLoader) artLoader = new ArtLoader({ cacheFile: dataFile('art.json') });
+  if (!artLoader) artLoader = new ArtLoader({ cacheFile: dataFile('art.json'), fetchImpl: webFetch });
   artLoader.sync(prices.iconEntries(), index, (p) => { status.inventory.art = { ...status.inventory.art, ...p }; push(); })
     .catch((e) => console.error('art sync failed', e.message));
 }
@@ -418,7 +419,7 @@ app.whenReady().then(() => {
   setInterval(refreshPrices, PRICE_REFRESH_MS);
   setInterval(push, 5000);
 
-  updater = new Updater(app.getAppPath());
+  updater = new Updater(app.getAppPath(), webFetch);
   status.update.current = updater.current;
   checkUpdate();
   setInterval(checkUpdate, UPDATE_CHECK_MS);

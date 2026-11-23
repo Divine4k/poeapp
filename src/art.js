@@ -8,8 +8,9 @@ const { CANON } = require('./core/inventory/grid');
 const { fingerprint, compositeOnCell, encodePrint, decodePrint } = require('./core/inventory/icons');
 
 class ArtLoader {
-  constructor({ cacheFile, userAgent = 'poe-map-companion/0.2 (personal use)' }) {
+  constructor({ cacheFile, fetchImpl, userAgent = 'poe-map-companion/0.3 (personal use)' }) {
     this.cacheFile = cacheFile;
+    this.fetch = fetchImpl;
     this.userAgent = userAgent;
     this.cache = {};
     this.running = false;
@@ -21,7 +22,7 @@ class ArtLoader {
   }
 
   async fetchPrint(url) {
-    const res = await fetch(url, { headers: { 'User-Agent': this.userAgent } });
+    const res = await this.fetch(url, { headers: { 'User-Agent': this.userAgent } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const img = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer()));
     if (img.isEmpty()) throw new Error('not an image');

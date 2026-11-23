@@ -14,8 +14,9 @@ const HEADERS = { 'User-Agent': 'poeapp-updater', Accept: 'application/vnd.githu
 const OWNED = ['src', 'test'];
 
 class Updater {
-  constructor(appDir) {
+  constructor(appDir, fetchImpl) {
     this.appDir = appDir;
+    this.fetch = fetchImpl || ((url, options) => fetch(url, options));
     this.versionFile = path.join(appDir, '.version');
     this.etag = null;
     this.latest = null; // { sha, message, date }
@@ -33,7 +34,7 @@ class Updater {
   async check() {
     const headers = { ...HEADERS };
     if (this.etag) headers['If-None-Match'] = this.etag;
-    const res = await fetch(`${API}/commits/${BRANCH}`, { headers });
+    const res = await this.fetch(`${API}/commits/${BRANCH}`, { headers });
     if (res.status === 304) return this.latest;
     if (!res.ok) throw new Error(res.status === 403 || res.status === 429 ? 'GitHub is limiting requests right now. Try again in a few minutes.' : `GitHub answered ${res.status}`);
     const j = await res.json();
@@ -45,7 +46,7 @@ class Updater {
   // Downloads the given commit and replaces the app's files. Returns { depsChanged }.
   async apply(target = this.latest) {
     if (!target) throw new Error('Nothing to update to');
-    const res = await fetch(`${API}/tarball/${target.sha}`, { headers: HEADERS });
+    const res = await this.fetch(`${API}/tarball/${target.sha}`, { headers: HEADERS });
     if (!res.ok) throw new Error(`Download failed (${res.status})`);
     const files = planFiles(readTarGz(Buffer.from(await res.arrayBuffer())));
     const has = (rel) => files.some((f) => f.rel === rel);
