@@ -107,6 +107,7 @@
 
     const un = state.unknown || [];
     $('unknown-wrap').hidden = !un.length;
+    $('inv-dot').hidden = !un.length;
     $('hk-name').textContent = state.config.hotkeys.clipboard;
     const list = $('unknown');
     // Rebuild only when the items or suggestions change, and never while a name is being typed.
@@ -178,7 +179,7 @@
       html = `${verdict}<div class="map-meta">${esc(mc.name)}${stats ? `. ${esc(stats)}` : ''}</div>
         <ul class="mods">${mc.mods.map((m) => `<li class="${m.dangerous ? 'danger' : ''}">${esc(m.mod)}${m.dangerous ? `<small>${esc(m.labels.join(', '))}</small>` : ''}</li>`).join('')}</ul>`;
     }
-    $('tab-mapcheck').innerHTML = html;
+    $('mapcheck-body').innerHTML = html;
   }
 
   function costRow(c, attrs) {
@@ -215,7 +216,7 @@
     if (!force && state.inventoryRev === invRev) return;
     const inv = await api.inventory();
     invRev = inv.rev;
-    const box = $('tab-inventory');
+    const box = $('inventory-body');
     if (!inv.at) {
       box.innerHTML = `<p class="hint">Nothing read yet. Open your inventory in game (${esc(state.config.inventory.key)}) and keep the mouse off it for a second.</p>`;
       return;
@@ -274,15 +275,16 @@
   function setState(s) {
     const hadCheck = state && state.mapCheck ? state.mapCheck.at : 0;
     const hadPrice = state && state.priceCheck ? state.priceCheck.at : 0;
+    const first = !state;
     state = s; receivedAt = Date.now();
-    if (s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
-    else if (s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
+    if (!first && s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
+    else if (!first && s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
     render();
   }
 
   function showTab(name) {
-    for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
-    for (const id of ['mapcheck', 'costs', 'prices', 'inventory']) $(`tab-${id}`).hidden = id !== name;
+    for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+    for (const id of ['mapping', 'inventory', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
     if (name === 'inventory') renderInventory(true);
   }
 
