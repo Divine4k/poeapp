@@ -8,6 +8,11 @@ const RE_AREA = /Generating level (\d+) area "([^"]+)" with seed (\d+)/;
 // System lines look like "[INFO Client 123] : text"; chat lines have a name before the colon.
 const RE_ENTERED = /\] : You have entered (.+)\.\s*$/;
 const RE_SLAIN = /\] : (.+) has been slain\.\s*$/;
+// Whispers: "@From <GUILD> Name: text" and "@To Name: text". Used for trade offers.
+const RE_WHISPER = /\] @(From|To) (?:<[^>]*> )?([^\s:]+): (.*)$/;
+const RE_JOINED = /\] : (\S+) has (joined|left) the area\.\s*$/;
+const RE_TRADE = /\] : Trade (accepted|cancelled)\.\s*$/;
+const RE_AFK = /\] : AFK mode is now (ON|OFF)/;
 
 function parseTimestamp(line) {
   const m = RE_TS.exec(line);
@@ -35,6 +40,14 @@ function parseLine(line) {
   if (m) return { type: 'entered', ts: parseTimestamp(line), name: m[1] };
   m = RE_SLAIN.exec(line);
   if (m) return { type: 'death', ts: parseTimestamp(line), name: m[1] };
+  m = RE_JOINED.exec(line);
+  if (m) return { type: m[2] === 'joined' ? 'joined' : 'left', ts: parseTimestamp(line), name: m[1] };
+  m = RE_TRADE.exec(line);
+  if (m) return { type: 'trade', ts: parseTimestamp(line), result: m[1] };
+  m = RE_AFK.exec(line);
+  if (m) return { type: 'afk', ts: parseTimestamp(line), on: m[1] === 'ON' };
+  m = RE_WHISPER.exec(line);
+  if (m) return { type: 'whisper', ts: parseTimestamp(line), dir: m[1] === 'From' ? 'in' : 'out', player: m[2], text: m[3] };
   return null;
 }
 

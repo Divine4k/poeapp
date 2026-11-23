@@ -1,0 +1,8 @@
+/* The window on top of the game: see-through around the cards, nothing else on screen. */
+html, body.overlay { height: auto; background: transparent; }
+body.overlay { display: block; overflow: hidden; user-select: none; }
+#stack { display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+#stack .tc { background: rgba(27, 31, 36, 0.94); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55); }
+#stack .tc-item, #stack .tc-price { font-size: 16px; }
+.ov-more { margin: 0; padding: 3px 10px; font-size: 12px; color: var(--bone); background: rgba(27, 31, 36, 0.94); border-radius: 4px; text-align: center; }
+#stack .tc-btns button { padding: 4px 7px; }

@@ -20,7 +20,8 @@ test('client log: areas, entering, deaths, chat is ignored', () => {
   assert.equal(parseLine('2026/11/23 15:00:02 123999 cff945b9 [INFO Client 4321] : You have entered Strand.').name, 'Strand');
   assert.equal(parseLine('2026/11/23 15:03:02 124999 cff945b9 [INFO Client 4321] : Exile_One has been slain.').name, 'Exile_One');
   assert.equal(parseLine('2026/11/23 15:03:02 124999 cff945b9 [INFO Client 4321] #Troll: Exile_One has been slain.'), null);
-  assert.equal(parseLine('2026/11/23 15:03:02 124999 cff945b9 [INFO Client 4321] @From Bob: You have entered Strand.'), null);
+  // A whisper that quotes a system message is a whisper, never the system message itself.
+  assert.equal(parseLine('2026/11/23 15:03:02 124999 cff945b9 [INFO Client 4321] @From Bob: You have entered Strand.').type, 'whisper');
   assert.equal(classifyArea('HideoutCelestial'), 'hideout');
   assert.equal(classifyArea('1_1_town'), 'town');
   assert.equal(classifyArea('1_2_3'), 'other');

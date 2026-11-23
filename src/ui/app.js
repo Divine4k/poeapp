@@ -45,6 +45,11 @@
     else if (inv.art.known) items.push(['ok', `${inv.art.known} item pictures known`]);
     if (!st.hotkeys.clipboard) items.push(['bad', `Hotkey ${hk.clipboard} is taken by another app`]);
     if (hk.snapshot && !st.hotkeys.snapshot) items.push(['bad', `Hotkey ${hk.snapshot} is taken by another app`]);
+    const tc = state.config.trade;
+    if (tc && tc.enabled) {
+      if (tc.hotkeys.next && !st.hotkeys.tradeNext) items.push(['bad', `Trade key ${tc.hotkeys.next} is taken by another app`]);
+      if (tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) items.push(['bad', `Trade key ${tc.hotkeys.dismiss} is taken by another app`]);
+    }
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
     const up = st.update, btn = $('btn-update');
     if (up.applying) items.push(['busy', up.step || 'Updating']);
@@ -367,8 +372,70 @@
       <table><thead><tr><th>Item</th><th class="num">Amount</th><th class="num">Each</th><th class="num">Total</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="empty">Nothing recognised in this read.</td></tr>'}</tbody></table>`;
   }
 
+  // ---- trade page -----------------------------------------------------------------
+  let tradeDrawn = '';
+  let tradeSeen = null; // highest offer id already announced with a sound
+  function beep() {
+    try {
+      const ctx = beep.ctx || (beep.ctx = new AudioContext());
+      const t = ctx.currentTime;
+      for (const [freq, at] of [[660, 0], [880, 0.13]]) {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t + at);
+        gain.gain.exponentialRampToValueAtTime(0.18, t + at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.22);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t + at); osc.stop(t + at + 0.25);
+      }
+    } catch (_) { /* no sound device */ }
+  }
+
+  function renderTrade() {
+    const t = state.trade, cfg = state.config.trade;
+    if (!t || !cfg) return;
+    const incoming = t.offers.filter((o) => o.dir === 'in');
+    $('trade-dot').hidden = !incoming.length;
+    const newest = incoming.reduce((m, o) => Math.max(m, Number(o.id) || 0), 0);
+    if (tradeSeen !== null && newest > tradeSeen && cfg.sound) beep();
+    tradeSeen = Math.max(tradeSeen || 0, newest);
+
+    const warn = $('trade-warn');
+    const problems = [];
+    if (!cfg.enabled) problems.push('Trade offers are switched off. Turn them on under Trade settings.');
+    else if (!t.canSend) problems.push('The buttons cannot type in the game: the keyboard helper is not installed. Offers are still listed.');
+    if (t.afk) problems.push('You are marked AFK in game, so buyers get your auto-reply.');
+    warn.hidden = !problems.length;
+    warn.textContent = problems.join(' ');
+    const hk = cfg.hotkeys;
+    $('trade-hint').textContent = `Whispers from the trade site show up here${cfg.overlay ? ' and on top of the game' : ''}. The gold button is the next step${hk.next ? `; ${hk.next} presses it for the oldest offer` : ''}${hk.dismiss ? `, ${hk.dismiss} dismisses it` : ''}.`;
+    $('btn-trade-clear').hidden = !t.offers.length;
+
+    const box = $('trade-offers');
+    const key = JSON.stringify([t.offers, t.divine]);
+    if (key !== tradeDrawn) {
+      tradeDrawn = key;
+      box.innerHTML = t.offers.length
+        ? t.offers.map((o) => TradeCard.cardHtml(o, { divine: t.divine, labels: t.labels })).join('')
+        : '<p class="empty">No open offers. When someone whispers you about an item, it appears here with the buttons to invite, trade and thank them.</p>';
+    }
+
+    const tot = t.totals, d = t.divine;
+    const cell = (x, label) => `<div>${fmtValue(x.chaos, d)}<span>${label}: ${x.count} ${x.count === 1 ? 'trade' : 'trades'}${x.unpriced ? `, ${x.unpriced} without a known value` : ''}</span></div>`;
+    $('trade-totals').innerHTML = cell(tot.soldToday, 'Sold today') + cell(tot.boughtToday, 'Bought today') + cell(tot.soldAll, 'Sold in total') + cell(tot.boughtAll, 'Bought in total');
+    $('trade-history').innerHTML = t.history.length ? t.history.map((h) => `<tr>
+      <td>${esc(dayOf(h.at))}, ${clock(h.at)}</td>
+      <td><span class="kind ${h.dir === 'in' ? 'sold' : 'bought'}">${h.dir === 'in' ? 'Sold' : 'Bought'}</span></td>
+      <td>${h.qty > 1 ? `${esc(h.qty)} × ` : ''}${esc(h.item)}</td>
+      <td class="num">${h.price ? `${esc(h.price.amount)} ${esc(h.price.currency)}` : 'n/a'}</td>
+      <td>${esc(h.player)}</td>
+      <td><button type="button" class="link" data-act="tradeForget" data-id="${esc(h.id)}" aria-label="Remove this trade from the list">Remove</button></td></tr>`).join('')
+      : '<tr><td colspan="6" class="empty">Trades are listed here once the game reports "Trade accepted".</td></tr>';
+  }
+
   function render() {
     if (!state) return;
+    renderTrade();
     renderStatus(); renderNow(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false); renderPrices(false);
   }
 
@@ -384,13 +451,15 @@
 
   function showTab(name) {
     for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
-    for (const id of ['mapping', 'inventory', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
+    for (const id of ['mapping', 'inventory', 'trade', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
     if (name === 'inventory') renderInventory(true);
     if (name === 'prices') renderPrices(true);
   }
 
   // ---- events ---------------------------------------------------------------------
   document.addEventListener('click', (e) => {
+    const tb = e.target.closest('[data-trade]');
+    if (tb) { act({ type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
     const b = e.target.closest('[data-act]');
     if (b) {
       const d = b.dataset;
@@ -613,6 +682,31 @@
       mapRules: c.mapRules.map((r) => ({ ...r, enabled: enabled.has(r.id) })),
     });
   });
+
+  // ---- trade settings -----------------------------------------------------------------
+  const tradeForm = $('trade-form');
+  $('trade-settings').addEventListener('toggle', (e) => {
+    if (!e.target.open) return;
+    const c = state.config.trade, el = tradeForm.elements;
+    el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound;
+    el.position.value = c.position || 'top';
+    el.offsetX.value = c.offsetX || 0; el.offsetY.value = c.offsetY || 0;
+    el.hkNext.value = c.hotkeys.next || ''; el.hkDismiss.value = c.hotkeys.dismiss || '';
+    el.msgThanks.value = c.messages.thanks; el.msgBusy.value = c.messages.busy; el.msgSold.value = c.messages.sold; el.msgStill.value = c.messages.still;
+  });
+  tradeForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const el = tradeForm.elements;
+    const pct = (v) => Math.max(-50, Math.min(50, Number(v) || 0));
+    api.setConfig({ trade: {
+      enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked,
+      position: el.position.value, offsetX: pct(el.offsetX.value), offsetY: pct(el.offsetY.value),
+      hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim() },
+      messages: { thanks: el.msgThanks.value.trim(), busy: el.msgBusy.value.trim(), sold: el.msgSold.value.trim(), still: el.msgStill.value.trim() },
+    } });
+    $('trade-settings').open = false;
+  });
+  setInterval(() => TradeCard.tick($('trade-offers')), 1000);
 
   // ---- go -------------------------------------------------------------------------------
   setInterval(() => {

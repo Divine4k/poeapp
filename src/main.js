@@ -20,6 +20,9 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
+const { TradeBook, chatCommand, nextAction, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
+const { focusGame, typeChat } = require('./chat');
+const { Overlay } = require('./overlay');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -38,6 +41,14 @@ const DEFAULT_CONFIG = {
   loadout: [],
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
   shareToken: '', // GitHub token for uploading named items, stored encrypted
+  // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
+  // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat
+  // line per press); hotkeys.dismiss removes the oldest offer.
+  trade: {
+    enabled: true, overlay: true, position: 'top', offsetX: 0, offsetY: 0, sound: true,
+    hotkeys: { next: 'F2', dismiss: 'F3' },
+    messages: { ...DEFAULT_MESSAGES },
+  },
 };
 
 let win = null;
@@ -68,12 +79,16 @@ const index = new IconIndex();
 const reader = new InventoryReader(index);
 const ledger = new LootLedger();
 const priceService = new PriceService({ fetchImpl: webFetch });
+const book = new TradeBook();
+let overlay = null;
+let chatBusy = false;
+let tradeSaveTimer = null;
 
 const status = {
   log: { ok: false, path: '', error: 'Not started' },
   prices: { count: 0, updatedAt: 0, league: '', errors: [], loading: false },
   inventory: { keyHook: 'off', open: false, lastReadAt: 0, recognised: 0, error: null, art: { known: 0, done: 0, total: 0, failed: 0 } },
-  hotkeys: { clipboard: false, snapshot: false },
+  hotkeys: { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false },
   shared: { count: 0, loadedAt: 0, error: null, uploaded: 0, canUpload: false },
   update: { current: null, latest: null, available: false, checking: false, applying: false, step: '', error: null, checkedAt: 0 },
 };
@@ -89,12 +104,18 @@ function writeJson(name, value) {
   try { fs.writeFileSync(dataFile(name), JSON.stringify(value)); } catch (e) { console.error('save failed', name, e.message); }
 }
 
+function mergeTrade(base, patch) {
+  const p = patch || {};
+  return { ...base, ...p, hotkeys: { ...base.hotkeys, ...(p.hotkeys || {}) }, messages: { ...base.messages, ...(p.messages || {}) } };
+}
+
 function loadConfig() {
   const saved = readJson('config.json', {});
   config = {
     ...DEFAULT_CONFIG, ...saved,
     hotkeys: { ...DEFAULT_CONFIG.hotkeys, ...(saved.hotkeys || {}) },
     inventory: { ...DEFAULT_CONFIG.inventory, ...(saved.inventory || {}) },
+    trade: mergeTrade(DEFAULT_CONFIG.trade, saved.trade),
   };
   // Keep the user's rule choices but pick up rules added in newer versions.
   const byId = new Map((saved.mapRules || []).map((r) => [r.id, r]));
@@ -123,10 +144,12 @@ function buildState() {
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
     summary: session.summary(prices),
     sessions: archive ? archive.list() : [],
+    trade: tradeState(),
   };
 }
 function push() {
   if (win && !win.isDestroyed()) win.webContents.send('state', buildState());
+  syncOverlay();
 }
 function changed() { scheduleSave(); push(); }
 
@@ -159,6 +182,8 @@ function startLog() {
     const before = session.currentId;
     session.handleLogEvent(ev, { characterName: config.characterName, loadout: config.loadout });
     if (ev.type === 'area') syncLedger();
+    if (config.trade.enabled && book.onLog(ev)) saveTradesSoon();
+    else if (ev.type === 'whisper') return; // ordinary chat: nothing to redraw
     changed();
   });
   logTail.start();
@@ -320,7 +345,7 @@ const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape
 function syncKeyHook() {
   if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
   status.inventory.keyHook = 'off';
-  if (!config.inventory.onKey && !config.inventory.autoCopy) return;
+  if (!config.inventory.onKey && !config.inventory.autoCopy && !config.trade.enabled) return;
   let lib;
   try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; }
   if (config.inventory.onKey) {
@@ -554,13 +579,94 @@ async function checkHovered() {
 
 function registerHotkeys() {
   globalShortcut.unregisterAll();
-  status.hotkeys = { clipboard: false, snapshot: false };
-  const reg = (key, fn) => {
-    if (!config.hotkeys[key]) return;
-    try { status.hotkeys[key] = globalShortcut.register(config.hotkeys[key], fn); } catch (_) { status.hotkeys[key] = false; }
+  status.hotkeys = { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false };
+  const reg = (key, accel, fn) => {
+    if (!accel) return;
+    try { status.hotkeys[key] = globalShortcut.register(accel, fn); } catch (_) { status.hotkeys[key] = false; }
   };
-  reg('clipboard', () => { checkHovered(); });
-  reg('snapshot', () => { saveDiagnostic(true).then(changed); });
+  reg('clipboard', config.hotkeys.clipboard, () => { checkHovered(); });
+  reg('snapshot', config.hotkeys.snapshot, () => { saveDiagnostic(true).then(changed); });
+  if (config.trade.enabled) {
+    reg('tradeNext', config.trade.hotkeys.next, () => { const o = book.firstActionable(); if (o) tradeDo(o.id, 'next').then(changed); });
+    reg('tradeDismiss', config.trade.hotkeys.dismiss, () => { const o = book.offers[0]; if (o) { book.remove(o.id); saveTradesSoon(); changed(); } });
+  }
+}
+
+// ---- trade offers ---------------------------------------------------------------
+function tradeState() {
+  const s = book.summary(prices);
+  return { ...s, divine: prices.divine, labels: LABELS, canSend: !!hook, hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
+}
+function saveTradesSoon() {
+  clearTimeout(tradeSaveTimer);
+  tradeSaveTimer = setTimeout(() => writeJson('trades.json', book.toJSON()), 1000);
+}
+function syncOverlay() {
+  if (!overlay) return;
+  const t = config.trade;
+  const data = tradeState();
+  overlay.update(data, {
+    show: t.enabled && t.overlay && data.offers.length > 0,
+    displayId: config.inventory.displayId,
+    placement: { position: t.position, offsetX: t.offsetX, offsetY: t.offsetY },
+  });
+}
+
+// Sends one chat line to the game. Returns true when it went out.
+async function sendChat(text) {
+  if (chatBusy) return false;
+  if (!hook) { say('Nothing was sent: the keyboard helper is not installed, so the app cannot type in the game. Run npm install in the app folder.', true); return false; }
+  chatBusy = true;
+  try {
+    // A click in this app's own window took the keyboard away from the game: hand it back first.
+    if (BrowserWindow.getFocusedWindow()) {
+      const got = await focusGame();
+      if (got === 'none') { say('Nothing was sent: Path of Exile is not running.', true); return false; }
+      if (win && !win.isDestroyed()) win.blur();
+      await sleep(180);
+      if (got !== 'ok' || BrowserWindow.getFocusedWindow()) {
+        say('Nothing was sent: the app could not switch to the game window. Click the game, then use the buttons on the overlay or the next-step key.', true);
+        return false;
+      }
+    }
+    return await typeChat(hook, clipboard, text);
+  } catch (e) {
+    say(`Nothing was sent: ${e.message || e}`, true);
+    return false;
+  } finally {
+    chatBusy = false;
+  }
+}
+
+// One click or key press on an offer: at most one chat line goes to the game.
+async function tradeDo(id, what) {
+  const offer = book.get(id);
+  if (!offer) return;
+  if (what === 'dismiss') { book.remove(id); saveTradesSoon(); return; }
+  const action = what === 'next' ? nextAction(offer) : what;
+  if (!action) { say(`Nothing to do for ${offer.player} yet: waiting for them.`); return; }
+  if (offer.test) {
+    // A test offer walks through the steps without typing anything in the game.
+    book.applied(id, action);
+    if (action === 'invite') book.onLog({ type: 'joined', name: offer.player });
+    else if (action === 'trade') book.onLog({ type: 'trade', result: 'accepted' });
+    say(`Test offer: "${chatCommand(action, offer, { messages: config.trade.messages, characterName: config.characterName })}" would be typed in the game. Nothing was sent.`);
+    return;
+  }
+  const text = chatCommand(action, offer, { messages: config.trade.messages, characterName: config.characterName });
+  if (!text) { say('That message is empty. Set its text under Trade, Settings.', true); return; }
+  if (await sendChat(text)) { book.applied(id, action); saveTradesSoon(); }
+}
+
+let testSeq = 1;
+function addTestOffer() {
+  const n = testSeq++;
+  const samples = [
+    'Hi, I would like to buy your Tabula Rasa Simple Robe listed for 12 chaos in Standard (stash tab "Sell"; position: left 3, top 5)',
+    "Hi, I'd like to buy your 40 Chaos Orb for my 1 Divine Orb in Standard.",
+    'Hi, I would like to buy your Mageblood Heavy Belt listed for 180 divine in Standard (stash tab "Big sales"; position: left 14, top 2)',
+  ];
+  book.onLog({ type: 'whisper', dir: n % 4 === 0 ? 'out' : 'in', player: `TestExile${n}`, text: samples[(n - 1) % samples.length], test: true });
 }
 
 // ---- window --------------------------------------------------------------------
@@ -577,12 +683,13 @@ function createWindow() {
   if (second) win.maximize();
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
 function applyConfig(patch) {
   const leagueBefore = config.league, logBefore = config.logPath;
+  if (patch.trade) patch = { ...patch, trade: mergeTrade(config.trade, patch.trade) };
   if (typeof patch.token === 'string') {
     const token = patch.token.trim();
     patch.shareToken = token && safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(token).toString('base64') : '';
@@ -596,7 +703,8 @@ function applyConfig(patch) {
   };
   writeJson('config.json', config);
   if (patch.customPrices) prices.setCustom(config.customPrices);
-  if (patch.hotkeys) registerHotkeys();
+  if (patch.hotkeys || patch.trade) registerHotkeys();
+  if (patch.trade) { syncKeyHook(); if (!config.trade.enabled) book.clearTests(); }
   if (config.logPath !== logBefore) startLog();
   if (config.league !== leagueBefore) refreshPrices();
   if (patch.inventory) { syncTimedWatch(); syncKeyHook(); }
@@ -663,6 +771,10 @@ const actions = {
     writeJson('learned.json', learned);
     reader.forgetCells();
   },
+  trade: (a) => tradeDo(a.id, String(a.do || '')),
+  tradeTest: () => addTestOffer(),
+  tradeClear: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
+  tradeForget: (a) => { book.removeHistory(String(a.id || '')); saveTradesSoon(); },
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),
   refreshPrices: () => { refreshPrices(); },
@@ -712,6 +824,7 @@ function setupIpc() {
     return { total: r.total, rows: r.rows.map((e) => ({ name: e.name, chaos: e.chaos, category: e.category, icon: e.icon || null, change: e.change == null ? null : e.change, volume: e.volume == null ? null : e.volume, listings: e.listings == null ? null : e.listings, spark: e.spark || null })) };
   });
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
+  ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];
     if (!fn) return false;
@@ -734,6 +847,8 @@ app.whenReady().then(() => {
     if (c && Array.isArray(c.cells)) carriedIn = { ...c, cells: c.cells.map((x) => ({ ...x, print: x.print ? decodePrint(x.print) : null })) };
   } catch (_) { carriedIn = null; }
   archive = new SessionArchive(dataFile('sessions'));
+  book.restore(readJson('trades.json', null));
+  overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
   if (cached.size > 1) { setPrices(cached); syncArt(); }
 
@@ -763,5 +878,7 @@ app.on('will-quit', () => {
   if (hook) { try { hook.uIOhook.stop(); } catch (_) { /* closing anyway */ } }
   writeJson('session.json', session.toJSON());
   writeJson('ledger.json', ledger.toJSON());
+  writeJson('trades.json', book.toJSON());
 });
+// The overlay is a window too, so quitting hangs on the main window alone.
 app.on('window-all-closed', () => app.quit());
