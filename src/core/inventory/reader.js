@@ -8,6 +8,7 @@ class InventoryReader {
   constructor(index) {
     this.index = index;
     this.memory = new Array(COLS * ROWS).fill(null); // last known { name, qty } per cell
+    this.prints = new Array(COLS * ROWS).fill(null); // picture fingerprint per filled cell, from the last clean read
   }
 
   forgetCells() { this.memory.fill(null); }
@@ -24,9 +25,11 @@ class InventoryReader {
       for (let c = 0; c < COLS; c++) {
         const k = r * COLS + c;
         const rgb = extractCell(frame, rect, r, c);
-        if (isEmptyCell(rgb)) { this.memory[k] = null; continue; }
+        if (isEmptyCell(rgb)) { this.memory[k] = null; this.prints[k] = null; continue; }
         const print = fingerprint(rgb);
+        this.prints[k] = print;
         const hit = this.index.match(print);
+        if (hit && hit.ignored) { this.memory[k] = null; continue; }
         if (hit) {
           this.memory[k] = { name: hit.name, qty: readStack(rgb) || 1 };
         } else if (!this.memory[k]) {

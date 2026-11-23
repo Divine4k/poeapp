@@ -28,7 +28,17 @@ Items are recognised by their picture, and the stack number is read from the cor
 - Currency, scarabs, fragments, essences, fossils, oils and similar are recognised.
 - Divination cards all share one picture, so they cannot be told apart. The same goes for maps and gems.
 - Rares and uniques are not priced.
-- A stack the app does not recognise shows up under the loot list with its picture. Type its name once and it is recognised from then on.
+- A stack the app does not recognise shows up under the loot list with its picture. Name it once and it is recognised from then on.
+
+## Naming items and the shared list
+
+Items the app cannot recognise appear under the loot list with their picture. Three ways to name one, fastest first:
+
+1. Hover it in game, press Ctrl+C, then F8. The item under your mouse gets the copied name.
+2. Click one of the suggested names next to its picture.
+3. Type the name, or press **Ignore** to never be asked about it again.
+
+Named items are kept on your PC. They can also be uploaded to the shared list, which lives on the `data` branch of this repository (`items.json`) and is downloaded by every copy of the app. Uploading needs a fine-grained GitHub token limited to this repository with "Contents: read and write", pasted under Settings. The shared list holds only item names and small picture fingerprints.
 
 ## Install (Windows)
 

@@ -85,7 +85,11 @@ input::placeholder { color: #6f7a86; }
 .feed .qty { color: var(--ash); }
 .feed .src { font-size: 12px; color: var(--ash); margin-left: 8px; }
 .feed .val, .rows .val { font-family: var(--display); font-variant-numeric: tabular-nums; }
-.unknown li { display: grid; grid-template-columns: 52px auto 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--slab); }
+.unknown li { display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--slab); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chips button { border-color: var(--gold); }
+.hint.small { font-size: 13px; margin: 0 0 6px; }
+dialog input[type=password] { width: 100%; }
 .unknown img { width: 52px; height: 52px; image-rendering: auto; border: 1px solid var(--seam); }
 .unknown input { min-width: 0; width: 100%; }
 .guess-field small { display: block; color: var(--ash); font-size: 12px; margin-top: 2px; }

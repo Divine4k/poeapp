@@ -90,19 +90,29 @@
         <span class="val">${l.chaos > 0 ? fmtValue(l.chaos) : 'no price'}</span>
         <button type="button" class="link" data-act="removeLoot" data-run="${esc(run.id)}" data-loot="${esc(l.id)}" aria-label="Remove ${esc(l.name)}">Remove</button></li>`).join('');
     }
+    const n = state.notice, note = $('notice');
+    if (n && Date.now() - n.at < 15000) { note.hidden = false; note.className = n.bad ? 'notice bad' : 'notice'; note.textContent = n.text; }
+    else note.hidden = true;
+
     const un = state.unknown || [];
     $('unknown-wrap').hidden = !un.length;
+    $('hk-name').textContent = state.config.hotkeys.clipboard;
     const list = $('unknown');
-    // Rebuild only when the set of items or guesses changes, so typing a name is not interrupted.
-    const key = un.map((u) => `${u.id}:${u.guess ? u.guess.name : ''}`).join(',');
-    if (list.dataset.key !== key) {
+    // Rebuild only when the items or suggestions change, and never while a name is being typed.
+    const key = un.map((u) => `${u.id}:${u.guesses.map((g) => g.name).join('|')}`).join(',');
+    const typing = list.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.value;
+    if (list.dataset.key !== key && !typing) {
       list.dataset.key = key;
       list.innerHTML = un.map((u) => `<li>
         <img src="${esc(u.image)}" alt="Unrecognised item">
-        <span class="qty">×${u.qty}</span>
-        <span class="guess-field"><input list="price-names" value="${u.guess ? esc(u.guess.name) : ''}" placeholder="Type this item's name" aria-label="Item name" data-learn-input="${u.id}">
-          ${u.guess ? `<small>Best guess, ${u.guess.score}% match. Check it against the picture.</small>` : ''}</span>
-        <button type="button" data-learn="${u.id}">${u.guess ? 'Confirm' : 'Save name'}</button></li>`).join('');
+        <div class="pick">
+          ${u.guesses.length ? `<div class="chips">${u.guesses.map((g) => `<button type="button" data-act="learn" data-id="${u.id}" data-name="${esc(g.name)}" title="${g.score}% match">${esc(g.name)}</button>`).join('')}</div>` : ''}
+          <form class="inline-form" data-learn-form="${u.id}" autocomplete="off">
+            <input list="price-names" placeholder="Or type its name" aria-label="Item name">
+            <button type="submit">Save</button>
+            <button type="button" data-act="ignore" data-id="${u.id}">Ignore</button>
+          </form>
+        </div></li>`).join('');
     }
   }
 
@@ -212,13 +222,7 @@
     if (b) {
       const d = b.dataset;
       e.stopPropagation();
-      act({ type: d.act, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined });
-      return;
-    }
-    const learn = e.target.closest('[data-learn]');
-    if (learn) {
-      const input = document.querySelector(`[data-learn-input="${learn.dataset.learn}"]`);
-      if (input && input.value.trim()) act({ type: 'learn', id: learn.dataset.learn, name: input.value.trim() });
+      act({ type: d.act, id: d.id, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined });
       return;
     }
     const lo = e.target.closest('[data-loadout]');
@@ -237,6 +241,7 @@
   $('btn-read').addEventListener('click', () => act({ type: 'readInventory' }));
   $('btn-update').addEventListener('click', () => act({ type: 'applyUpdate' }));
   $('btn-check-update').addEventListener('click', () => act({ type: 'checkUpdate' }));
+  $('btn-diagnostic').addEventListener('click', () => { act({ type: 'saveDiagnostic' }); dlg.close(); });
   $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));
   $('btn-new-session').addEventListener('click', () => {
     if (!state.summary.runs.length || window.confirm('Start a new session? The current list of maps is cleared.')) act({ type: 'newSession' });
@@ -248,6 +253,16 @@
     $('price-names').innerHTML = res.slice(0, 20).map((r) => `<option value="${esc(r.name)}"></option>`).join('');
   }
   document.addEventListener('input', (e) => { if (e.target.getAttribute('list') === 'price-names') suggest(e.target.value); });
+
+  document.addEventListener('submit', (e) => {
+    const f = e.target.closest('[data-learn-form]');
+    if (!f) return;
+    e.preventDefault();
+    const input = f.querySelector('input');
+    act({ type: 'learn', id: f.dataset.learnForm, name: input.value.trim() });
+    input.value = '';
+    input.blur();
+  });
 
   $('add-loot').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -308,6 +323,11 @@
       ? state.learned.map((n) => `<li><span>${esc(n)}</span><span></span><button type="button" class="link" data-act="forget" data-name="${esc(n)}">Forget</button></li>`).join('')
       : '<li class="empty">Nothing yet. Items the app cannot recognise show up under the loot list, where you can name them.</li>';
     $('rules').innerHTML = c.mapRules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled ? 'checked' : ''}> ${esc(r.label)}</label>`).join('');
+    const sh = state.status.shared;
+    $('shared-line').textContent = `${sh.count} shared items loaded.`
+      + (sh.canUpload ? ` Uploading is on${sh.uploaded ? `: ${sh.uploaded} sent this session` : ''}${sh.waiting ? `, ${sh.waiting} waiting` : ''}.` : ' Uploading is off (no token saved).')
+      + (sh.error ? ` Problem: ${sh.error}` : '');
+    el.token.value = ''; el.clearToken.checked = false;
     dlg.showModal();
   });
   $('btn-browse').addEventListener('click', async () => { await act({ type: 'browseLog' }); form.elements.logPath.value = state.config.logPath || ''; });
@@ -315,7 +335,9 @@
   form.addEventListener('submit', () => {
     const el = form.elements, c = state.config;
     const enabled = new Set([...document.querySelectorAll('[data-rule]')].filter((x) => x.checked).map((x) => x.dataset.rule));
+    const tokenPatch = el.clearToken.checked ? { token: '' } : (el.token.value.trim() ? { token: el.token.value.trim() } : {});
     api.setConfig({
+      ...tokenPatch,
       league: el.league.value || c.league,
       characterName: el.characterName.value.trim(),
       logPath: el.logPath.value.trim(),

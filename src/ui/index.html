@@ -33,8 +33,10 @@
     <datalist id="price-names"></datalist>
     <h2>Loot this map</h2>
     <ul class="feed" id="feed"></ul>
+    <p class="notice" id="notice" hidden></p>
     <div id="unknown-wrap" hidden>
       <h2>In your inventory, not recognised yet</h2>
+      <p class="hint small">Fastest: hover the item in game, press Ctrl+C, then <span id="hk-name">F8</span>. Or pick a suggestion here.</p>
       <ul class="unknown" id="unknown"></ul>
     </div>
   </section>
@@ -116,6 +118,14 @@
     </fieldset>
 
     <fieldset>
+      <legend>Shared item list</legend>
+      <p class="fine" id="shared-line"></p>
+      <label>GitHub token for uploading the items you name (optional) <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
+      <p class="fine">Everyone gets the shared list without a token. Uploading needs a fine-grained GitHub token limited to the poeapp repository with "Contents: read and write". It is stored encrypted on this PC and only ever sent to GitHub.</p>
+      <label class="check"><input type="checkbox" name="clearToken"> Remove the saved token</label>
+    </fieldset>
+
+    <fieldset>
       <legend>Map mods my build cannot run</legend>
       <div class="rules" id="rules"></div>
     </fieldset>
@@ -123,7 +133,7 @@
     <p class="fine">This app only reads the game log, the clipboard and the screen. It sends nothing to the game and never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
     <p class="fine" id="version-line"></p>
     <div class="dialog-actions">
-      <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-check-update">Check for updates</button></span>
+      <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-check-update">Check for updates</button><button type="button" id="btn-diagnostic">Save diagnostic file</button></span>
       <button type="submit" class="primary" value="save">Save settings</button>
     </div>
   </form>

@@ -21,15 +21,22 @@ class ArtLoader {
     try { fs.writeFileSync(this.cacheFile, JSON.stringify(this.cache)); } catch (e) { console.error('art cache save failed', e.message); }
   }
 
-  async fetchPrint(url) {
+  // Downloads one picture and returns it as CANON-sized RGB on the cell background,
+  // plus its original size. null when it is not a one-cell item.
+  async fetchRgb(url) {
     const res = await this.fetch(url, { headers: { 'User-Agent': this.userAgent } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const img = nativeImage.createFromBuffer(Buffer.from(await res.arrayBuffer()));
     if (img.isEmpty()) throw new Error('not an image');
     const size = img.getSize();
-    if (Math.abs(size.width - size.height) > 2) return null; // not a one-cell item
+    if (Math.abs(size.width - size.height) > 2) return null;
     const small = img.resize({ width: CANON, height: CANON, quality: 'best' });
-    return fingerprint(compositeOnCell(small.toBitmap(), { bgr: true }));
+    return { rgb: compositeOnCell(small.toBitmap(), { bgr: true }), size };
+  }
+
+  async fetchPrint(url) {
+    const r = await this.fetchRgb(url);
+    return r ? fingerprint(r.rgb) : null;
   }
 
   // entries: [{ name, icon }]. Fills index.art; calls onProgress({ done, total, failed }).

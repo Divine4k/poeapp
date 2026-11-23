@@ -43,20 +43,22 @@ function similarity(a, b) {
 }
 
 class IconIndex {
-  // Pictures you named yourself are the exact in-game rendering, so they must match almost
-  // perfectly. Downloaded item art is rendered slightly differently, so it gets a lower bar
-  // and has to beat the runner-up clearly.
+  // Pictures captured in game (named by you, or shared through the repository) are the exact
+  // in-game rendering, so they must match almost perfectly. Downloaded item art is rendered
+  // slightly differently, so it has to beat the runner-up clearly as well.
   constructor({ learnedThreshold = 0.9, artThreshold = 0.85, artMargin = 0.05 } = {}) {
     this.learnedThreshold = learnedThreshold;
     this.artThreshold = artThreshold;
     this.artMargin = artMargin;
-    this.learned = []; // { name, print }
+    this.learned = []; // { name, print }  name '' means "ignore this item"
+    this.shared = [];  // same shape, downloaded from the repository
     this.art = [];     // { name, print }
   }
 
-  get size() { return this.learned.length + this.art.length; }
+  get size() { return this.learned.length + this.shared.length + this.art.length; }
 
   addLearned(name, print) { this.learned.push({ name, print }); }
+  setShared(list) { this.shared = list; }
   addArt(name, print) { this.art.push({ name, print }); }
   clearArt() { this.art = []; }
   forget(name) { this.learned = this.learned.filter((e) => e.name !== name); }
@@ -73,17 +75,25 @@ class IconIndex {
     return { best, score, second };
   }
 
-  // The closest downloaded picture, however weak: { name, score } or null. Used to pre-fill a
-  // guess for items that were not matched confidently.
-  suggest(print) {
-    const a = IconIndex.best(this.art, print);
-    return a.best ? { name: a.best.name, score: a.score } : null;
+  // The closest downloaded pictures, however weak: [{ name, score }], best first, one per name.
+  suggest(print, count = 3) {
+    const byName = new Map();
+    for (const e of this.art) {
+      const s = similarity(print, e.print);
+      if (s > (byName.get(e.name) || -1)) byName.set(e.name, s);
+    }
+    return [...byName].map(([name, score]) => ({ name, score })).sort((x, y) => y.score - x.score).slice(0, count);
   }
 
   // Returns { name, score, source } or null when nothing matches well enough.
+  // An item you chose to ignore comes back as { ignored: true }.
   match(print) {
-    const l = IconIndex.best(this.learned, print);
-    if (l.best && l.score >= this.learnedThreshold) return { name: l.best.name, score: l.score, source: 'learned' };
+    const own = IconIndex.best(this.learned, print);
+    if (own.best && own.score >= this.learnedThreshold) {
+      return own.best.name ? { name: own.best.name, score: own.score, source: 'learned' } : { ignored: true };
+    }
+    const sh = IconIndex.best(this.shared, print);
+    if (sh.best && sh.best.name && sh.score >= this.learnedThreshold) return { name: sh.best.name, score: sh.score, source: 'shared' };
     const a = IconIndex.best(this.art, print);
     if (a.best && a.score >= this.artThreshold && a.score - a.second >= this.artMargin) return { name: a.best.name, score: a.score, source: 'art' };
     return null;
@@ -116,4 +126,22 @@ function compositeOnCell(pixels, { bgr = true } = {}) {
 const encodePrint = (print) => Buffer.from(print.buffer, print.byteOffset, print.byteLength).toString('base64');
 const decodePrint = (text) => { const b = Buffer.from(text, 'base64'); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 
-module.exports = { fingerprint, similarity, IconIndex, compositeOnCell, encodePrint, decodePrint, CELL_BACKGROUND, SIDE };
+// Compact form for the shared list in the repository: one signed byte per value.
+function packPrint(print) {
+  let max = 0;
+  for (const v of print) if (Math.abs(v) > max) max = Math.abs(v);
+  const out = Buffer.alloc(print.length);
+  for (let k = 0; k < print.length; k++) out.writeInt8(Math.round((print[k] / (max || 1)) * 127), k);
+  return out.toString('base64');
+}
+function unpackPrint(text) {
+  const b = Buffer.from(text, 'base64');
+  const out = new Float32Array(b.length);
+  let energy = 0;
+  for (let k = 0; k < b.length; k++) { out[k] = b.readInt8(k); energy += out[k] * out[k]; }
+  const norm = Math.sqrt(energy) || 1;
+  for (let k = 0; k < out.length; k++) out[k] /= norm;
+  return out;
+}
+
+module.exports = { fingerprint, similarity, IconIndex, compositeOnCell, encodePrint, decodePrint, packPrint, unpackPrint, CELL_BACKGROUND, SIDE };

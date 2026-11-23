@@ -19,6 +19,7 @@ function parseItemText(text) {
   const num = (re) => { const m = re.exec(text); return m ? parseInt(m[1].replace(/[,.]/g, ''), 10) : null; };
   const stack = /^Stack Size: ([\d,.]+)\//m.exec(text);
   if (stack) item.stackSize = parseInt(stack[1].replace(/[,.]/g, ''), 10) || 1;
+  item.stackable = !!stack;
 
   item.isMap = /^Map Tier: /m.test(text) || /Maps?$/.test(item.itemClass);
   if (item.isMap) {
