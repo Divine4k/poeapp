@@ -103,11 +103,14 @@
     if (c.status === 'ignored') return 'Ignored by you';
     return 'No stack number, so not counted (gear, gems and other single items)';
   }
-  // latestOnly: just the newest picture, for the small one beside the timer.
-  function snapHtml(data, latestOnly, divine) {
+  // One picture per inventory brought out of the map. compact: the small ones beside the timer,
+  // newest on top, so the inventory being filled now is always the first one.
+  function snapHtml(data, compact, divine) {
     if (!data || !data.trips.length) return '';
-    const trips = latestOnly ? data.trips.slice(-1) : data.trips;
-    return trips.map((t, i) => {
+    const total = data.trips.length;
+    const trips = data.trips.map((t, i) => ({ t, n: i + 1 }));
+    if (compact) trips.reverse();
+    return trips.map(({ t, n }, i) => {
       const by = new Map(t.cells.map((c) => [c.cell, c]));
       let cells = '';
       for (let k = 0; k < data.cols * data.rows; k++) {
@@ -115,9 +118,11 @@
         cells += c ? `<i class="${esc(c.status)}${c.carried ? ' carried' : ''}" title="${esc(snapTip(c, divine))}"></i>` : '<i></i>';
       }
       const brought = t.cells.some((c) => c.carried);
-      const which = !latestOnly && trips.length > 1 ? `Trip ${i + 1} of ${trips.length}. ` : '';
-      return `<figure class="snap"><div class="snap-grid"><img src="${esc(t.image)}" alt="Inventory picture"><div class="snap-cells">${cells}</div></div>
-        <figcaption>${which}Inventory at ${clock(t.at)}.${brought ? ' <span class="xkey">Red cross</span>: taken into the map with you, not loot.' : ''}${latestOnly ? '' : ' Hover a slot for its name.'}</figcaption></figure>`;
+      const which = total > 1 ? `Inventory ${n} of ${total}${compact && n === total ? ' (latest)' : ''}, ` : 'Inventory ';
+      // The explanation of the red cross is given once, on the first picture shown.
+      const legend = brought && (!compact || i === trips.findIndex((x) => x.t.cells.some((c) => c.carried)));
+      return `<figure class="snap"><div class="snap-grid"><img src="${esc(t.image)}" alt="Inventory ${n} of ${total}"><div class="snap-cells">${cells}</div></div>
+        <figcaption>${which}at ${clock(t.at)}.${legend ? ' <span class="xkey">Red cross</span>: taken into the map with you, not loot.' : ''}${compact ? '' : ' Hover a slot for its name.'}</figcaption></figure>`;
     }).join('');
   }
 
@@ -146,8 +151,8 @@
     // The picture is only redrawn when it changes, so it does not flicker with the timer.
     const snapBox = $('now-snap');
     const snap = snapData(run, renderNow);
-    const newest = snap && snap.trips.length ? snap.trips[snap.trips.length - 1] : null;
-    const snapKey = newest ? `${run.id}:${newest.trip}:${newest.at}` : '';
+    // Every inventory this map has filled so far is shown, not only the one being filled now.
+    const snapKey = snap && snap.trips.length ? `${run.id}:${snap.trips.map((t) => `${t.trip}@${t.at}`).join(',')}` : '';
     if (snapBox.dataset.key !== snapKey) {
       snapBox.dataset.key = snapKey;
       snapBox.innerHTML = snapHtml(snap, true);

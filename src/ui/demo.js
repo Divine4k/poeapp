@@ -89,7 +89,7 @@
   window.api = {
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
-    runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
+    runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },
     inventory: async () => {
       const img = state.unknown[0].image;

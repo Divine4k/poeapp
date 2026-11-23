@@ -117,6 +117,7 @@ input::placeholder { color: #6f7a86; }
 #now-head { flex: 1 1 250px; min-width: 0; }
 #now-snap { flex: 0 1 310px; min-width: 240px; }
 #now-snap:empty { display: none; }
+#now-snap .snap + .snap { margin-top: 10px; }
 .big { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 24px; font-family: var(--display); font-variant-numeric: tabular-nums; }
 .big .timer { font-size: 72px; font-stretch: 75%; font-weight: 300; line-height: 0.9; }
 .big .timer.paused { color: var(--ash); }
