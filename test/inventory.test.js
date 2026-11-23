@@ -149,3 +149,33 @@ test('prices: item art URLs are carried through', () => {
   const ex = parseExchange({ core: { primary: 'chaos', items: [{ id: 'a', name: 'Orb', image: '/i.png' }] }, lines: [{ id: 'a', primaryValue: 2 }] }, 'Currency');
   assert.equal(ex[0].icon, 'https://web.poecdn.com/i.png');
 });
+
+test('digits: numbers on bright icons are still read', () => {
+  const fs = require('fs'), path = require('path');
+  // a "2" on an Exalted Orb, cut from a capture where the first version of the reader saw no number
+  assert.equal(readStack(fs.readFileSync(path.join(__dirname, 'fixtures', 'stack2_on_gold.rgb'))), 2);
+  // every real cell again, with everything except the digits and a thin outline painted bright
+  const C = 52;
+  const brighten = (cell) => {
+    const out = Buffer.from(cell);
+    const min = (i, j) => Math.min(cell[(j * C + i) * 3], cell[(j * C + i) * 3 + 1], cell[(j * C + i) * 3 + 2]);
+    for (let j = 0; j < 26; j++) for (let i = 0; i < C; i++) {
+      let near = false;
+      for (let dj = -2; dj <= 2 && !near; dj++) for (let di = -2; di <= 2; di++) {
+        const x = i + di, y = j + dj;
+        if (x >= 0 && y >= 0 && x < C && y < C && min(x, y) > 150) { near = true; break; }
+      }
+      if (!near) { const p = (j * C + i) * 3; out[p] = 235; out[p + 1] = 215; out[p + 2] = 190; }
+    }
+    return out;
+  };
+  let checked = 0;
+  for (const name of Object.keys(frames)) {
+    each(name, (truth, cell, r, c) => {
+      if (truth === null || truth === 'x' || truth === 0) return;
+      assert.equal(readStack(brighten(cell)), truth, `${name} ${r},${c}`);
+      checked++;
+    });
+  }
+  assert.equal(checked, 62);
+});
