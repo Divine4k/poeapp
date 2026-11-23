@@ -44,6 +44,7 @@ const DEFAULT_CONFIG = {
   strategies: [{ id: 'default', name: 'Default', atlasUrl: '' }],
   activeStrategy: 'default',
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
+  navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
   shareToken: '', // GitHub token for uploading named items, stored encrypted
   // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
   // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat

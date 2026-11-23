@@ -480,10 +480,65 @@
     const hadPrice = state && state.priceCheck ? state.priceCheck.at : 0;
     const first = !state;
     state = s; receivedAt = Date.now();
+    applyNavOrder(s.config.navOrder);
     if (!first && s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
     else if (!first && s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
     render();
   }
+
+  // ---- sidebar order: drag a page up or down --------------------------------------------
+  const sidenav = document.querySelector('.sidenav');
+  let navApplied = null;
+  let dragging = null;
+
+  function applyNavOrder(order) {
+    const key = (order || []).join(',');
+    if (key === navApplied || dragging) return;
+    navApplied = key;
+    const byTab = new Map([...sidenav.querySelectorAll('.navi')].map((b) => [b.dataset.tab, b]));
+    // Listed pages first, in the saved order; any page not listed (a new one) keeps its place after them.
+    for (const tab of order || []) { const b = byTab.get(tab); if (b) { sidenav.appendChild(b); byTab.delete(tab); } }
+    for (const b of byTab.values()) sidenav.appendChild(b);
+  }
+
+  const clearDropMarks = () => { for (const b of sidenav.querySelectorAll('.drop-before, .drop-after')) b.classList.remove('drop-before', 'drop-after'); };
+  for (const b of sidenav.querySelectorAll('.navi')) b.draggable = true;
+
+  sidenav.addEventListener('dragstart', (e) => {
+    const b = e.target.closest('.navi');
+    if (!b) return;
+    dragging = b;
+    b.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', b.dataset.tab);
+  });
+  sidenav.addEventListener('dragover', (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clearDropMarks();
+    const over = e.target.closest('.navi');
+    if (!over || over === dragging) return;
+    const r = over.getBoundingClientRect();
+    over.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-before' : 'drop-after');
+  });
+  sidenav.addEventListener('drop', (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    const over = e.target.closest('.navi');
+    if (over && over !== dragging) {
+      const r = over.getBoundingClientRect();
+      sidenav.insertBefore(dragging, e.clientY < r.top + r.height / 2 ? over : over.nextSibling);
+      const order = [...sidenav.querySelectorAll('.navi')].map((b) => b.dataset.tab);
+      navApplied = order.join(',');
+      api.setConfig({ navOrder: order });
+    }
+  });
+  sidenav.addEventListener('dragend', () => {
+    if (dragging) dragging.classList.remove('dragging');
+    dragging = null;
+    clearDropMarks();
+  });
 
   function showTab(name) {
     for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
