@@ -30,6 +30,7 @@ const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBo
 const { focusGame, typeChat } = require('./chat');
 const { Overlay, Toast } = require('./overlay');
 const { GameWatch } = require('./gamewin');
+const { closeLeftovers, restartCommand } = require('./leftovers');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -567,6 +568,18 @@ async function checkUpdate() {
   }
 }
 
+// Hotkeys, the key listener and the helper programs: all let go, each on its own so one failure
+// does not keep the rest.
+function releaseEverything() {
+  for (const step of [
+    () => globalShortcut.unregisterAll(),
+    () => watch.stop(),
+    () => { clearInterval(timedTimer); },
+    () => { if (hook) { hook.uIOhook.removeAllListeners(); hook.uIOhook.stop(); hook = null; } },
+    () => { for (const w of BrowserWindow.getAllWindows()) w.destroy(); },
+  ]) { try { step(); } catch (_) { /* closing anyway */ } }
+}
+
 // Starts the app again after it has fully closed. On Windows this goes through a short hidden
 // helper that waits a moment first: starting the new copy while the old one is still shutting
 // down left it without a window, because the old one still held the app's files.
@@ -575,11 +588,14 @@ function restartApp() {
     const { spawn } = require('child_process');
     // The installed program starts by itself; from a download, Electron is told which folder to run.
     const target = app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`;
-    const cmd = `ping -n 3 127.0.0.1 >nul & start "" ${target}`;
+    const cmd = restartCommand({ pid: process.pid, target });
     spawn('cmd.exe', ['/d', '/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true, cwd: app.getAppPath() }).unref();
   } else {
     app.relaunch();
   }
+  // Give back everything this copy holds before it goes: a copy that lingers with its hotkeys
+  // still taken leaves the new one unable to use them.
+  releaseEverything();
   app.exit(0);
 }
 
@@ -1094,6 +1110,16 @@ app.whenReady().then(() => {
   setupIpc();
   createWindow();
   registerHotkeys();
+  // A copy left behind by an earlier restart still holds the hotkeys: close it, then take them.
+  // The program file alone identifies the app when it is the installed one, or the Electron that
+  // lives inside this app's own folder; only a shared Electron needs the folder checked as well.
+  const ownProgram = app.isPackaged || process.execPath.toLowerCase().startsWith(app.getAppPath().toLowerCase());
+  closeLeftovers({ appDir: ownProgram ? '' : app.getAppPath() }).then((n) => {
+    if (!n) return;
+    registerHotkeys();
+    say(`Closed ${n} leftover ${n === 1 ? 'copy' : 'copies'} of the app that ${n === 1 ? 'was' : 'were'} still running without a window and holding the hotkeys.`);
+    push();
+  });
   startLog();
   syncKeyHook();
   syncTimedWatch();
