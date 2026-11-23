@@ -368,7 +368,7 @@ async function saveDiagnostic(snapshot = false) {
       }
     }
     const art = [];
-    for (const name of wanted) {
+    for (const name of (snapshot ? [] : wanted)) {
       const entry = prices.get(name);
       if (!entry || !entry.icon || !artLoader) continue;
       try { const a = await artLoader.fetchRgb(entry.icon); if (a) art.push({ name, url: entry.icon, size: a.size, rgb: b64(a.rgb) }); } catch (_) { /* skip */ }
@@ -382,12 +382,29 @@ async function saveDiagnostic(snapshot = false) {
       counts: { art: index.art.length, learned: index.learned.length, shared: index.shared.length, prices: prices.size },
       artProgress: status.inventory.art, categories: prices.toJSON().entries.reduce((m, e) => { m[e.category] = (m[e.category] || 0) + 1; return m; }, {}), cells, art,
     };
-    const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
-    const file = path.join(app.getPath('desktop'), snapshot ? `poeapp-snapshot-${stamp}.json.gz` : 'poeapp-diagnostic.json.gz');
-    fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(report)));
-    say(open ? `Saved ${file}. Send that file along when you report a problem.` : `Saved ${file}, but the inventory was not open in game, so it holds no items. Open it and save again.`, !open);
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const name = `${snapshot ? 'snapshot' : 'diagnostic'}-${stamp}.json.gz`;
+    const data = zlib.gzipSync(JSON.stringify(report));
+    // Kept on this PC in the app's own folder, and sent to the repository when a token is saved.
+    const dir = dataFile('reports');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, name);
+    fs.writeFileSync(file, data);
+    const closed = open ? '' : ' The inventory was not open in game, so it holds no items.';
+    if (shared && shared.token) {
+      try {
+        await shared.uploadFile(`reports/${name}`, data, `Report ${name}`);
+        say(`Report sent: ${name}.${closed}`, !open);
+      } catch (e) {
+        say(`The report could not be sent (${e.message || e}). It is saved on this PC as ${file}.${closed}`, true);
+      }
+    } else {
+      say(`Report saved on this PC as ${file}. To have reports sent by themselves, add a GitHub token under Settings, Shared item list.${closed}`, true);
+    }
   } catch (e) {
-    say(`Could not save the diagnostic file: ${e.message || e}`, true);
+    say(`Could not make the report: ${e.message || e}`, true);
   }
 }
 

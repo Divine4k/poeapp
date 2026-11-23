@@ -58,7 +58,7 @@ The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so a
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.
 - F8 and F9 must not be bound to anything in game. Change them in Settings if they are.
-- F9 saves a snapshot of what the app sees to your Desktop, for reporting problems.
+- F9 sends a report of what the app sees (the inventory slots, how each was read) to the `data` branch of this repository under `reports/`, for troubleshooting. That needs the GitHub token from Settings; without one the report is kept in the app's own folder.
 - If your inventory key is not Tab, set it in Settings.
 
 ## Rules and risk

@@ -71,6 +71,19 @@ class SharedItems {
 
   queue(name, print) { this.pending.push({ name, print }); }
 
+  // Uploads one new file to the data branch (used for troubleshooting reports). Needs the token.
+  async uploadFile(repoPath, buffer, message) {
+    if (!this.token) throw new Error('no token');
+    const url = `https://api.github.com/repos/${REPO}/contents/${repoPath.split('/').map(encodeURIComponent).join('/')}`;
+    const res = await this.fetch(url, {
+      method: 'PUT',
+      headers: this.headers({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ message, branch: BRANCH, content: Buffer.from(buffer).toString('base64') }),
+    });
+    if (!res.ok) throw new Error(res.status === 401 || res.status === 403 || res.status === 404 ? 'GitHub refused the upload. The token needs "Contents: read and write" on the repository.' : `GitHub answered ${res.status}`);
+    return repoPath;
+  }
+
   // Uploads queued items. Reads the newest list first so nothing anyone else added is lost.
   async flush() {
     if (this.busy || !this.pending.length || !this.token) return 0;

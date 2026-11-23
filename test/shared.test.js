@@ -85,3 +85,18 @@ test('upload: reads the newest list, adds to it, retries on a conflict, needs a 
   await s.flush();
   assert.equal(puts.length, 1);
 });
+
+test('reports: uploaded to the data branch under reports/, only with a token', async () => {
+  const calls = [];
+  const fetchImpl = async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 201 }; };
+  await assert.rejects(() => new SharedItems({ fetchImpl }).uploadFile('reports/x.json.gz', Buffer.from('hi'), 'm'), /no token/);
+  const s = new SharedItems({ fetchImpl, token: 'tok' });
+  assert.equal(await s.uploadFile('reports/snapshot-1.json.gz', Buffer.from('hi'), 'Report'), 'reports/snapshot-1.json.gz');
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].url.endsWith('/contents/reports/snapshot-1.json.gz'));
+  const body = JSON.parse(calls[0].opts.body);
+  assert.equal(body.branch, 'data');
+  assert.equal(Buffer.from(body.content, 'base64').toString(), 'hi');
+  const refused = new SharedItems({ fetchImpl: async () => ({ ok: false, status: 403 }), token: 'tok' });
+  await assert.rejects(() => refused.uploadFile('reports/y', Buffer.from('a'), 'm'), /refused/);
+});

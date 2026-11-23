@@ -133,7 +133,7 @@
         <span class="row"><input name="logPath" placeholder="Found automatically when empty"><button type="button" id="btn-browse">Browse</button></span>
       </label>
       <label>Check or count the hovered item <input name="hkClip" placeholder="F8"></label>
-      <label>Save a snapshot for troubleshooting <input name="hkSnap" placeholder="F9"></label>
+      <label>Send a report of what the app sees <input name="hkSnap" placeholder="F9"></label>
       <label>Screen the game runs on <select name="displayId"></select></label>
     </div>
 
@@ -155,8 +155,8 @@
     <fieldset>
       <legend>Shared item list</legend>
       <p class="fine" id="shared-line"></p>
-      <label>GitHub token for uploading the items you name (optional) <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
-      <p class="fine">Everyone gets the shared list without a token. Uploading needs a fine-grained GitHub token limited to the poeapp repository with "Contents: read and write". It is stored encrypted on this PC and only ever sent to GitHub.</p>
+      <label>GitHub token, for uploading the items you name and sending reports (optional) <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
+      <p class="fine">Everyone gets the shared list without a token. Uploading needs a fine-grained GitHub token limited to the poeapp repository with "Contents: read and write". It is stored encrypted on this PC and only ever sent to GitHub. Reports go to the same public repository; they hold the inventory slots as the app saw them, nothing else from your screen.</p>
       <label class="check"><input type="checkbox" name="clearToken"> Remove the saved token</label>
     </fieldset>
 
@@ -168,7 +168,7 @@
     <p class="fine">This app reads the game log, the clipboard and the screen. The only thing it ever sends to the game is one Ctrl+C when you press the check key, if that option is on. It never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
     <p class="fine" id="version-line"></p>
     <div class="dialog-actions">
-      <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-check-update">Check for updates</button><button type="button" id="btn-diagnostic">Save diagnostic file</button></span>
+      <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-check-update">Check for updates</button><button type="button" id="btn-diagnostic">Send a full report</button></span>
       <button type="submit" class="primary" value="save">Save settings</button>
     </div>
   </form>
