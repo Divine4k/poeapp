@@ -20,7 +20,8 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
-const { TradeBook, chatCommand, nextAction, stashCellRect, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
+const { isStashOpen } = require('./core/stash');
+const { TradeBook, chatCommand, nextAction, stashCellRect, stashLabelRect, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
 const { Overlay, Highlight } = require('./overlay');
 const { GameWatch } = require('./gamewin');
@@ -89,6 +90,7 @@ const priceService = new PriceService({ fetchImpl: webFetch });
 const book = new TradeBook();
 let overlay = null;
 let highlight = null;
+let tabLabel = null; // the line under the stash naming the tab of the framed item
 let layoutWin = null; // the full-screen window for dragging overlay parts into place
 const watch = new GameWatch();
 let chatBusy = false;
@@ -221,7 +223,7 @@ function startLog() {
     if (ev.type === 'area') syncLedger();
     if (config.trade.enabled && ev.type === 'joined') {
       const arrived = book.offers.find((o) => o.dir === 'in' && o.player === ev.name && o.tab);
-      if (arrived) setLocate(arrived.id, 90000);
+      if (arrived) setLocate(arrived.id, LOCATE_MS);
     }
     if (config.trade.enabled && book.onLog(ev)) saveTradesSoon();
     else if (ev.type === 'whisper') return; // ordinary chat: nothing to redraw
@@ -384,7 +386,7 @@ function syncTimedWatch() {
 // and it lets the check hotkey send a single Ctrl+C to the game.
 const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape', enter: 'Enter', backquote: 'Backquote', '`': 'Backquote' };
 function syncKeyHook() {
-  if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
+  if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.removeAllListeners('mouseup'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
   status.inventory.keyHook = 'off';
   if (!config.inventory.onKey && !config.inventory.autoCopy && !config.trade.enabled) return;
   let lib;
@@ -395,6 +397,12 @@ function syncKeyHook() {
     const code = lib.UiohookKey[name];
     if (code === undefined) status.inventory.keyHook = 'badkey';
     else lib.uIOhook.on('keydown', (e) => { if (e.keycode === code) setTimeout(readInventory, 200); });
+  }
+  if (config.trade.enabled) {
+    // While a stash slot is waiting to be framed, each click or key press of yours is followed
+    // by one look at the screen to see whether the stash is open. At no other time.
+    lib.uIOhook.on('keydown', stashInput);
+    lib.uIOhook.on('mouseup', stashInput);
   }
   try { lib.uIOhook.start(); hook = lib; if (status.inventory.keyHook !== 'badkey') status.inventory.keyHook = 'ok'; } catch (_) { status.inventory.keyHook = 'missing'; }
 }
@@ -704,7 +712,10 @@ function syncOverlay() {
     placement: tradePlacement(),
   });
   const o = on && t.highlight !== false ? locatedOffer() : null;
-  highlight.show(o ? stashCellRect(overlay.display(), book.quadTabs.has(o.tab) ? 24 : 12, o.left, o.top) : null);
+  const show = o && stashOpen !== false; // only while the stash is open, when that can be told
+  const quad = o && book.quadTabs.has(o.tab);
+  highlight.show(show ? stashCellRect(overlay.display(), quad ? 24 : 12, o.left, o.top) : null);
+  tabLabel.show(show ? stashLabelRect(overlay.display()) : null, show ? `${o.item}: tab "${o.tab}", left ${o.left}, top ${o.top}${quad ? ' (quad tab)' : ''}` : '');
 }
 
 // Sends one chat line to the game. Returns true when it went out.
@@ -739,13 +750,35 @@ async function sendChat(text) {
 
 // The stash slot to frame in game: set when you invite a buyer, when they arrive, or when you
 // press Locate on an offer. It goes away by itself.
+// It only shows while the stash is open, so it can wait a few minutes for you to get there.
+const LOCATE_MS = 4 * 60 * 1000;
 let locate = null; // { id, until }
 let locateTimer = null;
 function setLocate(id, ms) {
   locate = ms ? { id, until: Date.now() + ms } : null;
+  stashOpen = hook && ms ? false : null;
+  if (ms && hook) checkStash();
   clearTimeout(locateTimer);
   if (ms) locateTimer = setTimeout(push, ms + 50);
 }
+// Whether the stash panel is open in game: true, false, or null when it cannot be told (no key
+// listener to time the looks by), in which case the frame is shown regardless.
+let stashOpen = null;
+let stashTimer = null;
+let stashBusy = false;
+function stashInput() {
+  if (!locate || stashTimer) return;
+  stashTimer = setTimeout(() => { stashTimer = null; checkStash(); }, 280); // the panel needs a moment to open
+}
+async function checkStash() {
+  if (stashBusy || !locatedOffer()) return;
+  stashBusy = true;
+  try {
+    const open = isStashOpen(await captureFrame(config.inventory.displayId));
+    if (open !== stashOpen) { stashOpen = open; syncOverlay(); }
+  } catch (_) { /* a failed capture changes nothing */ } finally { stashBusy = false; }
+}
+
 function locatedOffer() {
   if (!locate || Date.now() > locate.until) return null;
   const o = book.get(locate.id);
@@ -757,14 +790,14 @@ async function tradeDo(id, what) {
   const offer = book.get(id);
   if (!offer) return;
   if (what === 'dismiss') { book.remove(id); saveTradesSoon(); return; }
-  if (what === 'locate') { setLocate(id, locatedOffer() && locate.id === offer.id ? 0 : 30000); return; }
+  if (what === 'locate') { setLocate(id, locatedOffer() && locate.id === offer.id ? 0 : LOCATE_MS); return; }
   if (what === 'quad') { book.toggleQuad(id); saveTradesSoon(); return; }
   const action = what === 'next' ? nextAction(offer) : what;
   if (!action) { say(`Nothing to do for ${offer.player} yet: waiting for them.`); return; }
   if (offer.test) {
     // A test offer walks through the steps without typing anything in the game.
     book.applied(id, action);
-    if (action === 'invite' && offer.dir === 'in') setLocate(id, 60000);
+    if (action === 'invite' && offer.dir === 'in') setLocate(id, LOCATE_MS);
     if (action === 'invite') book.onLog({ type: 'joined', name: offer.player });
     else if (action === 'trade') book.onLog({ type: 'trade', result: 'accepted' });
     say(`Test offer: "${chatCommand(action, offer, { messages: config.trade.messages, characterName: config.characterName })}" would be typed in the game. Nothing was sent.`);
@@ -774,7 +807,7 @@ async function tradeDo(id, what) {
   if (!text) { say('That message is empty. Set its text under Trade, Settings.', true); return; }
   if (await sendChat(text)) {
     book.applied(id, action); saveTradesSoon();
-    if (action === 'invite' && offer.dir === 'in') setLocate(id, 60000);
+    if (action === 'invite' && offer.dir === 'in') setLocate(id, LOCATE_MS);
   }
 }
 
@@ -803,7 +836,7 @@ function createWindow() {
   if (second) win.maximize();
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (highlight) highlight.destroy(); if (layoutWin) layoutWin.destroy(); });
+  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (highlight) highlight.destroy(); if (tabLabel) tabLabel.destroy(); if (layoutWin) layoutWin.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
@@ -1000,6 +1033,7 @@ app.whenReady().then(() => {
   book.restore(readJson('trades.json', null));
   overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
   highlight = new Highlight({ page: path.join(__dirname, 'ui', 'highlight.html') });
+  tabLabel = new Highlight({ page: path.join(__dirname, 'ui', 'tablabel.html') });
   watch.on('change', syncOverlay);
   watch.start();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));

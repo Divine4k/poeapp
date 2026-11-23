@@ -15,6 +15,8 @@ body.overlay { display: block; overflow: hidden; user-select: none; }
 .tt-item { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-price { flex: 0 0 auto; color: var(--gold); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tt-warn { flex: 0 0 auto; color: var(--blood); font-size: 11px; white-space: nowrap; }
+.tt-say { flex: 0 0 auto; background: transparent; color: var(--ash); padding: 0 5px !important; border-left: 1px solid var(--seam) !important; }
+.tt-say:hover { color: var(--bone); background: rgba(233, 226, 211, 0.08); }
 .tt-ico { flex: 0 0 auto; background: transparent; color: var(--ash); padding: 0 6px !important; }
 .tt-ico:hover { color: var(--bone); }
 .tt-ico.on { color: var(--gold); }

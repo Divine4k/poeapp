@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseLine } = require('../src/core/clientLog');
-const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds, placementFromRect, stashCellRect, overlayAllowed } = require('../src/core/trade');
+const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds, placementFromRect, stashCellRect, stashLabelRect, overlayAllowed } = require('../src/core/trade');
 const { GameWatch, isGameName } = require('../src/gamewin');
 
 const line = (rest) => `2026/11/23 15:00:01 123456 cff945b9 [INFO Client 4321] ${rest}`;
@@ -173,9 +173,9 @@ test('overlay placement stays on the game screen', () => {
   const display = { bounds: { x: 1920, y: 0, width: 1920, height: 1080 } };
   // Default: right of the flasks, growing upward from just above the experience bar.
   const bottom = overlayBounds(display, 120, {});
-  assert.deepEqual(bottom, { x: 1920 + 562, y: 933, width: 330, height: 120 });
+  assert.deepEqual(bottom, { x: 1920 + 562, y: 933, width: 400, height: 120 });
   const top = overlayBounds(display, 120, { position: 'top' });
-  assert.deepEqual(top, { x: 1920 + 795, y: 65, width: 330, height: 120 });
+  assert.deepEqual(top, { x: 1920 + 760, y: 65, width: 400, height: 120 });
   const pushed = overlayBounds(display, 300, { position: 'right', offsetX: 50, offsetY: 90 });
   assert.equal(pushed.x + pushed.width, 1920 + 1920);
   assert.equal(pushed.y + pushed.height, 1080);
@@ -185,18 +185,18 @@ test('overlay placement stays on the game screen', () => {
 test('layout mode: a dragged spot is kept as a share of the screen', () => {
   const screen = { width: 1920, height: 1080 };
   // Dropped low on the screen: remembered by its bottom edge, so the list grows upward.
-  const low = placementFromRect({ x: 960, y: 900, width: 330, height: 84 }, screen);
+  const low = placementFromRect({ x: 960, y: 900, width: 400, height: 84 }, screen);
   assert.deepEqual(low, { x: 0.5, y: 984 / 1080, grow: 'up' });
   const display = { bounds: { x: 1920, y: 0, width: 1920, height: 1080 } };
-  assert.deepEqual(overlayBounds(display, 84, { custom: low }), { x: 1920 + 960, y: 900, width: 330, height: 84 });
+  assert.deepEqual(overlayBounds(display, 84, { custom: low }), { x: 1920 + 960, y: 900, width: 400, height: 84 });
   assert.equal(overlayBounds(display, 200, { custom: low }).y, 784); // more offers: taller, same bottom edge
   // Dropped high: remembered by its top edge, growing downward.
-  const high = placementFromRect({ x: 96, y: 108, width: 330, height: 84 }, screen);
+  const high = placementFromRect({ x: 96, y: 108, width: 400, height: 84 }, screen);
   assert.deepEqual(high, { x: 0.05, y: 0.1, grow: 'down' });
   assert.equal(overlayBounds(display, 200, { custom: high }).y, 108);
   // The same spot on a bigger screen, and never off the edge.
-  assert.deepEqual(overlayBounds({ bounds: { x: 0, y: 0, width: 2560, height: 1440 } }, 84, { custom: high }), { x: 128, y: 144, width: 330, height: 84 });
-  assert.equal(overlayBounds(display, 84, { custom: { x: 0.99, y: 0.5, grow: 'down' } }).x, 1920 + 1920 - 330);
+  assert.deepEqual(overlayBounds({ bounds: { x: 0, y: 0, width: 2560, height: 1440 } }, 84, { custom: high }), { x: 128, y: 144, width: 400, height: 84 });
+  assert.equal(overlayBounds(display, 84, { custom: { x: 0.99, y: 0.5, grow: 'down' } }).x, 1920 + 1920 - 400);
   // A dragged spot wins over the preset.
   assert.equal(overlayBounds(display, 84, { position: 'top', custom: high }).y, 108);
 });
@@ -212,6 +212,35 @@ test('stash slots: measured on 1080p, scaled by screen height', () => {
   // 1440p on a second screen to the right.
   const qhd = stashCellRect({ bounds: { x: 1920, y: 0, width: 2560, height: 1440 } }, 12, 1, 1);
   assert.deepEqual(qhd, { x: 1920 + 18, y: 176, width: 76, height: 76 });
+});
+
+test('the stash is recognised by its title plate, at any screen size', () => {
+  const fs = require('fs'), path = require('path'), zlib = require('zlib');
+  const { isStashOpen, stashScore } = require('../src/core/stash');
+  // The fixtures are the plate area (x 200-470, y 40-100) cut from real 1920x1080 screenshots.
+  const crop = (name) => zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', `${name}.rgb.gz`)));
+  // The crop drawn into an otherwise black frame, scaled to the frame's height, as BGRA.
+  const frame = (name, height) => {
+    const rgb = crop(name), k = height / 1080, width = Math.round(1920 * k);
+    const data = Buffer.alloc(width * height * 4);
+    for (let y = Math.floor(40 * k); y < Math.ceil(100 * k); y++) {
+      for (let x = Math.floor(200 * k); x < Math.ceil(470 * k); x++) {
+        const sx = Math.min(269, Math.max(0, Math.floor(x / k - 200))), sy = Math.min(59, Math.max(0, Math.floor(y / k - 40)));
+        const s = (sy * 270 + sx) * 3, d = (y * width + x) * 4;
+        data[d] = rgb[s + 2]; data[d + 1] = rgb[s + 1]; data[d + 2] = rgb[s]; data[d + 3] = 255;
+      }
+    }
+    return { data, width, height, bgr: true };
+  };
+  for (const h of [900, 1080, 1440, 2160]) {
+    assert.equal(isStashOpen(frame('stash_normal', h)), true, `normal tab at ${h}p`);
+    assert.equal(isStashOpen(frame('stash_quad', h)), true, `quad tab at ${h}p`);
+    assert.equal(isStashOpen(frame('stash_closed', h)), false, `no stash at ${h}p`);
+  }
+  assert.ok(stashScore(frame('stash_closed', 1080)) < 0.2);
+  assert.equal(isStashOpen({ data: Buffer.alloc(1920 * 1080 * 4), width: 1920, height: 1080, bgr: true }), false); // a black screen
+  const label = stashLabelRect({ bounds: { x: 0, y: 0, width: 1920, height: 1080 } });
+  assert.deepEqual(label, { x: 16, y: 772, width: 632, height: 26 });
 });
 
 test('the overlay hides when another program is in front', () => {

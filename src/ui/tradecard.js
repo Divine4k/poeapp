@@ -84,6 +84,7 @@
       ${step}
       <button type="button" class="tt-open" data-open="${esc(o.id)}" title="${esc(`${o.dir === 'out' ? 'You buy from' : 'Buyer:'} ${o.player}. ${o.waiting || 'Click for all buttons'}`)}">
         <span class="tt-item">${o.qty > 1 ? `${esc(o.qty)}× ` : ''}${esc(o.item)}</span>${warn ? `<span class="tt-warn">${warn}</span>` : ''}<span class="tt-price">${esc(shortPrice(o.price))}</span></button>
+      ${o.dir !== 'out' && o.state !== 'done' ? `<button type="button" class="tt-say" data-trade="busy" data-id="${esc(o.id)}" title="Whisper ${esc(o.player)} that you are busy">Busy</button><button type="button" class="tt-say" data-trade="sold" data-id="${esc(o.id)}" title="Whisper ${esc(o.player)} that it is sold, and dismiss">Sold</button>` : ''}
       ${o.grid && o.dir !== 'out' ? `<button type="button" class="tt-ico ${on ? 'on' : ''}" data-trade="locate" data-id="${esc(o.id)}" title="Frame the slot in the stash: ${esc(o.tab)}, left ${o.left}, top ${o.top}" aria-label="Frame the slot in the stash">▣</button>` : ''}
       <button type="button" class="tt-ico" data-trade="dismiss" data-id="${esc(o.id)}" aria-label="Dismiss the offer from ${esc(o.player)}">✕</button></div>`;
   }
