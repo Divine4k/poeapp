@@ -79,6 +79,7 @@
       offer(2, 'in', 'xXCurrencyFlipXx', 'Chaos Orb', 400, { amount: 1.5, currency: 'Divine Orb' }, '', 0, 0, { value: 318, market: 400, low: true, asks: 2 }),
       offer(1, 'out', 'KiracsApprentice', 'The Nurse', 1, { amount: 75, currency: 'chaos' }, 'cards', 4, 9, { value: 75, market: 78, state: 'there', next: null, waiting: 'Waiting for the seller to trade' }),
     ],
+    days: [0, 120, 40, 0, 310, 95, 0, 0, 660, 212, 80, 1450, 430, 1320].map((sold, i) => ({ day: new Date(now - (13 - i) * 86400000).setHours(0, 0, 0, 0), sold, soldCount: sold ? 1 + (i % 4) : 0, bought: i === 13 ? 212 : 0, boughtCount: i === 13 ? 1 : 0 })),
     history: [
       { id: 'h2', dir: 'in', player: 'Einhar_Fan', item: 'Tabula Rasa Simple Robe', qty: 1, price: { amount: 12, currency: 'chaos' }, at: now - 9 * 60000, value: 12 },
       { id: 'h1', dir: 'out', player: 'NikoTheMad', item: 'Ambush Scarab of Containment', qty: 20, price: { amount: 1, currency: 'divine' }, at: now - 55 * 60000, value: 212 },

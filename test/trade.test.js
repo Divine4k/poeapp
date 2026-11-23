@@ -196,6 +196,47 @@ test('buyers for an item sold a moment ago can be left out', () => {
   assert.equal(b.onLog(whisper('Late_Buyer', PRICED, 'in', 4000)).soldAlready, true);
 });
 
+test('whispers in other languages', () => {
+  const ru = parseTradeMessage('Здравствуйте, хочу купить у вас Табула Раса Матерчатая безрукавка за 12 chaos в лиге Covens (секция "Sell"; позиция: 3 столбец, 5 ряд)');
+  assert.deepEqual([ru.item, ru.price.amount, ru.price.currency, ru.league, ru.tab, ru.left, ru.top, ru.lang, ru.rough], ['Табула Раса Матерчатая безрукавка', 12, 'chaos', 'Covens', 'Sell', 3, 5, 'Russian', undefined]);
+  const de = parseTradeMessage('Hi, ich möchte dein Tabula Rasa Einfache Robe für 1.5 divine in der Covens-Liga kaufen (Truhenfach "~price 1 chaos"; Position: 15 von links, 14 von oben)');
+  assert.deepEqual([de.item, de.price.amount, de.league, de.tab, de.left, de.top, de.lang], ['Tabula Rasa Einfache Robe', 1.5, 'Covens', '~price 1 chaos', 15, 14, 'German']);
+  const ko = parseTradeMessage('안녕하세요, Covens 리그의 Tabula Rasa Simple Robe(을)를 5 chaos(으)로 구매하고 싶습니다 (보관함 탭 "Sell", 위치: 왼쪽 2, 상단 7)');
+  assert.deepEqual([ko.item, ko.price.amount, ko.league, ko.tab, ko.left, ko.top], ['Tabula Rasa Simple Robe', 5, 'Covens', 'Sell', 2, 7]);
+  const unpriced = parseTradeMessage('Hola, quisiera comprar tu Tabula Rasa Toga simple en Covens (pestaña de alijo "Sell"; posición: izquierda 1, arriba 2)');
+  assert.equal(unpriced.price, null); assert.equal(unpriced.item, 'Tabula Rasa Toga simple');
+  // A known greeting with wording the pattern does not expect is still listed, read roughly:
+  // the tab and slot are certain, the price stays inside the item text.
+  const odd = parseTradeMessage('Bonjour, je souhaiterais t\'acheter Tabula Rasa Toge simple au prix de 12 chaos, ligue Covens (onglet "Sell" : colonne 4, rangée 9) merci');
+  assert.deepEqual([odd.rough, odd.lang, odd.tab, odd.left, odd.top, odd.price, odd.note], [true, 'French', 'Sell', 4, 9, null, 'merci']);
+  assert.match(odd.item, /^Tabula Rasa Toge simple au prix de 12 chaos/);
+  const bulk = parseTradeMessage('Здравствуйте, хочу купить у вас 10 Сфера хаоса за 1 Божественная сфера в лиге Covens.');
+  assert.equal(bulk.rough, true); assert.equal(bulk.tab, '');
+  assert.equal(parseTradeMessage('Bonjour, ça va ?'), null);
+  // It goes through the book like any other offer.
+  const b = new TradeBook();
+  const o = b.onLog(whisper('Иван', 'Здравствуйте, хочу купить у вас Табула Раса за 12 chaos в лиге Covens (секция "Sell"; позиция: 3 столбец, 5 ряд)'));
+  assert.equal(chatCommand('invite', o), '/invite Иван');
+  assert.equal(b.summary(prices, 2000).offers[0].value, 12);
+});
+
+test('sold per day: the last 14 days, today last', () => {
+  const b = new TradeBook();
+  const noon = new Date(2026, 10, 23, 12, 0, 0).getTime(), day = 86400000;
+  b.history = [
+    { id: 'a', dir: 'in', player: 'A', item: 'x', qty: 1, price: { amount: 10, currency: 'chaos' }, at: noon - 3600000 },
+    { id: 'b', dir: 'in', player: 'B', item: 'y', qty: 1, price: { amount: 1, currency: 'divine' }, at: noon - 2 * day },
+    { id: 'c', dir: 'out', player: 'C', item: 'z', qty: 1, price: { amount: 5, currency: 'chaos' }, at: noon - 2 * day },
+    { id: 'd', dir: 'in', player: 'D', item: 'w', qty: 1, price: null, at: noon - 2 * day },
+    { id: 'e', dir: 'in', player: 'E', item: 'old', qty: 1, price: { amount: 99, currency: 'chaos' }, at: noon - 20 * day },
+  ];
+  const days = b.summary(prices, noon).days;
+  assert.equal(days.length, 14);
+  assert.deepEqual(days[13], { day: new Date(2026, 10, 23).getTime(), sold: 10, soldCount: 1, bought: 0, boughtCount: 0 });
+  assert.deepEqual(days[11], { day: new Date(2026, 10, 21).getTime(), sold: 200, soldCount: 2, bought: 5, boughtCount: 1 });
+  assert.equal(days.reduce((a, x) => a + x.sold, 0), 210); // the 20-day-old sale is outside the chart
+});
+
 test('catching up after a restart: recent lines once, old lines never', () => {
   const now = 100 * 60000;
   const events = [

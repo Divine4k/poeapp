@@ -241,6 +241,24 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .trade-settings fieldset input[type=number] { width: 110px; }
 .trade-settings input:not([type=checkbox]), .trade-settings select { width: 100%; }
 .trade-side .table-wrap { flex: 1 1 200px; }
+/* sold per day: one series, so no legend; the caption names it */
+.sales { position: relative; margin: 0 0 14px; }
+.sales figcaption { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.sales figcaption b { font-size: 14px; font-weight: 600; }
+.sales figcaption span { font-size: 13px; color: var(--ash); }
+.sales-plot svg { display: block; width: 100%; height: auto; }
+.sales-plot .grid { stroke: var(--slab); stroke-width: 1; }
+.sales-plot .axis { stroke: var(--seam); stroke-width: 1; }
+.sales-plot .bar { fill: #ad8840; }
+.sales-plot .col:hover .bar, .sales-plot .col:focus .bar { fill: var(--gold); }
+.sales-plot .col { outline: none; }
+.sales-plot .hit { fill: transparent; }
+.sales-plot text { fill: var(--ash); font: 11px var(--body); font-variant-numeric: tabular-nums; }
+.sales-plot text.peak { fill: var(--bone); }
+.sales-empty { margin: 0; padding: 18px 0; color: var(--ash); font-size: 14px; }
+.sales-tip { position: absolute; z-index: 2; pointer-events: none; padding: 6px 9px; background: var(--slab); border: 1px solid var(--seam); border-radius: 4px; font-size: 13px; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
+.sales-tip b { display: block; font-family: var(--display); font-size: 15px; }
+.sales-tip span { display: block; color: var(--ash); }
 .kind { font-size: 12px; border: 1px solid var(--seam); border-radius: 3px; padding: 0 5px; color: var(--ash); }
 .kind.sold { color: var(--moss); border-color: var(--moss); }
 .kind.bought { color: var(--portal); border-color: var(--portal); }

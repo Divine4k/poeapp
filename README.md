@@ -55,7 +55,11 @@ The overlay sits on the screen chosen under Settings ("Screen the game runs on")
 
 **The app only types when Path of Exile is the window in front.** A small helper asks Windows which program is in front; if it is not the game and the game cannot be brought forward, nothing is typed and a red notice says so. If the helper cannot run on a PC, the buttons do not type at all.
 
-Limits: only English trade whispers are recognised.
+**Whispers in other languages.** A buyer's whisper is written in the language of the trade site they use, so Russian, German, French, Spanish, Portuguese, Korean and Thai whispers are listed too, with the language shown on the offer. Their wording was written from memory and has not been checked against real whispers: when a whisper does not fit, it is still listed and marked "read roughly", with the tab and slot right and the price left inside the item text. Bulk whispers in those languages are always read roughly.
+
+**Sold per day.** The Trade page charts the value you sold on each of the last 14 days; hover a column for the day's sales and purchases.
+
+Limits: the game itself must run in English, because arrivals, "Trade accepted" and the other system lines are only recognised in English.
 
 ## Naming items and the shared list
 

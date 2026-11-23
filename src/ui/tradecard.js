@@ -46,6 +46,8 @@
     const flags = [];
     if (o.test) flags.push(['', 'Test']);
     if (o.asks > 1) flags.push(['', `Asked ${o.asks} times`]);
+    if (o.rough) flags.push(['wait', `${o.lang || 'Other language'}: read roughly, check the whisper`]);
+    else if (o.lang) flags.push(['', o.lang]);
     if (o.soldAlready) flags.push(['bad', 'You already sold this']);
     if (o.low) flags.push(['bad', `Below market: ${chaosText(o.market, opt.divine)} on poe.ninja`]);
     else if (o.market != null && o.value != null) flags.push(['', `Market ${chaosText(o.market, opt.divine)}`]);
