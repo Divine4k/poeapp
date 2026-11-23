@@ -44,6 +44,7 @@
     else if (!inv.art.known && st.prices.count > 1) items.push(['bad', 'Prices loaded but no item pictures came with them']);
     else if (inv.art.known) items.push(['ok', `${inv.art.known} item pictures known`]);
     if (!st.hotkeys.clipboard) items.push(['bad', `Hotkey ${hk.clipboard} is taken by another app`]);
+    if (hk.snapshot && !st.hotkeys.snapshot) items.push(['bad', `Hotkey ${hk.snapshot} is taken by another app`]);
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
     const up = st.update, btn = $('btn-update');
     if (up.applying) items.push(['busy', up.step || 'Updating']);
@@ -59,6 +60,17 @@
       line.textContent = cur + chk;
     }
     $('status').innerHTML = items.map(([cls, text]) => `<li class="${cls}">${esc(text)}</li>`).join('');
+  }
+
+  // What a map's total leaves out, in words.
+  function uncountedLine(run, withHelp) {
+    const u = run.uncounted || { stacks: 0, singles: 0 };
+    if (!u.stacks && !u.singles) return '';
+    const parts = [];
+    if (u.stacks) parts.push(`${u.stacks} unrecognised ${u.stacks === 1 ? 'stack' : 'stacks'}`);
+    if (u.singles) parts.push(`${u.singles} single ${u.singles === 1 ? 'item' : 'items'} (maps, gear, gems)`);
+    const help = withHelp ? ` Hover one in game and press ${esc(state.config.hotkeys.clipboard)} to count it.` : '';
+    return `<p class="uncounted">Not in this total: ${parts.join(' and ')}.${help}</p>`;
   }
 
   // ---- current map ------------------------------------------------------------
@@ -77,7 +89,7 @@
           <span class="timer" id="timer">${fmtTime(liveDuration(run))}</span>
           <span class="value ${run.net < 0 ? 'neg' : ''}">${fmtValue(run.net)}
             <small>Loot ${fmtValue(run.lootValue)}, costs ${fmtValue(run.costValue)}</small></span>
-        </div>`;
+        </div>${uncountedLine(run, true)}`;
     }
 
     const feed = $('feed');
@@ -145,7 +157,7 @@
     $('runs').innerHTML = runs.map((r) => {
       const live = r.id === state.summary.currentId;
       let html = `<tr class="run ${live ? 'live' : ''}" data-expand="${esc(r.id)}">
-        <td>${esc(r.name)}</td>
+        <td>${esc(r.name)}${r.uncounted && (r.uncounted.stacks || r.uncounted.singles) ? ' <span class="flag" title="Some items in this map were not counted. Click the row for details.">incomplete</span>' : ''}</td>
         <td class="num">${fmtTime(live ? liveDuration(r) : r.durationMs)}</td>
         <td class="num">${fmtValue(r.lootValue)}</td>
         <td class="num">${fmtValue(r.costValue)}</td>
@@ -155,7 +167,7 @@
       if (expanded === r.id) {
         const items = r.items.length ? r.items.map((i) => `<b>${esc(i.name)}</b> ×${i.qty} (${fmtValue(i.chaos)})`).join(', ') : 'No loot recorded.';
         const costs = r.costs.length ? r.costs.map((c) => `${esc(c.name)} ×${c.qty} (${fmtValue(c.total)})`).join(', ') : 'none';
-        html += `<tr class="detail"><td colspan="7">${items}<br>Costs: ${costs}</td></tr>`;
+        html += `<tr class="detail"><td colspan="7">${items}<br>Costs: ${costs}${uncountedLine(r, false)}</td></tr>`;
       }
       return html;
     }).join('');
@@ -167,7 +179,7 @@
     const anyRule = state.config.mapRules.some((r) => r.enabled);
     let html;
     if (!mc) {
-      html = `<p class="hint">Hover a map in game and press Ctrl+C, then press ${esc(hk.clipboard)}. The mods your build cannot run are flagged here.</p>
+      html = `<p class="hint">Hover a map in game and press ${esc(hk.clipboard)}. The mods your build cannot run are flagged here.</p>
         ${anyRule ? '' : '<p class="notice">No mods are marked as dangerous yet. Pick them in Settings.</p>'}
         <button type="button" data-act="readClipboard">Check the copied item now</button>`;
     } else {
@@ -221,12 +233,13 @@
       box.innerHTML = `<p class="hint">Nothing read yet. Open your inventory in game (${esc(state.config.inventory.key)}) and keep the mouse off it for a second.</p>`;
       return;
     }
-    const how = { art: 'matched to its picture', learned: 'named by you', shared: 'from the shared list' };
+    const how = { art: 'matched to its picture', learned: 'named by you', shared: 'from the shared list', pinned: 'counted by you for this slot' };
     const describe = (c) => {
       if (c.status === 'item') return `${c.name} ×${c.qty}: ${fmtValue(c.total)}. Recognised: ${how[c.source] || ''}${c.score ? `, ${c.score}% match` : ''}.`;
       if (c.status === 'remembered') return `${c.name} ×${c.qty}: ${fmtValue(c.total)}. Covered in this read, so the last known value is used.`;
       if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}.${c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}% match.` : ''}`;
       if (c.status === 'ignored') return 'Ignored by you.';
+      if (c.status === 'covered') return 'Possibly covered by a tooltip in this read, so nothing was concluded.';
       return `No stack number, so it is not counted (gear, gems and other single items).${c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}%.` : ''}`;
     };
     const byCell = new Map(inv.cells.map((c) => [c.cell, c]));
@@ -257,7 +270,7 @@
             <li class="item">${count('item')} recognised</li>
             <li class="remembered">${count('remembered')} covered, last known value used</li>
             <li class="unknown">${count('unknown')} not recognised</li>
-            <li class="skipped">${count('skipped') + count('ignored')} not counted (no stack number, or ignored)</li>
+            <li class="skipped">${count('skipped') + count('ignored') + count('covered')} not counted (no stack number, ignored, or covered)</li>
           </ul>
           ${unpriced ? `<p class="map-meta">${unpriced} recognised ${unpriced === 1 ? 'item has' : 'items have'} no price.</p>` : ''}
           <p class="map-meta">Hover a slot to see how it was read.</p>
@@ -459,6 +472,8 @@
     el.logPath.value = c.logPath || '';
     el.logPath.placeholder = state.status.log.path || 'Found automatically when empty';
     el.hkClip.value = c.hotkeys.clipboard;
+    el.hkSnap.value = c.hotkeys.snapshot || '';
+    el.autoCopy.checked = !!c.inventory.autoCopy;
     el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.inventory.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
     el.invKey.value = c.inventory.key || 'Tab';
     el.onKey.checked = !!c.inventory.onKey;
@@ -486,11 +501,12 @@
       league: el.league.value || c.league,
       characterName: el.characterName.value.trim(),
       logPath: el.logPath.value.trim(),
-      hotkeys: { clipboard: el.hkClip.value.trim() || 'F8' },
+      hotkeys: { clipboard: el.hkClip.value.trim() || 'F8', snapshot: el.hkSnap.value.trim() },
       inventory: {
         displayId: el.displayId.value || null,
         key: el.invKey.value.trim() || 'Tab',
         onKey: el.onKey.checked,
+        autoCopy: el.autoCopy.checked,
         timed: el.timed.checked,
         intervalMs: Math.max(500, Math.round((Number(el.intervalSec.value) || 1) * 1000)),
       },

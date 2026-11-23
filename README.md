@@ -10,31 +10,31 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures
 |---|---|
 | Map timer, maps run, deaths, session totals, profit per hour | Reads the game log (`Client.txt`) automatically |
 | Loot value per map | Reads your inventory from the screen whenever it is open |
-| Map mod check | You press Ctrl+C on a map in game, then F8 |
-| Price check | Same: Ctrl+C on an item, then F8. Or search by name |
+| Map mod check | Hover a map in game and press F8 |
+| Price check | Hover any item and press F8, or browse the Prices page |
 | Net profit | A cost loadout (scarabs, map, chisels) charged to every new map |
 
 ## How loot is counted
 
-The app compares each inventory reading with the one before.
+The app compares each inventory reading with what was there when you entered the map.
 
-- **In a map:** anything that went up since the baseline is loot for that map.
-- **Arriving in the hideout:** the first reading still counts for the map you just left.
-- **After that, in the hideout:** nothing counts. Stashing, or taking scarabs out, only moves the baseline.
+- **In a map:** anything that went up since then is loot for that map.
+- **Back in the hideout:** each slot counts the first time it is seen after you arrive. Tooltips and stashing mean the inventory is rarely fully visible at once, and this way it does not have to be. A slot first seen empty that fills up later is a withdrawal, not loot.
+- **Entering the next map:** what is in the inventory then becomes the new starting point, whether you stashed or not.
 - **Several inventories from one map:** a map stays current until you open a different one, so every trip adds to it.
 
-Items are recognised by their picture, and the stack number is read from the corner of the cell.
+Items are recognised by their picture, and the stack number is read from the corner of the slot.
 
-- Currency, scarabs, fragments, essences, fossils, oils and similar are recognised.
-- Divination cards all share one picture, so they cannot be told apart. The same goes for maps and gems.
-- Rares and uniques are not priced.
-- A stack the app does not recognise shows up under the loot list with its picture. Name it once and it is recognised from then on.
+- Currency, threads, fragments, essences, fossils, oils and similar are recognised automatically.
+- Divination cards, maps, gems and uniques cannot be told apart by picture. Hover one and press F8 to count that slot.
+- Rares are not priced.
+- Each map shows what it could not count, and is marked "incomplete" in the list.
 
 ## Naming items and the shared list
 
 Items the app cannot recognise appear under the loot list with their picture. Three ways to name one, fastest first:
 
-1. Hover it in game, press Ctrl+C, then F8. The item under your mouse gets the copied name.
+1. Hover it in game and press F8. The item under your mouse gets the name the game reports.
 2. Click one of the suggested names next to its picture.
 3. Type the name, or press **Ignore** to never be asked about it again.
 
@@ -57,15 +57,17 @@ The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so a
 ## Game settings
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.
-- F8 must not be bound to anything in game. Change it in Settings if it is.
+- F8 and F9 must not be bound to anything in game. Change them in Settings if they are.
+- F9 saves a snapshot of what the app sees to your Desktop, for reporting problems.
 - If your inventory key is not Tab, set it in Settings.
 
 ## Rules and risk
 
-GGG's developer guidelines say an app may read the screen or clipboard **once per manual key press**, may read the game log, and must not send input to the game or touch its memory or files.
+GGG's developer guidelines say an app may read the screen or clipboard **once per manual key press**, may send **one action to the game per manual key press**, may read the game log, and must not touch the game's memory or files.
 
-- This app sends nothing to the game and never touches game memory or files.
-- **Reading on your inventory key** is one read per key press, so it stays inside the rule. The app listens for that one key without blocking it.
+- The app never touches game memory or files.
+- **F8** sends a single Ctrl+C to the game when you press it, then reads the clipboard once. That is the same pattern price-check tools use. You can switch the Ctrl+C off in Settings and press it yourself.
+- **Reading on your inventory key** is one read per key press. The app listens for that one key without blocking it.
 - **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
 - With "check by itself" off, press your inventory key once after arriving in the hideout, before you stash.
 - GGG has never officially approved any local third-party tool, so no tool is guaranteed safe.

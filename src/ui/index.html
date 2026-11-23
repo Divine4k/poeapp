@@ -67,7 +67,7 @@
   <div id="inventory-body"></div>
   <div id="unknown-wrap" hidden>
     <h2>Not recognised yet</h2>
-    <p class="hint small">Fastest: hover the item in game, press Ctrl+C, then <span id="hk-name">F8</span>. Or pick a suggestion here.</p>
+    <p class="hint small">Fastest: hover the item in game and press <span id="hk-name">F8</span>. Or pick a suggestion here.</p>
     <ul class="unknown" id="unknown"></ul>
   </div>
 </main>
@@ -132,7 +132,8 @@
       <label class="wide">Game log file (Client.txt)
         <span class="row"><input name="logPath" placeholder="Found automatically when empty"><button type="button" id="btn-browse">Browse</button></span>
       </label>
-      <label>Check copied item hotkey <input name="hkClip" placeholder="F8"></label>
+      <label>Check or count the hovered item <input name="hkClip" placeholder="F8"></label>
+      <label>Save a snapshot for troubleshooting <input name="hkSnap" placeholder="F9"></label>
       <label>Screen the game runs on <select name="displayId"></select></label>
     </div>
 
@@ -140,9 +141,10 @@
       <legend>Reading your inventory</legend>
       <label>Key that opens your inventory in game <input name="invKey" placeholder="Tab"></label>
       <label class="check"><input type="checkbox" name="onKey"> Read the inventory once each time I press that key</label>
+      <label class="check"><input type="checkbox" name="autoCopy"> The check key copies the hovered item for me (sends one Ctrl+C to the game per press)</label>
       <label class="check"><input type="checkbox" name="timed"> Also check by itself (needed to count loot when you open the stash with a click)</label>
       <label>Seconds between checks <input name="intervalSec" type="number" min="0.5" max="30" step="0.5"></label>
-      <p class="warn">GGG's rules allow one screen read per manual key press. Reading on your inventory key stays within that. Checking by itself reads without a key press, so it breaks that rule and is your own risk. Without it, press your inventory key once after arriving in the hideout, before you stash.</p>
+      <p class="warn">GGG's rules allow one screen read, and one action sent to the game, per manual key press. Reading on your inventory key and the single Ctrl+C on the check key stay within that. Checking by itself reads without a key press, so it breaks that rule and is your own risk. Without it, press your inventory key once after arriving in the hideout, before you stash.</p>
     </fieldset>
 
     <fieldset>
@@ -163,7 +165,7 @@
       <div class="rules" id="rules"></div>
     </fieldset>
 
-    <p class="fine">This app only reads the game log, the clipboard and the screen. It sends nothing to the game and never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
+    <p class="fine">This app reads the game log, the clipboard and the screen. The only thing it ever sends to the game is one Ctrl+C when you press the check key, if that option is on. It never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
     <p class="fine" id="version-line"></p>
     <div class="dialog-actions">
       <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-check-update">Check for updates</button><button type="button" id="btn-diagnostic">Save diagnostic file</button></span>

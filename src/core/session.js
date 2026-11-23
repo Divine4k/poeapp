@@ -136,6 +136,15 @@ class Session {
     if (run.seen.length > 400) run.seen.splice(0, run.seen.length - 400);
   }
 
+  // Records how much of the inventory could not be counted while this run was being read.
+  // The highest numbers seen are kept.
+  setUncounted(runId, stacks, singles) {
+    const run = this.runs.find((r) => r.id === runId);
+    if (!run) return;
+    const u = run.uncounted || { stacks: 0, singles: 0 };
+    run.uncounted = { stacks: Math.max(u.stacks, stacks), singles: Math.max(u.singles, singles) };
+  }
+
   removeLoot(runId, lootId) {
     const run = this.runs.find((r) => r.id === runId);
     if (run) run.loot = run.loot.filter((l) => l.id !== lootId);
@@ -187,6 +196,7 @@ class Session {
         activeMs: run.activeMs, segmentStart: run.segmentStart,
         durationMs: this.runDuration(run), deaths: run.deaths,
         lootValue, costValue, net: lootValue - costValue,
+        uncounted: run.uncounted || { stacks: 0, singles: 0 },
         items: [...grouped.values()].sort((a, b) => b.chaos - a.chaos),
         loot: run.loot.map((l) => ({ ...l, chaos: chaosOf(l.name) * l.qty })),
         seen: run.seen.slice(-40).map((s) => ({ ...s, chaos: chaosOf(s.name) * s.qty })),

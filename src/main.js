@@ -28,10 +28,11 @@ const DEFAULT_CONFIG = {
   league: '',
   logPath: '',
   characterName: '',
-  hotkeys: { clipboard: 'F8' },
+  hotkeys: { clipboard: 'F8', snapshot: 'F9' },
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
-  inventory: { displayId: null, key: 'Tab', onKey: true, timed: false, intervalMs: 1000 },
+  // autoCopy: the check hotkey presses Ctrl+C in the game for you (one copy per key press).
+  inventory: { displayId: null, key: 'Tab', onKey: true, timed: false, intervalMs: 1000, autoCopy: true },
   mapRules: DEFAULT_RULES,
   loadout: [],
   shareToken: '', // GitHub token for uploading named items, stored encrypted
@@ -51,7 +52,9 @@ let updater = null;
 let shared = null;
 let flushTimer = null;
 let notice = null; // { text, bad, at }
-let lastInventory = { rev: 0, at: 0, cells: [] }; // what the last clean read saw, for the Inventory tab
+let lastInventory = { rev: 0, at: 0, cells: [] };
+let singlesBaseline = 0;  // single (unnumbered) items in the inventory when the map was entered
+let lastSingles = 0; // what the last clean read saw, for the Inventory tab
 let unknownSeq = 1;
 let unknown = []; // [{ id, qty, print, image, guesses }]
 let learned = []; // [{ name, print(base64) }]
@@ -65,7 +68,7 @@ const status = {
   log: { ok: false, path: '', error: 'Not started' },
   prices: { count: 0, updatedAt: 0, league: '', errors: [], loading: false },
   inventory: { keyHook: 'off', open: false, lastReadAt: 0, recognised: 0, error: null, art: { known: 0, done: 0, total: 0, failed: 0 } },
-  hotkeys: { clipboard: false },
+  hotkeys: { clipboard: false, snapshot: false },
   shared: { count: 0, loadedAt: 0, error: null, uploaded: 0, canUpload: false },
   update: { current: null, latest: null, available: false, checking: false, applying: false, step: '', error: null, checkedAt: 0 },
 };
@@ -122,10 +125,12 @@ function push() {
 function changed() { scheduleSave(); push(); }
 
 // ---- game log ----------------------------------------------------------------
-function syncLedger(runChanged) {
+function syncLedger() {
   const cur = session.current;
-  if (cur && cur.segmentStart !== null) ledger.enterMap(runChanged);
-  else ledger.leaveMap();
+  if (cur && cur.segmentStart !== null) {
+    if (!ledger.inMap) singlesBaseline = lastSingles;
+    ledger.enterMap();
+  } else ledger.leaveMap();
 }
 
 function startLog() {
@@ -141,7 +146,7 @@ function startLog() {
   logTail.on('event', (ev) => {
     const before = session.currentId;
     session.handleLogEvent(ev, { characterName: config.characterName, loadout: config.loadout });
-    if (ev.type === 'area') syncLedger(session.currentId !== before);
+    if (ev.type === 'area') syncLedger();
     changed();
   });
   logTail.start();
@@ -202,6 +207,13 @@ function updateUnknown(found) {
   unknown = next;
 }
 
+// Which inventory slot the mouse is over, or null.
+function cursorCell(cur, rect) {
+  if (!cur) return null;
+  const col = Math.floor((cur.x - rect.x0) / rect.cell), row = Math.floor((cur.y - rect.y0) / rect.cell);
+  return col >= 0 && col < COLS && row >= 0 && row < ROWS ? { row, col } : null;
+}
+
 async function readInventory() {
   if (invBusy) return;
   invBusy = true;
@@ -211,11 +223,9 @@ async function readInventory() {
     status.inventory.error = null;
     status.inventory.open = isInventoryOpen(frame, rect);
     if (!status.inventory.open) return;
-    // While the mouse is over the grid a tooltip covers some cells, so wait for a clean view.
-    const cur = cursorInFrame(frame);
-    if (cur && cur.x > rect.x0 - rect.cell * 0.5 && cur.y > rect.y0 - rect.cell * 0.5
-      && cur.x < rect.x0 + rect.cell * (COLS + 0.5) && cur.y < rect.y0 + rect.cell * (ROWS + 0.5)) return;
-    const result = reader.read(frame);
+    // With the mouse over the inventory a tooltip covers some slots; the reader keeps what it
+    // knew about those and reads the rest.
+    const result = reader.read(frame, { cursor: cursorCell(cursorInFrame(frame), rect) });
     if (!result) return;
     status.inventory.lastReadAt = Date.now();
     status.inventory.recognised = result.recognised;
@@ -225,8 +235,8 @@ async function readInventory() {
       rev: lastInventory.rev + 1, at: Date.now(),
       cells: result.cells.map((c) => {
         const prev = before.get(c.cell);
-        const same = prev && similarity(prev.print, c.print) > 0.98;
-        const guess = c.status === 'unknown' || c.status === 'skipped' ? index.suggest(c.print, 1)[0] : null;
+        const same = prev && prev.print && c.print && similarity(prev.print, c.print) > 0.98;
+        const guess = c.print && (c.status === 'unknown' || c.status === 'skipped') ? index.suggest(c.print, 1)[0] : null;
         return {
           cell: c.cell, print: c.print, status: c.status, name: c.name, qty: c.qty, source: c.source,
           score: c.score ? Math.round(c.score * 100) : null,
@@ -235,8 +245,14 @@ async function readInventory() {
         };
       }),
     };
-    const gains = ledger.reading(result.counts);
+    const known = result.cells.filter((c) => c.name).map((c) => ({ cell: c.cell, name: c.name, qty: c.qty }));
+    const gains = ledger.reading({ counts: result.counts, cells: known, empties: result.empties });
     if (gains.length && session.current) session.addLoot(gains, 'inventory');
+    // What could not be counted, so each map can say how far its total can be trusted.
+    lastSingles = result.cells.filter((c) => c.status === 'skipped').length;
+    if (session.current && (ledger.inMap || ledger.pendingArrival)) {
+      session.setUncounted(session.currentId, result.unknown.length, Math.max(0, lastSingles - singlesBaseline));
+    }
     scheduleSave();
   } catch (e) {
     status.inventory.error = e.message || String(e);
@@ -252,21 +268,24 @@ function syncTimedWatch() {
   if (config.inventory.timed) timedTimer = setInterval(readInventory, Math.max(500, Number(config.inventory.intervalMs) || 1000));
 }
 
-// Listens for your inventory key without blocking it, and reads once per press.
-// Nothing is ever sent to the game.
+// The keyboard helper does two things, each only on your own key press:
+// it notices your inventory key (without blocking it) so the inventory is read once per press,
+// and it lets the check hotkey send a single Ctrl+C to the game.
 const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape', enter: 'Enter', backquote: 'Backquote', '`': 'Backquote' };
 function syncKeyHook() {
   if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
   status.inventory.keyHook = 'off';
-  if (!config.inventory.onKey) return;
+  if (!config.inventory.onKey && !config.inventory.autoCopy) return;
   let lib;
   try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; }
-  const raw = String(config.inventory.key || 'Tab').trim();
-  const name = KEY_ALIASES[raw.toLowerCase()] || (raw.length === 1 ? raw.toUpperCase() : raw);
-  const code = lib.UiohookKey[name];
-  if (code === undefined) { status.inventory.keyHook = 'badkey'; return; }
-  lib.uIOhook.on('keydown', (e) => { if (e.keycode === code) setTimeout(readInventory, 200); });
-  try { lib.uIOhook.start(); hook = lib; status.inventory.keyHook = 'ok'; } catch (_) { status.inventory.keyHook = 'missing'; }
+  if (config.inventory.onKey) {
+    const raw = String(config.inventory.key || 'Tab').trim();
+    const name = KEY_ALIASES[raw.toLowerCase()] || (raw.length === 1 ? raw.toUpperCase() : raw);
+    const code = lib.UiohookKey[name];
+    if (code === undefined) status.inventory.keyHook = 'badkey';
+    else lib.uIOhook.on('keydown', (e) => { if (e.keycode === code) setTimeout(readInventory, 200); });
+  }
+  try { lib.uIOhook.start(); hook = lib; if (status.inventory.keyHook !== 'badkey') status.inventory.keyHook = 'ok'; } catch (_) { status.inventory.keyHook = 'missing'; }
 }
 
 // ---- naming items ------------------------------------------------------------------
@@ -289,23 +308,35 @@ function learnPrint(typed, print) {
   }
 }
 
-// Ctrl+C on an item in game, then the check hotkey: the item under the mouse gets that name.
-// No screen capture is needed: the picture comes from the last clean inventory read, because
+// The check hotkey on an inventory item: the slot under the mouse gets the copied item's name.
+// No screen capture is needed: the picture comes from the last clear view of that slot, because
 // the item's own tooltip covers part of the inventory while you hover it.
-function nameUnderCursor(name) {
+//
+// Items that are always the same picture (currency, threads...) are learned for good.
+// Items that share a picture or vary (divination cards, maps, uniques, gems) are only counted
+// for the slot they are in now.
+function nameUnderCursor(item, name, entry) {
   const cur = cursorOnDisplay(config.inventory.displayId);
   if (!cur) return;
   const rect = gridRect(cur.width, cur.height);
-  const col = Math.floor((cur.x - rect.x0) / rect.cell), row = Math.floor((cur.y - rect.y0) / rect.cell);
-  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return; // not over the inventory: a plain price check
-  const print = reader.prints[row * COLS + col];
+  const at = cursorCell(cur, rect);
+  if (!at) return; // not over the inventory: a plain price check
+  const k = at.row * COLS + at.col;
+  const print = reader.prints[k];
   if (!print) {
-    say(`Could not name ${name}: the app has not seen that inventory slot yet. Move the mouse off the inventory, press your inventory key twice (close and open), then try again.`, true);
+    say(`Could not count ${name}: the app has not had a clear view of that slot yet. Move the mouse off the inventory for a second, then try again.`, true);
     return;
   }
-  const hit = index.match(print);
-  if (hit && hit.name === name) { say(`${name} is already recognised.`); return; }
-  learnPrint(name, print);
+  const sharedPicture = /Divination Card|Map/i.test(item.itemClass) || item.isMap;
+  if (item.stackable && !sharedPicture) {
+    const hit = index.match(print);
+    if (hit && hit.name === name) { say(`${name} is already recognised.`); return; }
+    learnPrint(name, print);
+    return;
+  }
+  if (!entry) { say(`${name} has no known price, so it is not counted.`, true); return; }
+  reader.pin(k, entry.name, item.stackSize || 1);
+  say(`Counting ${entry.name}${item.stackSize > 1 ? ` ×${item.stackSize}` : ''} in that slot: ${Math.round(entry.chaos * (item.stackSize || 1) * 10) / 10}c. It shows up in the loot at the next inventory read.`);
 }
 
 async function loadShared() {
@@ -316,11 +347,12 @@ async function loadShared() {
 }
 
 // Writes what the app saw and what it compared against to a file on the Desktop, for tuning.
-async function saveDiagnostic() {
+async function saveDiagnostic(snapshot = false) {
   try {
     const frame = await captureFrame(config.inventory.displayId);
     const rect = gridRect(frame.width, frame.height);
     const open = isInventoryOpen(frame, rect);
+    const mouse = cursorInFrame(frame);
     const b64 = (u8) => Buffer.from(u8).toString('base64');
     const cells = [];
     const wanted = new Set();
@@ -342,14 +374,18 @@ async function saveDiagnostic() {
       try { const a = await artLoader.fetchRgb(entry.icon); if (a) art.push({ name, url: entry.icon, size: a.size, rgb: b64(a.rgb) }); } catch (_) { /* skip */ }
     }
     const report = {
-      version: updater && updater.current, when: new Date().toISOString(), open,
+      version: updater && updater.current, when: new Date().toISOString(), open, snapshot,
+      mouse, mouseCell: cursorCell(mouse, rect),
+      ledger: ledger.toJSON(), lastRead: lastInventory.cells.map((c) => ({ cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source })),
+      location: session.location, inRun: !!session.current,
       frame: { width: frame.width, height: frame.height }, rect, display: { scaleFactor: frame.display.scaleFactor, size: frame.display.size },
       counts: { art: index.art.length, learned: index.learned.length, shared: index.shared.length, prices: prices.size },
       artProgress: status.inventory.art, categories: prices.toJSON().entries.reduce((m, e) => { m[e.category] = (m[e.category] || 0) + 1; return m; }, {}), cells, art,
     };
-    const file = path.join(app.getPath('desktop'), 'poeapp-diagnostic.json.gz');
+    const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+    const file = path.join(app.getPath('desktop'), snapshot ? `poeapp-snapshot-${stamp}.json.gz` : 'poeapp-diagnostic.json.gz');
     fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(report)));
-    say(open ? `Saved ${file}. Send that file to get the item matching tuned.` : `Saved ${file}, but the inventory was not open in game, so it holds no items. Open it and save again.`, !open);
+    say(open ? `Saved ${file}. Send that file along when you report a problem.` : `Saved ${file}, but the inventory was not open in game, so it holds no items. Open it and save again.`, !open);
   } catch (e) {
     say(`Could not save the diagnostic file: ${e.message || e}`, true);
   }
@@ -417,6 +453,9 @@ function checkText(text) {
       rarity: item.rarityBonus, packSize: item.packSize, corrupted: !!item.corrupted, unidentified: !!item.unidentified,
       mods, dangerCount: mods.filter((m) => m.dangerous).length,
     };
+    const base = item.baseType || item.name;
+    const mapEntry = (item.mapTier && prices.get(`${base} (T${item.mapTier})`)) || prices.get(base);
+    nameUnderCursor(item, base, mapEntry);
     return;
   }
   const name = priceName(item);
@@ -425,16 +464,41 @@ function checkText(text) {
     at: Date.now(), name, qty: item.stackSize, found: !!entry,
     each: entry ? entry.chaos : 0, total: entry ? entry.chaos * item.stackSize : 0,
   };
-  if (item.stackable) nameUnderCursor(entry ? entry.name : name); // only items that are always the same
+  nameUnderCursor(item, entry ? entry.name : name, entry);
+}
+
+// One press of the check hotkey: copy the hovered item (a single Ctrl+C sent to the game, the
+// same thing price-check tools do), then read the clipboard once.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function checkHovered() {
+  if (config.inventory.autoCopy && hook) {
+    const before = clipboard.readText();
+    try {
+      clipboard.writeText('');
+      hook.uIOhook.keyTap(hook.UiohookKey.C, [hook.UiohookKey.Ctrl]);
+      let text = '';
+      for (let i = 0; i < 16 && !text; i++) { await sleep(25); text = clipboard.readText(); }
+      if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); changed(); return; }
+      checkText(text);
+    } catch (e) {
+      clipboard.writeText(before);
+      checkText(before);
+    }
+  } else {
+    checkText(clipboard.readText());
+  }
+  changed();
 }
 
 function registerHotkeys() {
   globalShortcut.unregisterAll();
-  status.hotkeys = { clipboard: false };
-  if (!config.hotkeys.clipboard) return;
-  try {
-    status.hotkeys.clipboard = globalShortcut.register(config.hotkeys.clipboard, () => { checkText(clipboard.readText()); changed(); });
-  } catch (_) { status.hotkeys.clipboard = false; }
+  status.hotkeys = { clipboard: false, snapshot: false };
+  const reg = (key, fn) => {
+    if (!config.hotkeys[key]) return;
+    try { status.hotkeys[key] = globalShortcut.register(config.hotkeys[key], fn); } catch (_) { status.hotkeys[key] = false; }
+  };
+  reg('clipboard', () => { checkHovered(); });
+  reg('snapshot', () => { saveDiagnostic(true).then(changed); });
 }
 
 // ---- window --------------------------------------------------------------------
@@ -477,12 +541,12 @@ function applyConfig(patch) {
 }
 
 const actions = {
-  startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(true); },
-  endRun: () => { session.endRun(); syncLedger(false); },
-  deleteRun: (a) => { session.deleteRun(a.runId); syncLedger(false); },
-  newSession: () => { session.reset(); syncLedger(false); },
+  startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(); },
+  endRun: () => { session.endRun(); syncLedger(); },
+  deleteRun: (a) => { session.deleteRun(a.runId); syncLedger(); },
+  newSession: () => { session.reset(); syncLedger(); },
   addLoot: (a) => {
-    if (!session.current && !a.runId) { session.startRun({ name: 'Manual run', loadout: config.loadout }); syncLedger(true); }
+    if (!session.current && !a.runId) { session.startRun({ name: 'Manual run', loadout: config.loadout }); syncLedger(); }
     session.addLoot([{ name: a.name, qty: a.qty }], 'manual', a.runId || session.currentId);
   },
   removeLoot: (a) => session.removeLoot(a.runId, a.lootId),

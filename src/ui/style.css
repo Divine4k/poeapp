@@ -111,6 +111,9 @@ dialog input[type=password] { width: 100%; }
 .guess-field small { display: block; color: var(--ash); font-size: 12px; margin-top: 2px; }
 .empty { color: var(--ash); padding: 10px 0; display: block !important; border: 0 !important; font-size: 14px !important; }
 
+.uncounted { margin: 6px 0 0; font-size: 14px; color: var(--gold); }
+.flag { font-size: 11px; color: var(--gold); border: 1px solid var(--gold); border-radius: 3px; padding: 0 4px; margin-left: 6px; }
+
 /* session */
 .totals { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 14px; }
 .totals div { font-family: var(--display); font-size: 30px; font-stretch: 85%; font-variant-numeric: tabular-nums; line-height: 1.1; }

@@ -70,76 +70,153 @@ test('icons: transparent art is placed on the cell background', () => {
   assert.deepEqual([...rgb.slice(3, 6)], [4, 4, 29]);
 });
 
-test('reader + ledger: a full map-to-hideout pass counts exactly what was gained', () => {
-  // Teach the reader the items in the map capture, one name per distinct picture.
+// Teaches an index every distinct picture in the map capture under a made-up name.
+function taughtIndex() {
   const index = new IconIndex();
   const names = [];
   each('inv_map', (truth, cell, r, c) => {
     if (truth === null || truth === 'x') return;
     const print = fingerprint(cell);
-    const known = names.find((n) => similarity(n.print, print) > 0.95);
-    if (!known) { names.push({ name: `item-${r}-${c}`, print }); index.addLearned(`item-${r}-${c}`, print); }
+    if (!names.find((n) => similarity(n.print, print) > 0.95)) { names.push({ print }); index.addLearned(`item-${r}-${c}`, print); }
   });
-  const reader = new InventoryReader(index);
+  return index;
+}
+const asReading = (r) => ({ counts: r.counts, cells: r.cells.filter((c) => c.name).map((c) => ({ cell: c.cell, name: c.name, qty: c.qty })), empties: r.empties });
+
+test('reader + ledger: a full map-to-hideout pass counts exactly what was gained', () => {
+  const reader = new InventoryReader(taughtIndex());
   const ledger = new LootLedger();
 
-  ledger.enterMap(true);
+  ledger.enterMap();
   const first = reader.read(frames.inv_map);
   assert.equal(first.counts.get('item-0-0'), 26);
   assert.equal(first.counts.get('item-3-2'), 20 + 20 + 20 + 8); // four stacks of one item
-  assert.deepEqual(ledger.reading(first.counts), []); // first reading is the baseline
+  assert.equal(first.empties.length, 60 - 36);
+  assert.deepEqual(ledger.reading(asReading(first)), []); // first reading is the baseline
 
   ledger.leaveMap();
   const second = reader.read(frames.inv_hideout);
-  const gains = new Map(ledger.reading(second.counts).map((g) => [g.name, g.qty]));
+  const gains = new Map(ledger.reading(asReading(second)).map((g) => [g.name, g.qty]));
   assert.equal(gains.get('item-0-2'), 3);   // 4 -> 7
   assert.equal(gains.get('item-2-2'), 12);  // 6 -> 18
   assert.equal(gains.get('item-1-3'), 20);  // a second stack of 20 appeared
   assert.equal(gains.has('item-0-0'), false); // 26 -> 25 is not loot
   assert.ok(second.unknown.length >= 1);    // new items with a stack number are offered for naming
   // already credited: reading the same inventory again adds nothing
-  assert.deepEqual(ledger.reading(second.counts), []);
+  assert.deepEqual(ledger.reading(asReading(second)), []);
   assert.equal(reader.read({ data: Buffer.alloc(1920 * 1080 * 4), width: 1920, height: 1080 }), null);
 });
 
-test('ledger: hideout changes are not loot, repeat trips to one map add up, dips do not double count', () => {
-  const m = (o) => new Map(Object.entries(o));
-  const l = new LootLedger();
-  assert.deepEqual(l.reading(m({ scarab: 4 })), []);            // hideout baseline
-  l.enterMap(true);
-  assert.deepEqual(l.reading(m({ chaos: 5 })), [{ name: 'chaos', qty: 5 }]);
-  assert.deepEqual(l.reading(m({ chaos: 2 })), []);              // briefly hidden stack
-  assert.deepEqual(l.reading(m({ chaos: 8 })), [{ name: 'chaos', qty: 3 }]);
-  l.leaveMap();
-  assert.deepEqual(l.reading(m({ chaos: 9 })), [{ name: 'chaos', qty: 1 }]); // arrival reading still counts
-  assert.deepEqual(l.reading(m({ chaos: 9, alt: 2 })), [{ name: 'alt', qty: 2 }]); // a later, cleaner reading still counts
-  assert.deepEqual(l.reading(m({})), []);                        // stashed everything: arrival is over
-  assert.deepEqual(l.reading(m({ scarab: 4 })), []);             // took scarabs out: not loot
-  l.enterMap(false);                                             // back into the same map
-  assert.deepEqual(l.reading(m({ scarab: 4, chaos: 6 })), [{ name: 'chaos', qty: 6 }]);
+test('reader: slots near the mouse keep what was known, slots counted by hand stay counted', () => {
+  const reader = new InventoryReader(taughtIndex());
+  const clean = reader.read(frames.inv_map);
+  const total = clean.counts.get('item-0-0');
+
+  // Black out the top two rows as a tooltip would, with the mouse on row 3 (index 2).
+  const covered = { ...frames.inv_map, data: Buffer.from(frames.inv_map.data) };
+  const rect = gridRect(1920, 1080);
+  for (let y = Math.floor(rect.y0); y < rect.y0 + rect.cell * 2; y++) covered.data.fill(0, (y * 1920 + Math.floor(rect.x0)) * 4, (y * 1920 + 1903) * 4);
+  const hover = reader.read(covered, { cursor: { row: 2, col: 3 } });
+  assert.equal(hover.counts.get('item-0-0'), total);            // still counted from memory
+  assert.equal(hover.empties.some((k) => k < 24), false);        // nothing in the covered rows is called empty
+  assert.equal(hover.unknown.length, 0);
+  // Without the mouse there, the same picture means those slots really are empty now.
+  const gone = reader.read(covered);
+  assert.equal(gone.counts.has('item-0-0'), false);
+  assert.ok(gone.empties.includes(0));
+
+  // A slot counted by hand: the unrecognised single item at row 2, column 1 of the map capture.
+  const r2 = new InventoryReader(taughtIndex());
+  r2.index.forget('item-1-0');
+  const before = r2.read(frames.inv_map);
+  assert.equal(before.cells.find((c) => c.cell === 12).status, 'skipped');
+  assert.equal(r2.pin(12, 'Strand Map (T16)', 1), true);
+  const after = r2.read(frames.inv_map);
+  assert.equal(after.counts.get('Strand Map (T16)'), 1);
+  assert.equal(after.cells.find((c) => c.cell === 12).source, 'pinned');
+  assert.equal(r2.pin(59, 'Nothing', 1), false);                 // empty slot: nothing to count
+  // the slot's content changes: the hand count is dropped
+  const other = r2.read(frames.inv_hideout);
+  assert.equal(other.counts.get('Strand Map (T16)'), 1);         // same item still there in the second capture
+  r2.pins[12].print = fingerprint(extractGrid(frames.inv_map)[0]);
+  assert.equal(r2.read(frames.inv_hideout).counts.has('Strand Map (T16)'), false);
 });
 
-test('ledger: a whole map without opening the inventory is counted on arrival, also after a restart', () => {
-  const m = (o) => new Map(Object.entries(o));
+// Builds a reading from { name: qty } with every item in its own fixed slot.
+const SLOT = { portal: 0, chaos: 1, divine: 2, alt: 3, scarab: 4, thread: 5 };
+function obs(items, hidden = []) {
+  const counts = new Map(Object.entries(items));
+  const cells = Object.entries(items).map(([name, qty]) => ({ cell: SLOT[name], name, qty }));
+  const used = new Set([...cells.map((c) => c.cell), ...hidden.map((n) => SLOT[n])]);
+  const empties = [];
+  for (let k = 0; k < 60; k++) if (!used.has(k)) empties.push(k);
+  return { counts, cells, empties };
+}
+
+test('ledger: in a map only the highest count is credited', () => {
   const l = new LootLedger();
-  l.reading(m({ portal: 40 }));                                  // hideout, before the map
-  l.enterMap(true);                                              // map run, inventory never opened
+  assert.deepEqual(l.reading(obs({ scarab: 4 })), []);           // hideout: starting point
+  l.enterMap();
+  assert.deepEqual(l.reading(obs({ chaos: 5 })), [{ name: 'chaos', qty: 5 }]);
+  assert.deepEqual(l.reading(obs({ chaos: 2 })), []);             // briefly hidden stack
+  assert.deepEqual(l.reading(obs({ chaos: 8 })), [{ name: 'chaos', qty: 3 }]);
+});
+
+test('ledger: on arrival each slot counts the first time it is seen, even while stashing', () => {
+  const l = new LootLedger();
+  l.reading(obs({ portal: 40 }));
+  l.enterMap();                                                    // inventory never opened in the map
   l.leaveMap();
-  const saved = JSON.parse(JSON.stringify(l));                   // app restarted (for example an update)
+  // first look: the tooltip hides the divine slot
+  assert.deepEqual(l.reading(obs({ portal: 39, chaos: 12 }, ['divine'])), [{ name: 'chaos', qty: 12 }]);
+  // chaos already stashed, divine now visible: it still counts
+  assert.deepEqual(l.reading(obs({ portal: 39, divine: 1 })), [{ name: 'divine', qty: 1 }]);
+  // everything stashed
+  assert.deepEqual(l.reading(obs({ portal: 39 })), []);
+  // threads taken out of the stash into a slot that was seen empty: not loot
+  assert.deepEqual(l.reading(obs({ portal: 39, thread: 6 })), []);
+  // chaos taken back out into its old slot: not loot either
+  assert.deepEqual(l.reading(obs({ portal: 39, thread: 6, chaos: 3 })), []);
+  l.enterMap();                                                    // next map starts from what is there now
+  assert.deepEqual(l.reading(obs({ portal: 39, thread: 6, chaos: 9 })), [{ name: 'chaos', qty: 6 }]);
+});
+
+test('ledger: several maps on one inventory, and repeat trips to one map', () => {
+  const l = new LootLedger();
+  l.reading(obs({}));
+  l.enterMap();
+  l.leaveMap();
+  assert.deepEqual(l.reading(obs({ chaos: 5 })), [{ name: 'chaos', qty: 5 }]); // map A, kept in the inventory
+  l.enterMap();                                                    // map B without stashing
+  assert.deepEqual(l.reading(obs({ chaos: 9 })), [{ name: 'chaos', qty: 4 }]);
+  l.leaveMap();
+  assert.deepEqual(l.reading(obs({ chaos: 9, alt: 2 })), [{ name: 'alt', qty: 2 }]);
+  assert.deepEqual(l.reading(obs({})), []);                        // stashed
+  l.enterMap();                                                    // back into the same map
+  assert.deepEqual(l.reading(obs({ chaos: 6 })), [{ name: 'chaos', qty: 6 }]);
+  // never opened the inventory in the hideout: the next map still only counts what is new
+  l.leaveMap();
+  l.enterMap();
+  assert.deepEqual(l.reading(obs({ chaos: 8 })), [{ name: 'chaos', qty: 2 }]);
+});
+
+test('ledger: survives a restart, also in the middle of a map', () => {
+  const l = new LootLedger();
+  l.reading(obs({ portal: 40 }));
+  l.enterMap();
+  l.leaveMap();
   const l2 = new LootLedger();
-  l2.restore(saved);
-  assert.deepEqual(l2.reading(m({ portal: 39, chaos: 12, divine: 1 })), [{ name: 'chaos', qty: 12 }, { name: 'divine', qty: 1 }]);
-  // closed in the middle of a map: the next hideout reading still belongs to that map
+  l2.restore(JSON.parse(JSON.stringify(l)));                       // app restarted (for example an update)
+  assert.deepEqual(l2.reading(obs({ portal: 39, chaos: 12, divine: 1 })), [{ name: 'chaos', qty: 12 }, { name: 'divine', qty: 1 }]);
   const l3 = new LootLedger();
-  l3.reading(m({}));
-  l3.enterMap(true);
+  l3.reading(obs({}));
+  l3.enterMap();
   const l4 = new LootLedger();
-  l4.restore(JSON.parse(JSON.stringify(l3)));
-  assert.deepEqual(l4.reading(m({ chaos: 3 })), [{ name: 'chaos', qty: 3 }]);
-  // nothing saved yet: the first reading can only be a starting point
+  l4.restore(JSON.parse(JSON.stringify(l3)));                      // closed mid-map
+  assert.deepEqual(l4.reading(obs({ chaos: 3 })), [{ name: 'chaos', qty: 3 }]);
   const fresh = new LootLedger();
   fresh.restore(null);
-  assert.deepEqual(fresh.reading(m({ chaos: 3 })), []);
+  assert.deepEqual(fresh.reading(obs({ chaos: 3 })), []);          // nothing saved: only a starting point
 });
 
 test('prices: item art URLs are carried through', () => {
