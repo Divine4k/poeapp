@@ -49,6 +49,7 @@
     if (tc && tc.enabled) {
       if (tc.hotkeys.next && !st.hotkeys.tradeNext) items.push(['bad', `Trade key ${tc.hotkeys.next} is taken by another app`]);
       if (tc.hotkeys.layout && !st.hotkeys.layout) items.push(['bad', `Layout key ${tc.hotkeys.layout} is taken by another app`]);
+      for (const k of st.hotkeys.tradeTaken || []) items.push(['bad', `Trade key ${k} is taken by another app or is not a key name`]);
       if (tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) items.push(['bad', `Trade key ${tc.hotkeys.dismiss} is taken by another app`]);
     }
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
@@ -553,7 +554,7 @@
   // ---- events ---------------------------------------------------------------------
   document.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-trade]');
-    if (tb) { act({ type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
+    if (tb) { act(tb.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
     const b = e.target.closest('[data-act]');
     if (b) {
       const d = b.dataset;
@@ -812,11 +813,16 @@
 
   // ---- trade settings -----------------------------------------------------------------
   const tradeForm = $('trade-form');
+  const HOTKEY_FIELDS = [['hkInvite', 'invite'], ['hkTrade', 'trade'], ['hkBusy', 'busy'], ['hkStill', 'still'], ['hkWhisper', 'whisper'], ['hkHideout', 'hideout'], ['hkRemaining', 'remaining']];
+  const AUTO_FIELDS = [['autoThankSold', 'thankSold'], ['autoKickSold', 'kickSold'], ['autoThankBought', 'thankBought'], ['autoLeaveBought', 'leaveBought'], ['autoHomeBought', 'homeBought'], ['autoJoinHideout', 'joinHideout'], ['autoIgnoreSold', 'ignoreSold']];
   $('trade-settings').addEventListener('toggle', (e) => {
     if (!e.target.open) return;
     const c = state.config.trade, el = tradeForm.elements;
     el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound;
     el.hkNext.value = c.hotkeys.next || ''; el.hkDismiss.value = c.hotkeys.dismiss || ''; el.hkLayout.value = c.hotkeys.layout || '';
+    for (const [field, key] of HOTKEY_FIELDS) el[field].value = c.hotkeys[key] || '';
+    for (const [field, key] of AUTO_FIELDS) el[field].checked = !!(c.auto || {})[key];
+    el.autoCloseSec.value = (c.auto || {}).closeBoughtSec || 0;
     el.msgThanks.value = c.messages.thanks; el.msgBusy.value = c.messages.busy; el.msgSold.value = c.messages.sold; el.msgStill.value = c.messages.still;
   });
   tradeForm.addEventListener('submit', (e) => {
@@ -824,7 +830,8 @@
     const el = tradeForm.elements;
     api.setConfig({ trade: {
       enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked,
-      hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim(), layout: el.hkLayout.value.trim() },
+      hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim(), layout: el.hkLayout.value.trim(), ...Object.fromEntries(HOTKEY_FIELDS.map(([field, key]) => [key, el[field].value.trim()])) },
+      auto: { ...Object.fromEntries(AUTO_FIELDS.map(([field, key]) => [key, el[field].checked])), closeBoughtSec: Math.max(0, Math.min(600, Number(el.autoCloseSec.value) || 0)) },
       messages: { thanks: el.msgThanks.value.trim(), busy: el.msgBusy.value.trim(), sold: el.msgSold.value.trim(), still: el.msgStill.value.trim() },
     } });
     $('trade-settings').open = false;

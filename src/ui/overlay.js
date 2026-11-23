@@ -28,7 +28,7 @@
 
   stack.addEventListener('click', (e) => {
     const b = e.target.closest('[data-trade]');
-    if (b) { api.action({ type: 'trade', id: b.dataset.id, do: b.dataset.trade }); return; }
+    if (b) { api.action(b.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: b.dataset.id, do: b.dataset.trade }); return; }
     const opener = e.target.closest('[data-open]');
     if (opener) { open = opener.dataset.open; render(last); return; }
     if (e.target.closest('.tc header')) { open = null; render(last); }

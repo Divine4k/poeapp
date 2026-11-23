@@ -75,6 +75,8 @@ function chatCommand(action, offer, { messages = {}, characterName = '' } = {}) 
     case 'kick': return `/kick ${who}`;
     case 'hideout': return `/hideout ${who}`;
     case 'whois': return `/whois ${who}`;
+    case 'home': return '/hideout';
+    case 'whisper': return `@${who} `; // typed into chat and left open for you to finish
     case 'leave': { const me = clean(characterName); return /^[^\s:@/]+$/.test(me) ? `/kick ${me}` : '/leave'; }
     case 'thanks': case 'busy': case 'sold': case 'still': return say(action);
     default: return null;
@@ -83,8 +85,24 @@ function chatCommand(action, offer, { messages = {}, characterName = '' } = {}) 
 
 const LABELS = {
   invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party',
-  busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?', whois: 'Who is',
+  busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?', whois: 'Who is', home: 'Back to my hideout', whisper: 'Whisper',
 };
+
+// The steps that follow a finished trade by themselves, in order, for the options switched on.
+// auto: { thankSold, kickSold, thankBought, leaveBought, homeBought }.
+function autoSteps(offer, auto = {}) {
+  if (!offer || offer.state !== 'done' || offer.test) return [];
+  const steps = [];
+  if (offer.dir === 'in') {
+    if (auto.thankSold && !offer.thanked) steps.push('thanks');
+    if (auto.kickSold) steps.push('kick');
+  } else {
+    if (auto.thankBought && !offer.thanked) steps.push('thanks');
+    if (auto.leaveBought) steps.push('leave');
+    if (auto.homeBought) steps.push('home');
+  }
+  return steps;
+}
 
 // The step that moves this offer forward, or null while waiting for the other player.
 function nextAction(o) {
@@ -121,6 +139,8 @@ class TradeBook {
     this.sold = new Map(); // listing key -> when it was sold, to answer late whispers
     this.quadTabs = new Set(); // stash tabs seen with a position past 12, so 24 slots wide
     this.afk = false;
+    this.ignoreSold = false; // drop whispers for an item that was just sold instead of listing them
+    this.lastDone = null; // id of the offer the last "Trade accepted" was pinned on
     this.seq = 1;
     this.lastTs = 0; // time of the newest log line taken in, so a restart does not count one twice
     this.seen = { whispers: 0, offers: 0, lastWhisperAt: 0 }; // since the app started, to show the log is being read
@@ -173,7 +193,10 @@ class TradeBook {
       state: 'new', here: false, thanked: false, soldAlready: false, test: !!ev.test,
     };
     const soldAt = this.sold.get(listingKey(offer));
-    if (dir === 'in' && soldAt && at - soldAt < SOLD_MEMORY_MS) offer.soldAlready = true;
+    if (dir === 'in' && soldAt && at - soldAt < SOLD_MEMORY_MS) {
+      if (this.ignoreSold && !ev.test) return false;
+      offer.soldAlready = true;
+    }
     this.offers.push(offer);
     if (this.offers.length > MAX_OFFERS) this.offers.splice(0, this.offers.length - MAX_OFFERS);
     return offer;
@@ -189,6 +212,7 @@ class TradeBook {
     if (!o) return false;
     o.state = 'done';
     o.doneAt = at;
+    this.lastDone = o.id;
     if (o.test) return true;
     this.history.unshift({ id: `${at.toString(36)}-${o.id}`, dir: o.dir, player: o.player, item: o.item, qty: o.qty, price: o.price, league: o.league, at });
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
@@ -210,12 +234,25 @@ class TradeBook {
     else if (action === 'thanks') o.thanked = true;
     else if (action === 'busy') o.toldBusy = true;
     else if (action === 'still') o.asked = true;
-    else if (action === 'sold' || action === 'kick' || action === 'leave') this.remove(id);
+    else if (action === 'sold' || action === 'kick' || action === 'leave' || action === 'home') this.remove(id);
   }
 
   remove(id) { this.offers = this.offers.filter((o) => String(o.id) !== String(id)); }
   removeHistory(id) { this.history = this.history.filter((h) => h.id !== id); }
   clearTests() { this.offers = this.offers.filter((o) => !o.test); }
+
+  // The newest buyer's offer: what the invite, trade, busy and whisper keys act on.
+  latestIncoming() { return [...this.offers].reverse().find((o) => o.dir === 'in') || null; }
+  // The purchase a party invite most likely belongs to: the newest one not yet visited.
+  pendingPurchase(now = Date.now(), maxAgeMs = 10 * 60 * 1000) {
+    return [...this.offers].reverse().find((o) => o.dir === 'out' && o.state === 'new' && now - o.lastAt < maxAgeMs) || null;
+  }
+  // Finished purchases older than ms go away by themselves. Returns how many were removed.
+  closeBought(ms, now = Date.now()) {
+    const before = this.offers.length;
+    this.offers = this.offers.filter((o) => !(o.dir === 'out' && o.state === 'done' && now - (o.doneAt || now) >= ms));
+    return before - this.offers.length;
+  }
 
   // The offer the "next step" key acts on: the oldest one that has a step to take.
   firstActionable() { return this.offers.find((o) => nextAction(o)) || null; }
@@ -321,4 +358,4 @@ function placementFromRect(rect, screen) {
 const overlayAllowed = (front) => !front || !front.known || front.game || front.own;
 
 module.exports = {
-  overlayBounds, placementFromRect, OVERLAY_WIDTH, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
+  autoSteps, overlayBounds, placementFromRect, OVERLAY_WIDTH, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };

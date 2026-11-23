@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseLine } = require('../src/core/clientLog');
-const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds, placementFromRect, overlayAllowed } = require('../src/core/trade');
+const { autoSteps, parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds, placementFromRect, overlayAllowed } = require('../src/core/trade');
 const { GameWatch, isGameName } = require('../src/gamewin');
 
 const line = (rest) => `2026/11/23 15:00:01 123456 cff945b9 [INFO Client 4321] ${rest}`;
@@ -146,6 +146,54 @@ test('summary: market value, low offers, quad tabs, saving', () => {
   old.restore(JSON.parse(JSON.stringify(b.toJSON())), 2000 + 31 * 60000);
   assert.equal(old.offers.length, 0);
   new TradeBook().restore('nonsense');
+});
+
+test('steps taken by themselves after a trade follow the switches', () => {
+  const sold = { dir: 'in', state: 'done', thanked: false }, bought = { dir: 'out', state: 'done', thanked: false };
+  assert.deepEqual(autoSteps(sold, {}), []); // everything is off unless switched on
+  assert.deepEqual(autoSteps(sold, { thankSold: true, kickSold: true, leaveBought: true }), ['thanks', 'kick']);
+  assert.deepEqual(autoSteps({ ...sold, thanked: true }, { thankSold: true, kickSold: true }), ['kick']); // not thanked twice
+  assert.deepEqual(autoSteps(bought, { thankBought: true, leaveBought: true, homeBought: true, kickSold: true }), ['thanks', 'leave', 'home']);
+  assert.deepEqual(autoSteps({ ...sold, state: 'here' }, { thankSold: true }), []); // only once the trade is done
+  assert.deepEqual(autoSteps({ ...sold, test: true }, { thankSold: true }), []);
+  const o = { player: 'Seller', item: 'x', qty: 1, price: null };
+  assert.equal(chatCommand('home', o), '/hideout');
+  assert.equal(chatCommand('whisper', o), '@Seller ');
+  assert.equal(parseLine(line(': You have joined the party.')).type, 'party');
+  assert.equal(parseLine(line('#Troll: You have joined the party.')), null);
+});
+
+test('the trade the game reports is remembered, and the newest buyer and purchase are found', () => {
+  const b = new TradeBook();
+  const first = b.onLog(whisper('Buyer_One', PRICED, 'in', 1000));
+  const buy = b.onLog(whisper('Seller', BULK, 'out', 2000));
+  const second = b.onLog(whisper('Buyer_Two', "Hi, I'd like to buy your 1 Divine Orb for my 200 Chaos Orb in Standard", 'in', 3000));
+  assert.equal(b.latestIncoming().id, second.id);
+  assert.equal(b.pendingPurchase(5000).id, buy.id);
+  assert.equal(b.pendingPurchase(2000 + 11 * 60000), null); // too old to be what the invite is for
+  assert.equal(b.lastDone, null);
+  b.applied(first.id, 'invite'); b.onLog({ type: 'joined', name: 'Buyer_One' }); b.applied(first.id, 'trade');
+  b.onLog({ type: 'trade', result: 'accepted', ts: 6000 });
+  assert.equal(b.lastDone, first.id);
+  // A finished purchase closes by itself after the set time, nothing else does.
+  b.applied(buy.id, 'hideout'); b.applied(buy.id, 'trade'); b.onLog({ type: 'trade', result: 'accepted', ts: 7000 });
+  assert.equal(b.closeBought(30000, 7000 + 10000), 0);
+  assert.equal(b.closeBought(30000, 7000 + 31000), 1);
+  assert.deepEqual(b.offers.map((o) => o.player), ['Buyer_One', 'Buyer_Two']);
+  b.applied(first.id, 'home');
+  assert.equal(b.get(first.id), null);
+});
+
+test('buyers for an item sold a moment ago can be left out', () => {
+  const b = new TradeBook();
+  const first = b.onLog(whisper('Buyer_One', PRICED, 'in', 1000));
+  b.applied(first.id, 'invite'); b.onLog({ type: 'joined', name: 'Buyer_One' }); b.applied(first.id, 'trade');
+  b.onLog({ type: 'trade', result: 'accepted', ts: 2000 });
+  b.ignoreSold = true;
+  assert.equal(b.onLog(whisper('Late_Buyer', PRICED, 'in', 3000)), false);
+  assert.equal(b.offers.length, 1);
+  b.ignoreSold = false;
+  assert.equal(b.onLog(whisper('Late_Buyer', PRICED, 'in', 4000)).soldAlready, true);
 });
 
 test('catching up after a restart: recent lines once, old lines never', () => {

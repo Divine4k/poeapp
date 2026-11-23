@@ -237,6 +237,8 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .trade-settings .settings-grid { margin-top: 12px; }
 .trade-settings .row label { flex: 1; }
 .trade-settings .row.wide { grid-column: 1 / -1; }
+.trade-settings fieldset { margin-top: 14px; }
+.trade-settings fieldset input[type=number] { width: 110px; }
 .trade-settings input:not([type=checkbox]), .trade-settings select { width: 100%; }
 .trade-side .table-wrap { flex: 1 1 200px; }
 .kind { font-size: 12px; border: 1px solid var(--seam); border-radius: 3px; padding: 0 5px; color: var(--ash); }

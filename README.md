@@ -45,6 +45,9 @@ When someone whispers you from the trade site, the offer appears on the **Trade*
 - **Value check:** offers below 80% of the poe.ninja price, for items poe.ninja lists under the same name, are marked "Below market".
 - **Finished trades** are listed with totals for today and overall, once the game reports "Trade accepted".
 - **Away from the game nothing is drawn.** The overlay hides when another program is in front and comes back with the game.
+- **Done by itself, if you switch it on** (Trade settings, "Done by itself", all off to begin with): after a sale, whisper thanks and kick the buyer; after a purchase, whisper thanks, leave the party and go back to your hideout; go to a seller's hideout once their party invite is accepted; leave out buyers for an item sold in the last hour; close a finished purchase after a set time. These only type while the game is the window in front. If it is not, a notice says what was not sent and the buttons are still there.
+- **More keys**, unset until you choose them: invite, trade with, tell busy, ask "still interested" and start a whisper to the newest buyer, go to your hideout, and show remaining monsters.
+- **Ctrl+click on an offer's cross** dismisses every offer.
 - **Layout mode:** Shift+F2 dims the game and shows a box for each part of the overlay. Drag a box where you want it and press Done. A box left in the lower half of the screen grows upward, one in the upper half grows downward, and the spot is kept as a share of the screen, so it survives a change of resolution. Trade settings has a button for the same thing and one to go back to the default spot.
 - **Show a test offer** puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
 
@@ -99,6 +102,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 - **F8** sends a single Ctrl+C to the game when you press it, then reads the clipboard once. That is the same pattern price-check tools use. You can switch the Ctrl+C off in Settings and press it yourself.
 - **Reading on your inventory key** is one read per key press. The app listens for that one key without blocking it.
 - **Trade buttons and trade keys** type one chat line (such as `/invite Name`) per click or key press, the way PoE Lurker and Awakened PoE Trade do. Nothing is typed without a click or key press, and no button sends two lines.
+- **"Done by itself"** (Trade settings, off by default) types thanks, kick, leave and hideout lines after a trade without a key press, as PoE Lurker does. That is outside the one-action-per-key-press rule and is your own risk.
 - **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
 - With "check by itself" off, press your inventory key once after arriving in the hideout, before you stash.
 - GGG has never officially approved any local third-party tool, so no tool is guaranteed safe.

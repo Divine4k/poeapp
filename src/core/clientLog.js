@@ -12,6 +12,8 @@ const RE_SLAIN = /\] : (.+) has been slain\.\s*$/;
 const RE_WHISPER = /\] @(From|To) (?:<[^>]*> )?([^\s:]+): (.*)$/;
 const RE_JOINED = /\] : (\S+) has (joined|left) the area\.\s*$/;
 const RE_TRADE = /\] : Trade (accepted|cancelled)\.\s*$/;
+// Accepting a party invite. Used to follow a seller to their hideout.
+const RE_PARTY = /\] : You have joined the party\.\s*$/;
 const RE_AFK = /\] : AFK mode is now (ON|OFF)/;
 
 function parseTimestamp(line) {
@@ -44,6 +46,7 @@ function parseLine(line) {
   if (m) return { type: m[2] === 'joined' ? 'joined' : 'left', ts: parseTimestamp(line), name: m[1] };
   m = RE_TRADE.exec(line);
   if (m) return { type: 'trade', ts: parseTimestamp(line), result: m[1] };
+  if (RE_PARTY.test(line)) return { type: 'party', ts: parseTimestamp(line) };
   m = RE_AFK.exec(line);
   if (m) return { type: 'afk', ts: parseTimestamp(line), on: m[1] === 'ON' };
   m = RE_WHISPER.exec(line);

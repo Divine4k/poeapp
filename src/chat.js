@@ -24,8 +24,9 @@ function focusGame() {
 
 // Types one line into the game's chat: Enter, paste, Enter. The clipboard is put back after.
 // hook: the uiohook-napi module. clipboard: Electron's clipboard.
-async function typeChat(hook, clipboard, text) {
-  const line = String(text || '').replace(/[\r\n]+/g, ' ').trim();
+// send: false leaves the line in the open chat box instead of sending it.
+async function typeChat(hook, clipboard, text, { send = true } = {}) {
+  const line = send ? String(text || '').replace(/[\r\n]+/g, ' ').trim() : String(text || '').replace(/[\r\n]+/g, ' ');
   if (!line) return false;
   const { uIOhook, UiohookKey } = hook;
   const before = clipboard.readText();
@@ -36,7 +37,7 @@ async function typeChat(hook, clipboard, text) {
     uIOhook.keyTap(UiohookKey.A, [UiohookKey.Ctrl]); // replace anything half typed
     uIOhook.keyTap(UiohookKey.V, [UiohookKey.Ctrl]);
     await sleep(60);
-    uIOhook.keyTap(UiohookKey.Enter);
+    if (send) uIOhook.keyTap(UiohookKey.Enter);
     await sleep(120);
   } finally {
     clipboard.writeText(before);
