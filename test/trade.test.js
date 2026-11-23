@@ -6,7 +6,7 @@ const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overl
 
 const line = (rest) => `2026/11/23 15:00:01 123456 cff945b9 [INFO Client 4321] ${rest}`;
 const PRICED = 'Hi, I would like to buy your Tabula Rasa Simple Robe listed for 12 chaos in Standard (stash tab "Sell"; position: left 3, top 5)';
-const BULK = "Hi, I'd like to buy your 400 Chaos Orb for my 1.5 Divine Orb in Hardcore Settlers.";
+const BULK = "Hi, I'd like to buy your 400 Chaos Orb for my 1.5 Divine Orb in Hardcore Settlers";
 const prices = { get: (n) => ({ 'Chaos Orb': { chaos: 1 }, 'Divine Orb': { chaos: 200 } }[n] || null) };
 const whisper = (player, text, dir = 'in', ts = 1000) => ({ type: 'whisper', dir, player, text, ts });
 
@@ -30,6 +30,12 @@ test('trade messages: priced, unpriced, bulk, and ordinary chat', () => {
   assert.equal(un.item, 'Level 21 Vaal Grace'); assert.equal(un.price, null); assert.equal(un.league, 'Hardcore Settlers');
   assert.equal(un.tab, '~b/o 1 in'); assert.equal(un.note, 'can you do 5c?');
   assert.deepEqual(parseTradeMessage(BULK), { item: 'Chaos Orb', qty: 400, price: { amount: 1.5, currency: 'Divine Orb' }, league: 'Hardcore Settlers', tab: '', left: 0, top: 0, note: '' });
+  // Both as the trade site writes it today and with the full stop older versions added.
+  const map = parseTradeMessage("Hi, I'd like to buy your 1 Map (Tier 16) (Memory-Influenced) for my 35 Chaos Orb in Covens");
+  assert.equal(map.item, 'Map (Tier 16) (Memory-Influenced)'); assert.equal(map.league, 'Covens'); assert.equal(map.price.amount, 35);
+  const dotted = parseTradeMessage(`${BULK}. got more?`);
+  assert.equal(dotted.league, 'Hardcore Settlers'); assert.equal(dotted.note, 'got more?');
+  assert.equal(parseTradeMessage('Hi, I would like to buy your Dragon Call, Kinetic Wand listed for 5 chaos in Covens (stash tab "~price 5 chaos"; position: left 15, top 14)').item, 'Dragon Call, Kinetic Wand');
   assert.equal(parseTradeMessage('hey, are you there?'), null);
   assert.equal(priceChaos({ amount: 1.5, currency: 'Divine Orb' }, prices), 300);
   assert.equal(priceChaos({ amount: 2, currency: 'divine' }, prices), 400);
@@ -139,6 +145,27 @@ test('summary: market value, low offers, quad tabs, saving', () => {
   old.restore(JSON.parse(JSON.stringify(b.toJSON())), 2000 + 31 * 60000);
   assert.equal(old.offers.length, 0);
   new TradeBook().restore('nonsense');
+});
+
+test('catching up after a restart: recent lines once, old lines never', () => {
+  const now = 100 * 60000;
+  const events = [
+    whisper('Old_Buyer', PRICED, 'in', now - 40 * 60000),
+    whisper('Buyer_One', PRICED, 'in', now - 3 * 60000),
+    { type: 'joined', name: 'Buyer_One', ts: now - 2 * 60000 },
+    { type: 'trade', result: 'accepted', ts: now - 60000 },
+    whisper('Buyer_Two', BULK, 'in', now - 30000),
+    { type: 'area', ts: now - 1000 },
+  ];
+  const b = new TradeBook();
+  assert.equal(b.catchUp(events, now), 4);
+  assert.deepEqual(b.offers.map((o) => `${o.player}:${o.state}`), ['Buyer_One:done', 'Buyer_Two:new']);
+  assert.equal(b.history.length, 1);
+  // The same lines again, after saving and loading: nothing is counted twice.
+  const again = new TradeBook();
+  again.restore(JSON.parse(JSON.stringify(b.toJSON())), now);
+  assert.equal(again.catchUp(events, now), 0);
+  assert.equal(again.history.length, 1); assert.equal(again.offers.length, 2);
 });
 
 test('overlay placement stays on the game screen', () => {

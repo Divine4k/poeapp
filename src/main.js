@@ -4,7 +4,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage, safeStorage } = require('electron');
 
-const { LogTail, findLogPath } = require('./core/clientLog');
+const { LogTail, findLogPath, readRecent } = require('./core/clientLog');
 const { PriceTable, PriceService, CATEGORY_LABELS } = require('./core/prices');
 const { parseItemText, priceName } = require('./core/itemText');
 const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
@@ -205,6 +205,7 @@ function startLog() {
     return;
   }
   status.log = { ok: false, path: p, error: 'Waiting for the file' };
+  if (config.trade.enabled && book.catchUp(readRecent(p))) saveTradesSoon();
   logTail = new LogTail(p);
   logTail.on('status', (s) => { status.log = { ok: s.ok, path: p, error: s.ok ? null : `Cannot read the log (${s.error})` }; push(); });
   logTail.on('event', (ev) => {

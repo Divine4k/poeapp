@@ -441,6 +441,10 @@
     warn.textContent = problems.join(' ');
     const hk = cfg.hotkeys;
     $('trade-hint').textContent = `Whispers from the trade site show up here${cfg.overlay ? ' and on top of the game' : ''}. The gold button is the next step${hk.next ? `; ${hk.next} presses it for the oldest offer` : ''}${hk.dismiss ? `, ${hk.dismiss} dismisses it` : ''}.`;
+    const seen = t.seen || { whispers: 0, offers: 0 };
+    $('trade-seen').textContent = !state.status.log.ok ? 'The game log is not connected, so no whispers can be read.'
+      : seen.whispers ? `Since the app started: ${seen.whispers} ${seen.whispers === 1 ? 'whisper' : 'whispers'} read from the game log, ${seen.offers} of them trade offers. Last one at ${clock(seen.lastWhisperAt)}.`
+        : 'No whispers read from the game log since the app started.';
     $('btn-trade-clear').hidden = !t.offers.length;
 
     const box = $('trade-offers');
