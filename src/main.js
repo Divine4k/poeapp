@@ -485,7 +485,11 @@ function settlePendingNames() {
 // print: the picture of slot k at rest.
 function applyName(k, item, name, entry, print) {
   const sharedPicture = /Divination Card|Map/i.test(item.itemClass) || item.isMap;
-  if (item.stackable && !sharedPicture) {
+  // Learned for good: anything that always looks the same. That is every stackable item, and
+  // single items that are not gear or gems and have a price (emblems, invitations and the like).
+  // Gear, gems and uniques vary in value under one picture, so they are counted per slot instead.
+  const plainSingle = !item.stackable && /^(Normal|Currency)$/i.test(item.rarity) && !/Gem/i.test(item.itemClass) && !!entry;
+  if ((item.stackable || plainSingle) && !sharedPicture) {
     const hit = index.match(print);
     if (hit && hit.name === name) { say(`${name} is already recognised.`); return; }
     learnPrint(name, print);

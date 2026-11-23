@@ -368,7 +368,7 @@
       if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}.${c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}% match.` : ''}`;
       if (c.status === 'ignored') return 'Ignored by you.';
       if (c.status === 'covered') return 'Possibly covered by a tooltip in this read, so nothing was concluded.';
-      return `No stack number, so it is not counted (gear, gems and other single items).${c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}%.` : ''}`;
+      return `A single item the app has no picture for, so it is not counted. Hover it in game and press ${state.config.hotkeys.clipboard} to count it.${c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}%.` : ''}`;
     };
     const byCell = new Map(inv.cells.map((c) => [c.cell, c]));
     let grid = '';
@@ -398,7 +398,7 @@
             <li class="item">${count('item')} recognised</li>
             <li class="remembered">${count('remembered')} covered, last known value used</li>
             <li class="unknown">${count('unknown')} not recognised</li>
-            <li class="skipped">${count('skipped') + count('ignored') + count('covered')} not counted (no stack number, ignored, or covered)</li>
+            <li class="skipped">${count('skipped') + count('ignored') + count('covered')} not counted (single items the app has no picture for, such as gear and gems, or ignored, or covered)</li>
           </ul>
           ${unpriced ? `<p class="map-meta">${unpriced} recognised ${unpriced === 1 ? 'item has' : 'items have'} no price.</p>` : ''}
           <p class="map-meta">Hover a slot to see how it was read.</p>

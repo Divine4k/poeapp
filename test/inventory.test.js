@@ -279,6 +279,28 @@ test('maps: every tier is read from its picture, nothing else is mistaken for a 
   assert.ok(checked > 100);
 });
 
+test('reader: a single item with no stack number counts as one when its picture is known', () => {
+  // Row 2, column 1 of the map capture holds one item without a number (cell 12).
+  const cells = extractGrid(frames.inv_map);
+  const single = fingerprint(cells[12]);
+  const none = new InventoryReader(new IconIndex()).read(frames.inv_map);
+  assert.equal(none.cells.find((c) => c.cell === 12).status, 'skipped'); // no picture for it: left out
+  // Its picture among the downloaded art (a perfect likeness here): it is one of that item.
+  const index = new IconIndex();
+  index.addArt('Timeless Maraketh Emblem', single);
+  const seen = new InventoryReader(index).read(frames.inv_map);
+  const cell = seen.cells.find((c) => c.cell === 12);
+  assert.deepEqual([cell.status, cell.name, cell.qty, cell.source], ['item', 'Timeless Maraketh Emblem', 1, 'art']);
+  assert.equal(seen.counts.get('Timeless Maraketh Emblem'), 1);
+  // A numbered cell matches art from 0.82, but a single needs 0.88: gear can resemble a picture.
+  const { SINGLE_ART_SCORE } = require('../src/core/inventory/reader');
+  assert.ok(SINGLE_ART_SCORE > new IconIndex().artThreshold);
+  const vague = new IconIndex({ artThreshold: 0, artMargin: -1 });
+  vague.addArt('Lookalike', fingerprint(cells[0])); // a different item's picture
+  const loose = new InventoryReader(vague).read(frames.inv_map).cells.find((c) => c.cell === 12);
+  assert.equal(loose.status, 'skipped');
+});
+
 test('reader: a real tooltip capture, mouse on the bottom-left slot', () => {
   const reader = new InventoryReader(new IconIndex());
   const r = reader.read(tooltipFrame, { cursor: { row: 4, col: 0 } });

@@ -5,6 +5,10 @@ const { readStack } = require('./digits');
 const { fingerprint, similarity } = require('./icons');
 const { readMapTier } = require('./maps');
 
+// How alike a cell without a stack number must be to downloaded item art to count as that item.
+// Numbered cells match from 0.82; a wrong picture has reached 0.80 in a real capture.
+const SINGLE_ART_SCORE = 0.88;
+
 class InventoryReader {
   constructor(index) {
     this.index = index;
@@ -79,9 +83,11 @@ class InventoryReader {
         if (hit && hit.ignored) { this.memory[k] = null; info.status = 'ignored'; continue; }
         const stack = readStack(rgb);
         info.qty = stack;
-        // Downloaded art only covers stackable items, and those always show a number. A cell
-        // without one that merely resembles such an item is something else.
-        if (hit && hit.source === 'art' && !stack) hit = null;
+        // A cell without a stack number is a single item: one of something that does not stack
+        // (an emblem, an invitation), or gear. It counts as one of the matched item, but only on
+        // a clearly better match than a numbered cell needs, because gear can resemble an item's
+        // picture and has no number to back the match up.
+        if (hit && hit.source === 'art' && !stack && hit.score < SINGLE_ART_SCORE) hit = null;
         // Maps: a single item whose tier is read from the numeral on its picture.
         if (!hit && !stack) {
           const map = readMapTier(rgb);
@@ -110,4 +116,4 @@ class InventoryReader {
   }
 }
 
-module.exports = { InventoryReader };
+module.exports = { InventoryReader, SINGLE_ART_SCORE };
