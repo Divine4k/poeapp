@@ -98,6 +98,7 @@
       <p class="notice bad" id="trade-warn" hidden></p>
       <p class="map-meta" id="trade-hint"></p>
       <p class="map-meta" id="trade-seen"></p>
+      <p class="map-meta" id="trade-stash" hidden></p>
       <div class="trade-offers" id="trade-offers"></div>
     </section>
     <section class="trade-side" aria-label="Trade history and settings">
@@ -108,6 +109,7 @@
           <label class="check"><input type="checkbox" name="enabled"> Read trade offers from whispers</label>
           <label class="check"><input type="checkbox" name="overlay"> Show offers on top of the game</label>
           <label class="check"><input type="checkbox" name="highlight"> Frame the item's slot in the stash when I invite a buyer</label>
+          <label class="check"><input type="checkbox" name="matchTab"> Only frame the slot when the item's tab is the open one (reads the open tab's name off the screen)</label>
           <label class="check"><input type="checkbox" name="sound"> Play a sound for a new buyer</label>
           <div class="settings-grid">
             <span class="row wide"><button type="button" data-act="layoutToggle">Move the overlay on the game screen</button><button type="button" data-act="layoutReset">Back to the default spot</button></span>

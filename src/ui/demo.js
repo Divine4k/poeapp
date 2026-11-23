@@ -72,7 +72,7 @@
   state.config.trade = { enabled: true, overlay: true, highlight: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2' }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
   state.status.hotkeys.layout = true; state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
   state.trade = {
-    afk: false, divine: 212, canSend: true, locateId: 3, seen: { whispers: 5, offers: 3, lastWhisperAt: now }, enabled: true, hotkeys: state.config.trade.hotkeys,
+    afk: false, divine: 212, canSend: true, locateId: 3, stash: { armed: true, open: true, tabRead: 'Big sales', match: true, reading: true, problem: '' }, seen: { whispers: 5, offers: 3, lastWhisperAt: now }, enabled: true, hotkeys: state.config.trade.hotkeys,
     labels: { invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party', busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?' },
     offers: [
       offer(3, 'in', 'Zana_Mapper', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, state: 'here', here: true, next: 'trade', waiting: 'In your hideout', grid: 24 }),

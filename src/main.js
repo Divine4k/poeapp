@@ -21,6 +21,8 @@ const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
 const { isStashOpen } = require('./core/stash');
+const { openTabRect, tabKey, cropTab, sameTabName } = require('./core/stashTabs');
+const { TextReader } = require('./ocr');
 const { TradeBook, chatCommand, nextAction, stashCellRect, stashLabelRect, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
 const { Overlay, Highlight } = require('./overlay');
@@ -51,7 +53,7 @@ const DEFAULT_CONFIG = {
   // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat
   // line per press); hotkeys.dismiss removes the oldest offer.
   trade: {
-    enabled: true, overlay: true, highlight: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
+    enabled: true, overlay: true, highlight: true, matchTab: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
     hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2' },
     messages: { ...DEFAULT_MESSAGES },
   },
@@ -93,6 +95,7 @@ let highlight = null;
 let tabLabel = null; // the line under the stash naming the tab of the framed item
 let layoutWin = null; // the full-screen window for dragging overlay parts into place
 const watch = new GameWatch();
+const tabReader = new TextReader();
 let chatBusy = false;
 let tradeSaveTimer = null;
 
@@ -646,7 +649,8 @@ function registerHotkeys() {
 function tradeState() {
   const s = book.summary(prices);
   const shown = locatedOffer();
-  return { ...s, divine: prices.divine, labels: LABELS, canSend: !!hook && watch.running, sendProblem: !hook ? 'the keyboard helper is not installed' : (watch.running ? '' : 'the app cannot tell which window is in front on this PC'), locateId: shown ? shown.id : null, hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
+  return { ...s, divine: prices.divine, labels: LABELS, stash: { armed: !!shown, open: stashOpen, tabRead, match: tabMatch, reading: config.trade.matchTab !== false && tabReader.available, problem: tabReader.problem },
+    canSend: !!hook && watch.running, sendProblem: !hook ? 'the keyboard helper is not installed' : (watch.running ? '' : 'the app cannot tell which window is in front on this PC'), locateId: shown ? shown.id : null, hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
 }
 function saveTradesSoon() {
   clearTimeout(tradeSaveTimer);
@@ -713,9 +717,12 @@ function syncOverlay() {
   });
   const o = on && t.highlight !== false ? locatedOffer() : null;
   const show = o && stashOpen !== false; // only while the stash is open, when that can be told
+  const wrongTab = show && tabMatch === false; // a different tab is open: say which one to open instead
   const quad = o && book.quadTabs.has(o.tab);
-  highlight.show(show ? stashCellRect(overlay.display(), quad ? 24 : 12, o.left, o.top) : null);
-  tabLabel.show(show ? stashLabelRect(overlay.display()) : null, show ? `${o.item}: tab "${o.tab}", left ${o.left}, top ${o.top}${quad ? ' (quad tab)' : ''}` : '');
+  highlight.show(show && !wrongTab ? stashCellRect(overlay.display(), quad ? 24 : 12, o.left, o.top) : null);
+  tabLabel.show(show ? stashLabelRect(overlay.display()) : null, !show ? '' : wrongTab
+    ? `${o.item} is in tab "${o.tab}". Open that tab to see its slot.`
+    : `${o.item}: tab "${o.tab}", left ${o.left}, top ${o.top}${quad ? ' (quad tab)' : ''}`);
 }
 
 // Sends one chat line to the game. Returns true when it went out.
@@ -757,6 +764,7 @@ let locateTimer = null;
 function setLocate(id, ms) {
   locate = ms ? { id, until: Date.now() + ms } : null;
   stashOpen = hook && ms ? false : null;
+  tabMatch = null;
   if (ms && hook) checkStash();
   clearTimeout(locateTimer);
   if (ms) locateTimer = setTimeout(push, ms + 50);
@@ -764,18 +772,52 @@ function setLocate(id, ms) {
 // Whether the stash panel is open in game: true, false, or null when it cannot be told (no key
 // listener to time the looks by), in which case the frame is shown regardless.
 let stashOpen = null;
+// Whether the open stash tab is the one the framed item is in: true, false, or null when that
+// cannot be told (text recognition missing, or the tab's name could not be read), in which
+// case the frame is shown on any tab.
+let tabMatch = null;
+let tabRead = ''; // what the open tab's name was read as, for the Trade page
+const tabNames = new Map(); // what a tab looks like -> the name read off it
 let stashTimer = null;
 let stashBusy = false;
 function stashInput() {
   if (!locate || stashTimer) return;
   stashTimer = setTimeout(() => { stashTimer = null; checkStash(); }, 280); // the panel needs a moment to open
 }
+
+// Reads the name on the open tab, or null. The same-looking tab is only read once.
+async function readOpenTab(frame) {
+  const rect = openTabRect(frame);
+  if (!rect) return null;
+  const key = tabKey(frame, rect);
+  if (tabNames.has(key)) return tabNames.get(key);
+  const cut = cropTab(frame, rect, Math.round(12 * frame.height / 1080));
+  // Small letters read badly: the picture is made about 110 pixels tall first.
+  const scale = Math.max(1, Math.round(110 / cut.height));
+  const png = nativeImage.createFromBitmap(cut.data, { width: cut.width, height: cut.height }).resize({ width: cut.width * scale, height: cut.height * scale, quality: 'best' }).toPNG();
+  const file = path.join(app.getPath('temp'), 'map-companion-tab.png');
+  fs.writeFileSync(file, png);
+  const text = await tabReader.read(file);
+  if (text === null) return null;
+  if (tabNames.size > 200) tabNames.clear();
+  tabNames.set(key, text);
+  return text;
+}
+
 async function checkStash() {
-  if (stashBusy || !locatedOffer()) return;
+  const o = locatedOffer();
+  if (stashBusy || !o) return;
   stashBusy = true;
   try {
-    const open = isStashOpen(await captureFrame(config.inventory.displayId));
-    if (open !== stashOpen) { stashOpen = open; syncOverlay(); }
+    const frame = await captureFrame(config.inventory.displayId);
+    const open = isStashOpen(frame);
+    let match = null;
+    if (open && config.trade.matchTab !== false && tabReader.available) {
+      const text = await readOpenTab(frame);
+      tabRead = text || '';
+      match = text ? sameTabName(text, o.tab) : null;
+    }
+    if (open !== stashOpen || match !== tabMatch) { stashOpen = open; tabMatch = match; syncOverlay(); }
   } catch (_) { /* a failed capture changes nothing */ } finally { stashBusy = false; }
 }
 
@@ -1062,6 +1104,7 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   watch.stop();
+  tabReader.stop();
   clearInterval(timedTimer);
   if (hook) { try { hook.uIOhook.stop(); } catch (_) { /* closing anyway */ } }
   writeJson('session.json', session.toJSON());

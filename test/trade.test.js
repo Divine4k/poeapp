@@ -243,6 +243,57 @@ test('the stash is recognised by its title plate, at any screen size', () => {
   assert.deepEqual(label, { x: 16, y: 772, width: 632, height: 26 });
 });
 
+test('the open stash tab is found by its unfaded bottom edge', () => {
+  const fs = require('fs'), path = require('path'), zlib = require('zlib');
+  const { openTabRect, tabKey, cropTab } = require('../src/core/stashTabs');
+  // The fixtures are the tab bar (x 0-670, y 96-140) cut from real 1920x1080 screenshots, with
+  // tabs CASH, "~price 1 chaos" (red), "~price 1 chaos" (yellow), MAPS and "1".
+  const frame = (name, height) => {
+    const rgb = zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', `${name}.rgb.gz`)));
+    const k = height / 1080, width = Math.round(1920 * k), data = Buffer.alloc(width * height * 4);
+    for (let y = Math.floor(96 * k); y < Math.ceil(140 * k); y++) {
+      for (let x = 0; x < Math.ceil(670 * k); x++) {
+        const sx = Math.min(669, Math.floor(x / k)), sy = Math.min(43, Math.max(0, Math.floor(y / k - 96)));
+        const s = (sy * 670 + sx) * 3, d = (y * width + x) * 4;
+        data[d] = rgb[s + 2]; data[d + 1] = rgb[s + 1]; data[d + 2] = rgb[s];
+      }
+    }
+    return { data, width, height, bgr: true };
+  };
+  for (const h of [1080, 1440]) {
+    const k = h / 1080;
+    const red = openTabRect(frame('tabs_red_open', h)); // the red tab's name runs from x 170 to 280
+    assert.ok(red.x0 / k > 140 && red.x0 / k < 185 && red.x1 / k > 280 && red.x1 / k < 300, `red tab at ${h}p: ${red.x0}-${red.x1}`);
+    const one = openTabRect(frame('tabs_one_open', h)); // tab "1" spans x 540 to 588
+    assert.ok(one.x0 / k > 530 && one.x0 / k < 550 && one.x1 / k > 580 && one.x1 / k < 595, `tab 1 at ${h}p: ${one.x0}-${one.x1}`);
+  }
+  const a = frame('tabs_red_open', 1080), b = frame('tabs_one_open', 1080);
+  assert.notEqual(tabKey(a, openTabRect(a)), tabKey(b, openTabRect(b)));
+  assert.equal(tabKey(a, openTabRect(a)), tabKey(frame('tabs_red_open', 1080), openTabRect(a)));
+  const cut = cropTab(a, openTabRect(a), 12);
+  assert.equal(cut.data.length, cut.width * cut.height * 4);
+  assert.equal(cut.height, 34);
+  assert.equal(openTabRect({ data: Buffer.alloc(1920 * 1080 * 4), width: 1920, height: 1080, bgr: true }), null);
+});
+
+test('tab names: what text recognition makes of them still matches', () => {
+  const { sameTabName } = require('../src/core/stashTabs');
+  assert.equal(sameTabName('~price 1 chaos', '~price 1 chaos'), true);
+  assert.equal(sameTabName('-price I chaos', '~price 1 chaos'), true); // "~" and "1" misread
+  assert.equal(sameTabName('@ price 1 chaos', '~price 1 chaos'), true); // the coin picture read as a sign
+  assert.equal(sameTabName('Se -price 1 chao5', '~price 1 chaos'), true); // stray letters in front
+  assert.equal(sameTabName('~price 5 chaos', '~price 1 chaos'), true); // one letter apart: too close to call, so it shows
+  assert.equal(sameTabName('MAPS', '~price 1 chaos'), false);
+  assert.equal(sameTabName('CASH', 'MAPS'), false);
+  assert.equal(sameTabName('1', '1'), true);
+  assert.equal(sameTabName('l', '1'), true);
+  assert.equal(sameTabName('1', '4'), false);
+  assert.equal(sameTabName('1', '11'), false);
+  assert.equal(sameTabName('ULTIMATUM', 'Ultimatum'), true);
+  assert.equal(sameTabName('', 'MAPS'), null); // nothing read: cannot tell
+  assert.equal(sameTabName('...', 'MAPS'), null);
+});
+
 test('the overlay hides when another program is in front', () => {
   assert.equal(overlayAllowed({ known: true, game: true, own: false }), true);
   assert.equal(overlayAllowed({ known: true, game: false, own: true }), true); // this app's own window
