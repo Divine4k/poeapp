@@ -8,4 +8,6 @@ contextBridge.exposeInMainWorld('api', {
   action: (a) => ipcRenderer.invoke('action', a),
   search: (q) => ipcRenderer.invoke('search', q),
   inventory: () => ipcRenderer.invoke('inventory'),
+  priceCategories: () => ipcRenderer.invoke('price-categories'),
+  priceList: (a) => ipcRenderer.invoke('price-list', a),
 });

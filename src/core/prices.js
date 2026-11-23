@@ -50,7 +50,11 @@ function parseExchange(json, category) {
     const name = names.get(line.id);
     const v = Number(line.primaryValue);
     if (!name || !isFinite(v) || v <= 0) continue;
-    out.push({ name, chaos: v * factor, category, icon: ON_SCREEN.has(category) ? icons.get(line.id) || null : null });
+    out.push({
+      name, chaos: v * factor, category, icon: icons.get(line.id) || null,
+      change: line.sparkline && isFinite(Number(line.sparkline.totalChange)) ? Number(line.sparkline.totalChange) : null,
+      volume: isFinite(Number(line.volumePrimaryValue)) ? Number(line.volumePrimaryValue) * factor : null,
+    });
   }
   return out;
 }
@@ -69,7 +73,11 @@ function variantLabel(line, category) {
 // price check never overstates), plus one entry per variant, e.g. "Enlighten Support (3/0c)".
 function parseItemOverview(json, category) {
   if (!json || !Array.isArray(json.lines)) return [];
-  const onScreen = ON_SCREEN.has(category);
+  const trend = (line) => {
+    const s = line.sparkLine || line.sparkline || line.lowConfidenceSparkLine;
+    return s && isFinite(Number(s.totalChange)) ? Number(s.totalChange) : null;
+  };
+  const extra = (line) => ({ icon: iconUrl(line.icon), change: trend(line), listings: isFinite(Number(line.listingCount)) ? Number(line.listingCount) : null });
   const byName = new Map();
   for (const line of json.lines) {
     const v = Number(line.chaosValue);
@@ -82,14 +90,16 @@ function parseItemOverview(json, category) {
     const plain = list.filter((x) => !(x.line.links >= 5)); // 5/6-link prices would overstate a normal drop
     const pool = plain.length ? plain : list;
     const cheapest = pool.reduce((m, x) => (x.v < m.v ? x : m));
-    out.push({ name, chaos: cheapest.v, category, icon: onScreen ? iconUrl(cheapest.line.icon) : null });
+    const plainEntry = { name, chaos: cheapest.v, category, ...extra(cheapest.line) };
+    out.push(plainEntry);
     if (list.length < 2) continue;
     const seen = new Set();
     for (const x of list) {
       const label = variantLabel(x.line, category);
       if (!label || seen.has(label)) continue;
       seen.add(label);
-      out.push({ name: `${name} (${label})`, chaos: x.v, category, icon: null, variant: true });
+      out.push({ name: `${name} (${label})`, chaos: x.v, category, ...extra(x.line), variant: true });
+      plainEntry.hasVariants = true; // the price browser lists the variants instead of this summary line
     }
   }
   return out;
@@ -135,6 +145,27 @@ class PriceTable {
     }
     const byValue = (a, b) => b.chaos - a.chaos;
     return starts.sort(byValue).concat(contains.sort(byValue)).slice(0, limit);
+  }
+
+  // Number of browsable rows per category: { Currency: 108, ... }
+  categoryCounts() {
+    const out = {};
+    for (const e of this.byNorm.values()) if (!e.hasVariants) out[e.category] = (out[e.category] || 0) + 1;
+    return out;
+  }
+
+  // Rows for the price browser, most valuable first. category '' means every category.
+  list(category, query = '', limit = 400) {
+    const q = normalize(query);
+    const rows = [];
+    for (const [k, e] of this.byNorm) {
+      if (e.hasVariants) continue;
+      if (category && e.category !== category) continue;
+      if (q && !k.includes(q)) continue;
+      rows.push(e);
+    }
+    rows.sort((a, b) => b.chaos - a.chaos);
+    return { total: rows.length, rows: rows.slice(0, limit) };
   }
 
   toJSON() { return { league: this.league, updatedAt: this.updatedAt, entries: [...this.byNorm.values()] }; }
@@ -202,4 +233,19 @@ class PriceService {
   }
 }
 
-module.exports = { PriceTable, PriceService, parseExchange, parseItemOverview, iconUrl, EXCHANGE_TYPES, ITEM_TYPES, ON_SCREEN };
+// How categories are named and grouped in the price browser, in display order.
+const CATEGORY_LABELS = [
+  ['General', [['Currency', 'Currency'], ['Fragment', 'Fragments'], ['Thread', 'Threads'], ['Wombgift', 'Wombgifts'], ['Runegraft', 'Runegrafts'],
+    ['AllflameEmber', 'Allflame Embers'], ['Corpse', 'Corpses'], ['Viscera', 'Viscera'], ['Tattoo', 'Tattoos'], ['Omen', 'Omens'], ['DjinnCoin', 'Djinn Coins'],
+    ['Ducat', 'Ducats'], ['EnshroudingCrystal', 'Enshrouding Crystals'], ['DivinationCard', 'Divination Cards'], ['Artifact', 'Artifacts'], ['Oil', 'Oils'],
+    ['Incubator', 'Incubators'], ['DeliriumOrb', 'Delirium Orbs'], ['Astrolabe', 'Astrolabes'], ['Fossil', 'Fossils'], ['Resonator', 'Resonators'],
+    ['Essence', 'Essences'], ['Vial', 'Vials'], ['Scarab', 'Scarabs'], ['Beast', 'Beasts']]],
+  ['Equipment and gems', [['UniqueWeapon', 'Unique Weapons'], ['UniqueArmour', 'Unique Armours'], ['UniqueAccessory', 'Unique Accessories'],
+    ['UniqueFlask', 'Unique Flasks'], ['UniqueJewel', 'Unique Jewels'], ['ForbiddenJewel', 'Forbidden Jewels'], ['ShrineBelt', 'Shrine Belts'],
+    ['UniqueTincture', 'Unique Tinctures'], ['UniqueRelic', 'Unique Relics'], ['SkillGem', 'Skill Gems'], ['ImbuedGem', 'Imbued Gems'],
+    ['ClusterJewel', 'Cluster Jewels'], ['BaseType', 'Base Types']]],
+  ['Atlas', [['Map', 'Maps'], ['BlightedMap', 'Blighted Maps'], ['BlightRavagedMap', 'Blight-ravaged Maps'], ['UniqueMap', 'Unique Maps'],
+    ['ValdoMap', 'Valdo Maps'], ['Invitation', 'Invitations'], ['Memory', 'Memories'], ['IncursionTemple', 'Incursion Temples']]],
+];
+
+module.exports = { CATEGORY_LABELS, PriceTable, PriceService, parseExchange, parseItemOverview, iconUrl, EXCHANGE_TYPES, ITEM_TYPES, ON_SCREEN };

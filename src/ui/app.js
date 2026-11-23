@@ -269,7 +269,7 @@
 
   function render() {
     if (!state) return;
-    renderStatus(); renderNow(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false);
+    renderStatus(); renderNow(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false); renderPrices(false);
   }
 
   function setState(s) {
@@ -286,6 +286,7 @@
     for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
     for (const id of ['mapping', 'inventory', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
     if (name === 'inventory') renderInventory(true);
+    if (name === 'prices') renderPrices(true);
   }
 
   // ---- events ---------------------------------------------------------------------
@@ -362,17 +363,59 @@
     e.target.reset();
   });
 
+  // ---- price browser ------------------------------------------------------------------
+  let priceCat = 'Currency';
+  let priceStamp = '';
   let searchTimer = null;
-  $('price-search').addEventListener('input', (e) => {
+  const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}m` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(Math.round(n)));
+
+  async function renderPriceCats() {
+    const groups = await api.priceCategories();
+    if (!groups.some((g) => g.categories.some((c) => c.id === priceCat)) && groups.length) priceCat = groups[0].categories[0].id;
+    $('price-cats').innerHTML = `<button type="button" data-cat="" aria-pressed="${priceCat === ''}">Everything</button>`
+      + groups.map((g) => `<h3>${esc(g.group)}</h3>${g.categories.map((c) => `<button type="button" data-cat="${esc(c.id)}" aria-pressed="${c.id === priceCat}">${esc(c.label)}<span>${c.count}</span></button>`).join('')}`).join('');
+  }
+
+  async function renderPriceRows() {
+    const query = $('price-search').value;
+    const res = await api.priceList({ category: priceCat, query });
+    const divine = state.summary.divine;
+    $('price-count').textContent = res.total > res.rows.length
+      ? `Showing the ${res.rows.length} most valuable of ${res.total}. Type a name to narrow it down.`
+      : `${res.total} ${res.total === 1 ? 'item' : 'items'}, most valuable first.`;
+    $('price-rows').innerHTML = res.rows.length ? res.rows.map((r) => {
+      const change = r.change == null ? '' : `<span class="${r.change < 0 ? 'neg' : 'pos'}">${r.change > 0 ? '+' : ''}${Math.round(r.change)}%</span>`;
+      const traded = r.volume != null ? `${compact(r.volume)} chaos an hour` : (r.listings != null ? `${compact(r.listings)} listed` : '');
+      return `<tr>
+        <td><div class="pname">${r.icon ? `<img src="${esc(r.icon)}" alt="" loading="lazy" width="28" height="28">` : '<span class="noicon"></span>'}${esc(r.name)}</div></td>
+        <td class="num">${fmtValue(r.chaos)}</td>
+        <td class="num dim">${divine > 0 && r.chaos >= divine ? `${Math.round(r.chaos).toLocaleString()}c` : ''}</td>
+        <td class="num">${change}</td>
+        <td class="num dim">${traded}</td>
+        <td><button type="button" class="link" data-act="addLoot" data-name="${esc(r.name)}" data-qty="1">Add to loot</button></td></tr>`;
+    }).join('') : `<tr><td colspan="6" class="empty">${query.trim() ? 'Nothing matches that name here.' : 'No prices in this category yet.'}</td></tr>`;
+  }
+
+  // Redraws the price page when it is opened or when new prices have arrived.
+  async function renderPrices(force) {
+    if ($('tab-prices').hidden) return;
+    const stamp = `${state.status.prices.updatedAt}:${state.status.prices.count}`;
+    if (!force && stamp === priceStamp) return;
+    priceStamp = stamp;
+    await renderPriceCats();
+    await renderPriceRows();
+  }
+
+  $('price-cats').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cat]');
+    if (!b) return;
+    priceCat = b.dataset.cat;
+    for (const x of $('price-cats').querySelectorAll('[data-cat]')) x.setAttribute('aria-pressed', String(x === b));
+    renderPriceRows();
+  });
+  $('price-search').addEventListener('input', () => {
     clearTimeout(searchTimer);
-    const q = e.target.value;
-    searchTimer = setTimeout(async () => {
-      const res = q.trim() ? await api.search(q) : [];
-      $('price-results').innerHTML = res.length
-        ? res.map((r) => `<li><span>${esc(r.name)}</span><span class="val">${fmtValue(r.chaos)}</span>
-            <button type="button" class="link" data-act="addLoot" data-name="${esc(r.name)}" data-qty="1">Add to loot</button></li>`).join('')
-        : (q.trim() ? '<li class="empty">Nothing matches that name.</li>' : '');
-    }, 150);
+    searchTimer = setTimeout(renderPriceRows, 150);
   });
 
   // ---- settings ---------------------------------------------------------------------

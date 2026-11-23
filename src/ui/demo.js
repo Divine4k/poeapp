@@ -57,6 +57,8 @@
       const mk = (cell, status, name, qty, each, source, score) => ({ cell, status, name, qty, each, total: each * qty, source, score, guess: status === 'unknown' ? { name: 'Vaal Orb', score: 61 } : null, image: img });
       return { rev: 1, at: now, cols: 12, rows: 5, cells: [mk(0, 'item', 'Chaos Orb', 20, 1, 'art', 97), mk(1, 'item', 'Divine Orb', 2, 212, 'learned', 99), mk(2, 'unknown', null, 17, 0), mk(12, 'remembered', 'Vaal Orb', 9, 0.6), mk(13, 'skipped', null, 0, 0), mk(14, 'item', 'Abyss Thread', 6, 5.5, 'shared', 98)] };
     },
+    priceCategories: async () => [{ group: 'General', categories: [{ id: 'Currency', label: 'Currency', count: 108 }, { id: 'Thread', label: 'Threads', count: 10 }, { id: 'Essence', label: 'Essences', count: 105 }] }, { group: 'Equipment and gems', categories: [{ id: 'SkillGem', label: 'Skill Gems', count: 8123 }] }],
+    priceList: async () => ({ total: 108, rows: [['Mirror of Kalandra', 190000, 4, 12000], ['Divine Orb', 212, 41, 19388425], ['Exalted Orb', 14, -8, 420000], ['Legion Thread', 5.9, 305, 732000], ['Chaos Orb', 1, null, null]].map(([name, chaos, change, volume]) => ({ name, chaos, change, volume, icon: null, listings: null })) }),
     search: async (q) => Object.keys(price).filter((n) => n.toLowerCase().includes(q.toLowerCase())).map((name) => ({ name, chaos: price[name] })),
   };
 })();

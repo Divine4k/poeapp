@@ -5,7 +5,7 @@ const zlib = require('zlib');
 const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage, safeStorage } = require('electron');
 
 const { LogTail, findLogPath } = require('./core/clientLog');
-const { PriceTable, PriceService } = require('./core/prices');
+const { PriceTable, PriceService, CATEGORY_LABELS } = require('./core/prices');
 const { parseItemText, priceName } = require('./core/itemText');
 const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
 const { Session } = require('./core/session');
@@ -529,6 +529,15 @@ function setupIpc() {
       return { cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source, score: c.score, guess: c.guess, image: c.image, each, total: each * (c.qty || 0) };
     });
     return { rev: lastInventory.rev, at: lastInventory.at, cols: COLS, rows: ROWS, cells };
+  });
+  ipcMain.handle('price-categories', () => {
+    const counts = prices.categoryCounts();
+    return CATEGORY_LABELS.map(([group, list]) => ({ group, categories: list.filter(([id]) => counts[id]).map(([id, label]) => ({ id, label, count: counts[id] })) }))
+      .filter((g) => g.categories.length);
+  });
+  ipcMain.handle('price-list', (_e, a) => {
+    const r = prices.list(String((a && a.category) || ''), String((a && a.query) || ''), 400);
+    return { total: r.total, rows: r.rows.map((e) => ({ name: e.name, chaos: e.chaos, category: e.category, icon: e.icon || null, change: e.change == null ? null : e.change, volume: e.volume == null ? null : e.volume, listings: e.listings == null ? null : e.listings })) };
   });
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
   ipcMain.handle('action', async (_e, a) => {
