@@ -508,6 +508,14 @@
     $('trade-seen').textContent = !state.status.log.ok ? 'The game log is not connected, so no whispers can be read.'
       : seen.whispers ? `Since the app started: ${seen.whispers} ${seen.whispers === 1 ? 'whisper' : 'whispers'} read from the game log, ${seen.offers} of them trade offers. Last one at ${clock(seen.lastWhisperAt)}.`
         : 'No whispers read from the game log since the app started.';
+    // Why the overlay is or is not on screen right now, so a problem can be told apart.
+    const oi = t.overlayInfo || {}, hkOk = state.status.hotkeys;
+    const keyState = (name, ok) => (name ? `${name} ${ok ? 'ready' : 'NOT available (another program or another copy of this app has it)'}` : '');
+    const keysLine = [keyState(hk.next, hkOk.tradeNext), keyState(hk.dismiss, hkOk.tradeDismiss), keyState(hk.layout, hkOk.layout)].filter(Boolean).join(', ');
+    $('trade-overlay-info').textContent = !cfg.enabled ? '' : `Overlay: ${!oi.on ? 'switched off in Trade settings'
+      : oi.layoutOpen ? 'layout mode is open'
+        : !oi.helper ? 'shown whenever there are offers (the app cannot tell which window is in front)'
+          : oi.allowed ? `ready, window in front is "${oi.front}"` : `hidden, because the window in front is "${oi.front}" and not the game`}. Keys: ${keysLine || 'none set'}.`;
     $('btn-trade-clear').hidden = !t.offers.length;
 
     const box = $('trade-offers');

@@ -702,6 +702,7 @@ function registerHotkeys() {
 function tradeState() {
   const s = book.summary(prices);
   return { ...s, divine: prices.divine, labels: LABELS,
+    overlayInfo: { on: !!config.trade.overlay, helper: watch.running, front: watch.running ? watch.name : '', allowed: overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() }), layoutOpen: !!layoutWin },
     canSend: !!hook && watch.running, sendProblem: !hook ? 'the keyboard helper is not installed' : (watch.running ? '' : 'the app cannot tell which window is in front on this PC'), hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
 }
 function saveTradesSoon() {
@@ -1059,7 +1060,17 @@ function setupIpc() {
 }
 
 // ---- start ---------------------------------------------------------------------
+// Only one copy may run. A second one (the installed program started while the copy from
+// start.bat is still open, say) could not take the hotkeys, and the two would fight over the
+// overlay and the saved files. The second copy brings the first to the front and closes.
+const firstCopy = app.requestSingleInstanceLock();
+if (!firstCopy) app.quit();
+app.on('second-instance', () => {
+  if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+});
+
 app.whenReady().then(() => {
+  if (!firstCopy) return;
   loadConfig();
   prices.setCustom(config.customPrices);
   session.restore(readJson('session.json', null));
