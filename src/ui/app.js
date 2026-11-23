@@ -43,6 +43,19 @@
     else if (!inv.art.known && !state.learned.length && st.prices.count > 1) items.push(['bad', 'No item pictures loaded. Name items yourself under the loot list']);
     if (!st.hotkeys.clipboard) items.push(['bad', `Hotkey ${hk.clipboard} is taken by another app`]);
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
+    const up = st.update, btn = $('btn-update');
+    if (up.applying) items.push(['busy', up.step || 'Updating']);
+    else if (up.error) items.push(['bad', `Update problem: ${up.error}`]);
+    else if (up.available) items.push(['busy', `Update available: ${up.latest.message}`]);
+    btn.hidden = !up.available && !up.applying;
+    btn.disabled = !!up.applying;
+    btn.textContent = up.applying ? 'Updating' : 'Install update and restart';
+    const line = $('version-line');
+    if (line) {
+      const cur = up.current ? `Installed version ${up.current.sha.slice(0, 7)} (${up.current.message}).` : 'Installed from a download, so the exact version is not known yet. Install the update once to fix that.';
+      const chk = up.checkedAt ? ` Last checked at ${clock(up.checkedAt)}${up.available ? '' : ': up to date'}.` : '';
+      line.textContent = cur + chk;
+    }
     $('status').innerHTML = items.map(([cls, text]) => `<li class="${cls}">${esc(text)}</li>`).join('');
   }
 
@@ -220,6 +233,8 @@
   });
 
   $('btn-read').addEventListener('click', () => act({ type: 'readInventory' }));
+  $('btn-update').addEventListener('click', () => act({ type: 'applyUpdate' }));
+  $('btn-check-update').addEventListener('click', () => act({ type: 'checkUpdate' }));
   $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));
   $('btn-new-session').addEventListener('click', () => {
     if (!state.summary.runs.length || window.confirm('Start a new session? The current list of maps is cleared.')) act({ type: 'newSession' });

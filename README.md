@@ -38,6 +38,12 @@ Items are recognised by their picture, and the stack number is read from the cor
 
 On first start the app downloads item pictures once (a few minutes in the background).
 
+## Updating
+
+The app checks this repository every two minutes. When a newer version has been pushed, an **Install update and restart** button appears in the top bar. Settings also has **Check for updates**. Your settings, named items and session are kept.
+
+The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so anyone who can push there controls what gets installed.
+
 ## Game settings
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.

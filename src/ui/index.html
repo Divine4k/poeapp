@@ -12,6 +12,7 @@
   <h1>Map Companion</h1>
   <ul class="status" id="status"></ul>
   <div class="bar-actions">
+    <button type="button" class="primary" id="btn-update" hidden>Install update and restart</button>
     <button type="button" id="btn-new-session">Start new session</button>
     <button type="button" id="btn-settings">Settings</button>
   </div>
@@ -120,8 +121,9 @@
     </fieldset>
 
     <p class="fine">This app only reads the game log, the clipboard and the screen. It sends nothing to the game and never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
+    <p class="fine" id="version-line"></p>
     <div class="dialog-actions">
-      <button type="button" id="btn-refresh-prices">Refresh prices now</button>
+      <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-check-update">Check for updates</button></span>
       <button type="submit" class="primary" value="save">Save settings</button>
     </div>
   </form>

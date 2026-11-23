@@ -14,8 +14,10 @@ const { InventoryReader } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
 const { captureFrame, cursorInFrame } = require('./capture');
 const { ArtLoader } = require('./art');
+const { Updater } = require('./updater');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
+const UPDATE_CHECK_MS = 2 * 60 * 1000;
 
 const DEFAULT_CONFIG = {
   league: '',
@@ -39,6 +41,7 @@ let timedTimer = null;
 let invBusy = false;
 let artLoader = null;
 let hook = null;
+let updater = null;
 let unknownSeq = 1;
 let unknown = []; // [{ id, qty, print, image }]
 let learned = []; // [{ name, print(base64) }]
@@ -53,6 +56,7 @@ const status = {
   prices: { count: 0, updatedAt: 0, league: '', errors: [], loading: false },
   inventory: { keyHook: 'off', open: false, lastReadAt: 0, recognised: 0, error: null, art: { known: 0, done: 0, total: 0, failed: 0 } },
   hotkeys: { clipboard: false },
+  update: { current: null, latest: null, available: false, checking: false, applying: false, step: '', error: null, checkedAt: 0 },
 };
 let mapCheck = null;
 let priceCheck = null;
@@ -241,6 +245,46 @@ function loadLearned() {
   for (const l of learned) { try { index.addLearned(l.name, decodePrint(l.print)); } catch (_) { /* skip a broken entry */ } }
 }
 
+// ---- updates ---------------------------------------------------------------------
+async function checkUpdate() {
+  if (!updater || status.update.checking || status.update.applying) return;
+  status.update.checking = true;
+  try {
+    await updater.check();
+    status.update.error = null;
+    status.update.checkedAt = Date.now();
+  } catch (e) {
+    status.update.error = e.message || String(e);
+  } finally {
+    status.update.checking = false;
+    status.update.current = updater.current;
+    status.update.latest = updater.latest;
+    status.update.available = updater.available;
+    push();
+  }
+}
+
+async function applyUpdate() {
+  if (!updater || status.update.applying) return;
+  status.update.applying = true;
+  status.update.error = null;
+  status.update.step = 'Downloading the update';
+  push();
+  try {
+    if (!updater.latest) await updater.check();
+    const { depsChanged } = await updater.apply();
+    if (depsChanged) { status.update.step = 'Installing new parts (this can take a minute)'; push(); await updater.installDeps(); }
+    writeJson('session.json', session.toJSON());
+    app.relaunch();
+    app.exit(0);
+  } catch (e) {
+    status.update.applying = false;
+    status.update.step = '';
+    status.update.error = e.message || String(e);
+    push();
+  }
+}
+
 // ---- clipboard (read once per hotkey press or button click) --------------------
 function checkText(text) {
   const item = parseItemText(text);
@@ -335,6 +379,8 @@ const actions = {
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),
   refreshPrices: () => { refreshPrices(); },
+  checkUpdate: () => checkUpdate(),
+  applyUpdate: () => { applyUpdate(); },
   browseLog: async () => {
     const r = await dialog.showOpenDialog(win, { title: 'Choose Client.txt', properties: ['openFile'], filters: [{ name: 'Client.txt', extensions: ['txt'] }] });
     if (!r.canceled && r.filePaths[0]) applyConfig({ logPath: r.filePaths[0] });
@@ -371,6 +417,11 @@ app.whenReady().then(() => {
   refreshPrices();
   setInterval(refreshPrices, PRICE_REFRESH_MS);
   setInterval(push, 5000);
+
+  updater = new Updater(app.getAppPath());
+  status.update.current = updater.current;
+  checkUpdate();
+  setInterval(checkUpdate, UPDATE_CHECK_MS);
 });
 
 app.on('will-quit', () => {
