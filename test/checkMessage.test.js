@@ -13,9 +13,18 @@ test('check key message: prices', () => {
   assert.equal(checkMessage({ priceCheck: { at, name: 'Odd Thing', qty: 1, found: false } }, 4000).bad, true);
   const err = checkMessage({ priceCheck: { at, error: 'The clipboard does not hold a Path of Exile item.' } }, 4000);
   assert.deepEqual([err.title, err.bad], ['No item read', true]);
-  // What the app did with the slot rides along as the second line.
-  const counted = checkMessage({ priceCheck: { at, name: 'The Nurse', qty: 1, found: true, each: 78, total: 78 }, notice: { at, text: 'Counting The Nurse in that slot: 78c.', bad: false } }, 4000);
-  assert.deepEqual(counted, { title: 'The Nurse: 78c', detail: 'Counting The Nurse in that slot: 78c.', bad: false });
+  // Over the inventory, whether the item was learned or counted is the headline.
+  const price = { at, name: 'Vaal Orb', qty: 3, found: true, each: 0.6, total: 1.8 };
+  assert.deepEqual(checkMessage({ priceCheck: price, notice: { at, text: 'Saved: Vaal Orb.', bad: false } }, 4000),
+    { title: 'Saved: Vaal Orb', detail: 'Vaal Orb ×3 is worth 1.8c (0.6c each).', bad: false });
+  assert.deepEqual(checkMessage({ priceCheck: price, notice: { at, text: 'Vaal Orb is already recognised.', bad: false } }, 4000),
+    { title: 'Vaal Orb is already recognised', detail: 'Vaal Orb ×3 is worth 1.8c (0.6c each).', bad: false });
+  const blind = checkMessage({ priceCheck: price, notice: { at, text: 'Could not count Vaal Orb: the app has not had a clear view of that slot yet. Move the mouse off the inventory for a second, then try again.', bad: true } }, 4000);
+  assert.deepEqual(blind, { title: 'Could not count Vaal Orb: the app has not had a clear view of that slot yet', detail: 'Vaal Orb ×3 is worth 1.8c (0.6c each). Move the mouse off the inventory for a second, then try again.', bad: true });
+  const counted = checkMessage({ priceCheck: { at, name: 'The Nurse', qty: 1, found: true, each: 78, total: 78 }, notice: { at, text: 'Counting The Nurse in that slot: 78c. It shows up in the loot at the next inventory read.', bad: false } }, 4000);
+  assert.equal(counted.title, 'Counting The Nurse in that slot: 78c');
+  const unpriced = checkMessage({ priceCheck: { at, name: 'Odd Thing', qty: 1, found: false }, notice: { at, text: 'Odd Thing has no known price, so it is not counted.', bad: true } }, 4000);
+  assert.deepEqual(unpriced, { title: 'Odd Thing has no known price, so it is not counted', detail: 'No price found for Odd Thing.', bad: true });
 });
 
 test('check key message: maps, nothing under the mouse, and stale results', () => {

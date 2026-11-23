@@ -9,6 +9,10 @@ function worth(c, divine) {
   return `${a >= 100 ? Math.round(c) : Math.round(c * 10) / 10}c`;
 }
 
+// "Saved: Vaal Orb. More words." -> "Saved: Vaal Orb" and "More words."
+const firstSentence = (t) => { const i = t.indexOf('. '); return (i > 0 ? t.slice(0, i) : t).replace(/\.$/, ''); };
+const restOf = (t) => { const i = t.indexOf('. '); return i > 0 ? t.slice(i + 2).trim() : ''; };
+
 // state: { mapCheck, priceCheck, notice, divine } as the app holds them. since: when the key was
 // pressed; only results newer than that count. Returns { title, detail, bad } or null.
 function checkMessage({ mapCheck, priceCheck, notice, divine = 0 } = {}, since = 0) {
@@ -25,8 +29,14 @@ function checkMessage({ mapCheck, priceCheck, notice, divine = 0 } = {}, since =
     const p = priceCheck;
     if (p.error) return { title: 'No item read', detail: p.error, bad: true };
     const what = `${p.name}${p.qty > 1 ? ` ×${p.qty}` : ''}`;
-    if (!p.found) return { title: `${what}: no price found`, detail: note ? note.text : '', bad: true };
-    return { title: `${what}: ${worth(p.total, divine)}${p.qty > 1 ? ` (${worth(p.each, divine)} each)` : ''}`, detail: note ? note.text : '', bad: !!(note && note.bad) };
+    const value = p.found ? `${worth(p.total, divine)}${p.qty > 1 ? ` (${worth(p.each, divine)} each)` : ''}` : '';
+    // Over the inventory the key also names or counts the item in that slot. Whether that
+    // worked is the headline; the price follows.
+    if (note) {
+      return { title: firstSentence(note.text), detail: [p.found ? `${what} is worth ${value}.` : `No price found for ${what}.`, restOf(note.text)].filter(Boolean).join(' '), bad: !!note.bad };
+    }
+    if (!p.found) return { title: `${what}: no price found`, detail: '', bad: true };
+    return { title: `${what}: ${value}`, detail: '', bad: false };
   }
   if (note) return { title: note.bad ? 'Nothing read' : 'Done', detail: note.text, bad: !!note.bad };
   return null;
