@@ -29,6 +29,12 @@ function iconUrl(v) {
   return v.startsWith('/') ? `https://web.poecdn.com${v}` : null;
 }
 
+// Categories whose items all look the same in game, so poe.ninja sends no picture per item.
+// They all get this one picture instead. Divination cards: the card every one of them shows as.
+const SHARED_ICONS = {
+  DivinationCard: 'https://web.poecdn.com/image/Art/2DItems/Divination/InventoryIcon.png',
+};
+
 // The week's price movement as a short list of numbers, for drawing a small trend line.
 function sparkOf(s) {
   if (!s || !Array.isArray(s.data)) return null;
@@ -58,7 +64,7 @@ function parseExchange(json, category) {
     const v = Number(line.primaryValue);
     if (!name || !isFinite(v) || v <= 0) continue;
     out.push({
-      name, chaos: v * factor, category, icon: icons.get(line.id) || null,
+      name, chaos: v * factor, category, icon: icons.get(line.id) || SHARED_ICONS[category] || null,
       change: line.sparkline && isFinite(Number(line.sparkline.totalChange)) ? Number(line.sparkline.totalChange) : null,
       volume: isFinite(Number(line.volumePrimaryValue)) ? Number(line.volumePrimaryValue) * factor : null,
       spark: sparkOf(line.sparkline),
@@ -271,4 +277,4 @@ const CATEGORY_LABELS = [
     ['ValdoMap', 'Valdo Maps'], ['Invitation', 'Invitations'], ['Memory', 'Memories'], ['IncursionTemple', 'Incursion Temples']]],
 ];
 
-module.exports = { CATEGORY_LABELS, PriceTable, PriceService, parseExchange, parseItemOverview, iconUrl, EXCHANGE_TYPES, ITEM_TYPES, ON_SCREEN };
+module.exports = { CATEGORY_LABELS, PriceTable, PriceService, parseExchange, parseItemOverview, iconUrl, SHARED_ICONS, EXCHANGE_TYPES, ITEM_TYPES, ON_SCREEN };

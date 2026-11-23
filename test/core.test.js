@@ -194,3 +194,16 @@ test('prices: every variant is listed, the plain name is the cheapest ordinary o
   assert.equal(t.chaosOf('The Doctor'), 900);
   assert.equal(t.chaosOf('enlighten support (3)'), 700);
 });
+
+test('prices: divination cards without a picture of their own all get the shared card picture', () => {
+  const { SHARED_ICONS } = require('../src/core/prices');
+  const json = { core: { primary: 'chaos' }, items: [{ id: 'a', name: 'Abandoned Wealth' }, { id: 'd', name: 'The Doctor', image: '/own.png' }], lines: [{ id: 'a', primaryValue: 2 }, { id: 'd', primaryValue: 900 }] };
+  const cards = parseExchange(json, 'DivinationCard');
+  assert.equal(cards[0].icon, SHARED_ICONS.DivinationCard);
+  assert.equal(cards[1].icon, 'https://web.poecdn.com/own.png');
+  assert.equal(parseExchange(json, 'Currency')[0].icon, null);
+  const t = new PriceTable();
+  t.load([cards[0]]);
+  assert.equal(t.categoryIcons().DivinationCard, SHARED_ICONS.DivinationCard);
+  assert.deepEqual(t.iconEntries(), []);
+});
