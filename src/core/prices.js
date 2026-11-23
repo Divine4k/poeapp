@@ -4,22 +4,23 @@ const { normalize } = require('./fuzzy');
 
 const BASE = 'https://poe.ninja/poe1/api/economy';
 
-// Currency-exchange based categories (stackables). 'Thread' (Threads of Creation) replaced
-// scarabs in 3.30; 'Scarab' stays for older data and simply comes back empty.
+// Every category poe.ninja publishes for PoE 1 (from its API documentation plus the 3.30 additions).
+// Currency-exchange based categories (stackables):
 const EXCHANGE_TYPES = [
-  'Currency', 'Fragment', 'Thread', 'Scarab', 'DivinationCard', 'Oil', 'Fossil', 'Resonator', 'Essence',
-  'DeliriumOrb', 'Omen', 'Tattoo', 'Artifact', 'AllflameEmber', 'Runegraft', 'Astrolabe', 'DjinnCoin',
-  // 3.30 categories. Ducat and EnshroudingCrystal are confirmed; Viscera and Corpse are requested
-  // on the chance the names are right, and are skipped when they come back empty.
-  'Ducat', 'EnshroudingCrystal', 'Viscera', 'Corpse',
+  'Currency', 'Fragment', 'Thread', 'Runegraft', 'AllflameEmber', 'Tattoo', 'Omen', 'DjinnCoin', 'Ducat',
+  'EnshroudingCrystal', 'DivinationCard', 'Artifact', 'Oil', 'DeliriumOrb', 'Scarab', 'Astrolabe', 'Fossil',
+  'Resonator', 'Essence',
 ];
-// Stash-listing based categories.
+// Stash-listing based categories:
 const ITEM_TYPES = [
-  'Incubator', 'Vial', 'Invitation', 'Memory', 'Wombgift', 'UniqueMap',
-  'UniqueWeapon', 'UniqueArmour', 'UniqueAccessory', 'UniqueFlask', 'UniqueJewel',
+  'Wombgift', 'Incubator', 'Corpse', 'Viscera', 'Vial', 'Invitation', 'Memory', 'IncursionTemple', 'Beast',
+  'UniqueWeapon', 'UniqueArmour', 'UniqueAccessory', 'UniqueFlask', 'UniqueJewel', 'ForbiddenJewel', 'ShrineBelt',
+  'UniqueTincture', 'UniqueRelic', 'SkillGem', 'ImbuedGem', 'ClusterJewel',
+  'Map', 'BlightedMap', 'BlightRavagedMap', 'UniqueMap', 'ValdoMap', 'BaseType',
 ];
-// Uniques are multi-cell or share art with their base type, so they are not matched by picture.
-const NOT_ON_SCREEN = new Set(['UniqueMap', 'UniqueWeapon', 'UniqueArmour', 'UniqueAccessory', 'UniqueFlask', 'UniqueJewel']);
+// Categories whose items are one inventory cell, stack, and each have their own picture, so the
+// inventory reader can recognise them. Divination cards are left out: they all share one picture.
+const ON_SCREEN = new Set([...EXCHANGE_TYPES.filter((t) => t !== 'DivinationCard'), 'Wombgift', 'Incubator', 'Vial', 'Viscera']);
 
 // poe.ninja gives item art either as a full URL or as a path on GGG's image CDN.
 function iconUrl(v) {
@@ -49,22 +50,49 @@ function parseExchange(json, category) {
     const name = names.get(line.id);
     const v = Number(line.primaryValue);
     if (!name || !isFinite(v) || v <= 0) continue;
-    out.push({ name, chaos: v * factor, category, icon: icons.get(line.id) || null });
+    out.push({ name, chaos: v * factor, category, icon: ON_SCREEN.has(category) ? icons.get(line.id) || null : null });
   }
   return out;
 }
 
+// What sets one listing of an item apart from another with the same name.
+function variantLabel(line, category) {
+  const parts = [];
+  if (line.mapTier) parts.push(`T${line.mapTier}`);
+  if (category === 'BaseType' && line.levelRequired) parts.push(`ilvl ${line.levelRequired}`);
+  if (line.links) parts.push(`${line.links}L`);
+  if (line.variant) parts.push(String(line.variant));
+  return parts.join(', ');
+}
+
+// Every item gets one entry under its plain name (its cheapest ordinary version, so a quick
+// price check never overstates), plus one entry per variant, e.g. "Enlighten Support (3/0c)".
 function parseItemOverview(json, category) {
-  const best = new Map();
   if (!json || !Array.isArray(json.lines)) return [];
+  const onScreen = ON_SCREEN.has(category);
+  const byName = new Map();
   for (const line of json.lines) {
     const v = Number(line.chaosValue);
     if (!line.name || !isFinite(v) || v <= 0) continue;
-    if (line.links && line.links >= 5) continue; // 5/6-link prices would overstate a normal drop
-    const prev = best.get(line.name);
-    if (!prev || v < prev.chaos) best.set(line.name, { name: line.name, chaos: v, category, icon: iconUrl(line.icon) });
+    if (!byName.has(line.name)) byName.set(line.name, []);
+    byName.get(line.name).push({ line, v });
   }
-  return [...best.values()];
+  const out = [];
+  for (const [name, list] of byName) {
+    const plain = list.filter((x) => !(x.line.links >= 5)); // 5/6-link prices would overstate a normal drop
+    const pool = plain.length ? plain : list;
+    const cheapest = pool.reduce((m, x) => (x.v < m.v ? x : m));
+    out.push({ name, chaos: cheapest.v, category, icon: onScreen ? iconUrl(cheapest.line.icon) : null });
+    if (list.length < 2) continue;
+    const seen = new Set();
+    for (const x of list) {
+      const label = variantLabel(x.line, category);
+      if (!label || seen.has(label)) continue;
+      seen.add(label);
+      out.push({ name: `${name} (${label})`, chaos: x.v, category, icon: null, variant: true });
+    }
+  }
+  return out;
 }
 
 class PriceTable {
@@ -93,7 +121,7 @@ class PriceTable {
   // Items that can be recognised by their inventory picture.
   iconEntries() {
     const out = [];
-    for (const e of this.byNorm.values()) if (e.icon && !NOT_ON_SCREEN.has(e.category)) out.push({ name: e.name, icon: e.icon });
+    for (const e of this.byNorm.values()) if (e.icon && !e.variant && ON_SCREEN.has(e.category)) out.push({ name: e.name, icon: e.icon });
     return out;
   }
 
@@ -174,4 +202,4 @@ class PriceService {
   }
 }
 
-module.exports = { PriceTable, PriceService, parseExchange, parseItemOverview, iconUrl, EXCHANGE_TYPES, ITEM_TYPES };
+module.exports = { PriceTable, PriceService, parseExchange, parseItemOverview, iconUrl, EXCHANGE_TYPES, ITEM_TYPES, ON_SCREEN };

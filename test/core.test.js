@@ -45,7 +45,7 @@ test('prices: exchange and item overview parsing', () => {
     { name: 'Tabula Rasa', chaosValue: 30, links: 6 },
     { name: 'Headhunter', chaosValue: 9000 }, { name: 'Headhunter', chaosValue: 8000 },
   ] }, 'UniqueAccessory');
-  assert.deepEqual(it.map((e) => [e.name, e.chaos]), [['Headhunter', 8000]]);
+  assert.deepEqual(it.map((e) => [e.name, e.chaos]), [['Tabula Rasa', 30], ['Headhunter', 8000]]);
 
   const t = new PriceTable();
   t.load([...ex, ...it]);
@@ -161,4 +161,32 @@ test('prices: Chaos Orb keeps its picture and is always worth 1', () => {
   t.load([{ name: 'Chaos Orb', chaos: 0.98, category: 'Currency', icon: 'https://web.poecdn.com/c.png' }]);
   assert.equal(t.chaosOf('Chaos Orb'), 1);
   assert.deepEqual(t.iconEntries(), [{ name: 'Chaos Orb', icon: 'https://web.poecdn.com/c.png' }]);
+});
+
+test('prices: every variant is listed, the plain name is the cheapest ordinary one', () => {
+  const gems = parseItemOverview({ lines: [
+    { name: 'Enlighten Support', chaosValue: 9000, variant: '4/0c', gemLevel: 4, corrupted: true },
+    { name: 'Enlighten Support', chaosValue: 40, variant: '1' },
+    { name: 'Enlighten Support', chaosValue: 700, variant: '3' },
+  ] }, 'SkillGem');
+  assert.deepEqual(gems.map((e) => [e.name, e.chaos]), [
+    ['Enlighten Support', 40], ['Enlighten Support (4/0c)', 9000], ['Enlighten Support (1)', 40], ['Enlighten Support (3)', 700],
+  ]);
+  const bases = parseItemOverview({ lines: [
+    { name: 'Unset Ring', chaosValue: 500, levelRequired: 85, variant: 'Shaper/Hunter' },
+    { name: 'Unset Ring', chaosValue: 5, levelRequired: 82 },
+  ] }, 'BaseType');
+  assert.deepEqual(bases.map((e) => e.name), ['Unset Ring', 'Unset Ring (ilvl 85, Shaper/Hunter)', 'Unset Ring (ilvl 82)']);
+  const maps = parseItemOverview({ lines: [{ name: 'Strand Map', chaosValue: 3, mapTier: 16 }, { name: 'Strand Map', chaosValue: 1, mapTier: 14 }] }, 'Map');
+  assert.deepEqual(maps.map((e) => [e.name, e.chaos]), [['Strand Map', 1], ['Strand Map (T16)', 3], ['Strand Map (T14)', 1]]);
+
+  // pictures are kept only for categories the inventory reader can recognise
+  const visc = parseItemOverview({ lines: [{ name: 'Greater Skeletal Tail', chaosValue: 2, icon: 'https://web.poecdn.com/v.png' }] }, 'Viscera');
+  const uniq = parseItemOverview({ lines: [{ name: 'Headhunter', chaosValue: 2, icon: 'https://web.poecdn.com/h.png' }] }, 'UniqueAccessory');
+  const cards = parseExchange({ core: { primary: 'chaos' }, items: [{ id: 'd', name: 'The Doctor', image: '/c.png' }], lines: [{ id: 'd', primaryValue: 900 }] }, 'DivinationCard');
+  const t = new PriceTable();
+  t.load([...gems, ...visc, ...uniq, ...cards]);
+  assert.deepEqual(t.iconEntries(), [{ name: 'Greater Skeletal Tail', icon: 'https://web.poecdn.com/v.png' }]);
+  assert.equal(t.chaosOf('The Doctor'), 900);
+  assert.equal(t.chaosOf('enlighten support (3)'), 700);
 });
