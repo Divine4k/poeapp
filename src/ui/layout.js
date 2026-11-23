@@ -6,6 +6,7 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   // What each part looks like while it is being placed.
   const SAMPLES = {
+    toast: '<div class="toast-box"><b>Chaos Orb ×40: 40c (1c each)</b><span>Shown for a moment after the check key.</span></div>',
     trade: [['Invite', 'Tabula Rasa Simple Robe', '12 chaos'], ['Trade', '400× Chaos Orb', '1.5 divine'], ['Hideout', 'The Nurse', '75 chaos']]
       .map(([step, item, price]) => `<div class="tt in"><button type="button" class="primary" tabindex="-1">${step}</button><span class="tt-open"><span class="tt-item">${item}</span><span class="tt-price">${price}</span></span></div>`).join(''),
   };

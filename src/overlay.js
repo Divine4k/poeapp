@@ -79,4 +79,44 @@ class Overlay {
   }
 }
 
-module.exports = { Overlay, overlayBounds, WIDTH };
+// A short message on top of the game that goes away by itself. Clicks pass through it.
+class Toast {
+  constructor({ page }) {
+    this.page = page;
+    this.win = null;
+    this.timer = null;
+  }
+
+  // rect: where to draw, in screen points. message: { title, detail, bad }. ms: how long it stays.
+  show(rect, message, ms) {
+    const hash = encodeURIComponent(JSON.stringify(message));
+    if (!this.win || this.win.isDestroyed()) {
+      this.win = new BrowserWindow({
+        ...rect, show: false, frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+        minimizable: false, maximizable: false, fullscreenable: false, focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+        title: 'Map Companion message', webPreferences: { contextIsolation: true, nodeIntegration: false },
+      });
+      this.win.setIgnoreMouseEvents(true);
+      this.win.setAlwaysOnTop(true, 'screen-saver');
+      this.win.on('closed', () => { this.win = null; });
+    }
+    this.win.loadFile(this.page, { hash });
+    this.win.setBounds(rect);
+    if (!this.win.isVisible()) { this.win.showInactive(); this.win.setAlwaysOnTop(true, 'screen-saver'); }
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.hide(), ms);
+  }
+
+  hide() {
+    clearTimeout(this.timer);
+    if (this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.hide();
+  }
+
+  destroy() {
+    clearTimeout(this.timer);
+    if (this.win && !this.win.isDestroyed()) this.win.destroy();
+    this.win = null;
+  }
+}
+
+module.exports = { Overlay, Toast, overlayBounds, WIDTH };
