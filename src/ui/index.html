@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map Companion</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <h1>Map Companion</h1>
+  <ul class="status" id="status"></ul>
+  <div class="bar-actions">
+    <button type="button" id="btn-new-session">Start new session</button>
+    <button type="button" id="btn-settings">Settings</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="now" aria-label="Current map">
+    <div id="now-head"></div>
+    <div class="now-actions">
+      <button type="button" class="primary" id="btn-scan">Scan loot on screen</button>
+      <button type="button" id="btn-run-toggle">Start a map manually</button>
+    </div>
+    <p class="notice" id="scan-note" hidden></p>
+    <form id="add-loot" class="inline-form" autocomplete="off">
+      <input id="add-loot-name" list="price-names" placeholder="Add loot by name" aria-label="Item name">
+      <input id="add-loot-qty" type="number" min="1" value="1" aria-label="Quantity">
+      <button type="submit">Add</button>
+    </form>
+    <datalist id="price-names"></datalist>
+    <h2>Loot this map</h2>
+    <ul class="feed" id="feed"></ul>
+    <div id="seen-wrap" hidden>
+      <h2>Seen on the ground</h2>
+      <ul class="feed seen" id="seen"></ul>
+    </div>
+  </section>
+
+  <section class="session" aria-label="Session">
+    <div class="totals" id="totals"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Map</th><th class="num">Time</th><th class="num">Loot</th><th class="num">Cost</th><th class="num">Net</th><th class="num">Deaths</th><th></th></tr></thead>
+        <tbody id="runs"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="tools" aria-label="Tools">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="mapcheck" aria-selected="true">Map check</button>
+      <button type="button" role="tab" data-tab="costs" aria-selected="false">Costs</button>
+      <button type="button" role="tab" data-tab="prices" aria-selected="false">Prices</button>
+    </div>
+    <div class="tab-body" id="tab-mapcheck"></div>
+    <div class="tab-body" id="tab-costs" hidden>
+      <div class="cost-cols">
+        <div>
+          <h2>Charged to every new map</h2>
+          <ul class="rows" id="loadout"></ul>
+          <form id="add-loadout" class="inline-form" autocomplete="off">
+            <input name="name" list="price-names" placeholder="Scarab, map, chisel…" aria-label="Cost name" required>
+            <input name="qty" type="number" min="1" value="1" aria-label="Quantity">
+            <input name="chaos" type="number" min="0" step="0.1" placeholder="Fixed price (c)" aria-label="Fixed price in chaos, optional">
+            <button type="submit">Add</button>
+          </form>
+        </div>
+        <div>
+          <h2>Costs on the current map</h2>
+          <ul class="rows" id="run-costs"></ul>
+          <form id="add-run-cost" class="inline-form" autocomplete="off">
+            <input name="name" list="price-names" placeholder="Extra cost for this map" aria-label="Cost name" required>
+            <input name="qty" type="number" min="1" value="1" aria-label="Quantity">
+            <input name="chaos" type="number" min="0" step="0.1" placeholder="Fixed price (c)" aria-label="Fixed price in chaos, optional">
+            <button type="submit">Add</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="tab-body" id="tab-prices" hidden>
+      <div id="price-check"></div>
+      <input id="price-search" placeholder="Search prices" aria-label="Search prices" autocomplete="off">
+      <ul class="rows" id="price-results"></ul>
+    </div>
+  </section>
+</main>
+
+<dialog id="settings">
+  <form method="dialog" id="settings-form">
+    <h2>Settings</h2>
+    <div class="settings-grid">
+      <label>League <select name="league"></select></label>
+      <label>Character name (only your deaths are counted) <input name="characterName" placeholder="Leave empty to count every death"></label>
+      <label class="wide">Game log file (Client.txt)
+        <span class="row"><input name="logPath" placeholder="Found automatically when empty"><button type="button" id="btn-browse">Browse</button></span>
+      </label>
+      <label>Scan loot hotkey <input name="hkScan" placeholder="F7"></label>
+      <label>Check copied item hotkey <input name="hkClip" placeholder="F8"></label>
+      <label>Screen the game runs on <select name="displayId"></select></label>
+      <label>Share of the screen to read, from the top (0.82 skips the skill bar) <input name="cropBottom" type="number" min="0.3" max="1" step="0.01"></label>
+    </div>
+
+    <fieldset>
+      <legend>Timed scanning</legend>
+      <label class="check"><input type="checkbox" name="timed"> Scan the screen by itself while I am in a map</label>
+      <label>Seconds between scans <input name="intervalSec" type="number" min="0.5" max="30" step="0.5"></label>
+      <p class="warn">GGG's rules allow one screen read per manual key press. Timed scanning reads without a key press, so it breaks that rule. Switching it on is your own risk. The hotkey scan stays within the rule.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Map mods my build cannot run</legend>
+      <div class="rules" id="rules"></div>
+    </fieldset>
+
+    <p class="fine">This app only reads the game log, the clipboard and the screen. It sends nothing to the game and never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
+    <div class="dialog-actions">
+      <button type="button" id="btn-refresh-prices">Refresh prices now</button>
+      <button type="submit" class="primary" value="save">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="demo.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

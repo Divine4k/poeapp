@@ -1,0 +1,17 @@
+{
+  "name": "poeapp",
+  "version": "0.1.0",
+  "description": "Second-screen mapping companion for Path of Exile 1: map timer, loot value, map mod check, costs and prices.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/core.test.js"
+  },
+  "dependencies": {
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}
