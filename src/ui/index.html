@@ -39,6 +39,10 @@
 <datalist id="price-names"></datalist>
 
 <main class="view mapping" id="tab-mapping" role="tabpanel">
+  <div class="strat">
+    <div class="strat-tabs" id="strat-tabs" role="tablist" aria-label="Strategies"></div>
+    <div class="strat-info" id="strat-info"></div>
+  </div>
   <section class="now" aria-label="Current map">
     <div class="now-title">
       <div id="now-name"></div>
@@ -231,6 +235,21 @@
     <div class="dialog-actions">
       <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-check-update">Check for updates</button><button type="button" id="btn-diagnostic">Send a full report</button></span>
       <button type="submit" class="primary" value="save">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="strategy-dialog">
+  <form method="dialog" id="strategy-form" autocomplete="off">
+    <h2 id="strategy-dialog-title">New strategy</h2>
+    <div class="settings-grid">
+      <label class="wide">Name <input name="name" maxlength="40" placeholder="Legion, Harvest, boss rushing…" required></label>
+      <label class="wide">Atlas tree link (optional) <input name="atlasUrl" type="url" placeholder="https://…"></label>
+    </div>
+    <p class="fine">Each strategy keeps its own sessions. Paste the link to its atlas tree from whichever planner you use, and it opens in your browser from the strategy's bar.</p>
+    <div class="dialog-actions">
+      <button type="button" class="link" id="btn-strategy-delete">Delete this strategy</button>
+      <span class="row"><button type="button" id="btn-strategy-cancel">Cancel</button><button type="submit" class="primary" value="save">Save</button></span>
     </div>
   </form>
 </dialog>

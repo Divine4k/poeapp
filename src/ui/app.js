@@ -127,7 +127,9 @@
       $('now-head').innerHTML = '<div class="big"><span class="timer" id="timer">0:00</span></div>';
     } else {
       const paused = run.segmentStart === null;
-      const meta = [run.level ? `Area level ${run.level}` : '', run.deaths ? `${run.deaths} ${run.deaths === 1 ? 'death' : 'deaths'}` : '', paused ? '<span class="paused">paused while you are out of the map</span>' : ''].filter(Boolean);
+      const strats = state.config.strategies || [];
+      const running = strats.find((x) => x.id === state.config.activeStrategy);
+      const meta = [strats.length > 1 && running ? `Counted under ${esc(running.name)}` : '', run.level ? `Area level ${run.level}` : '', run.deaths ? `${run.deaths} ${run.deaths === 1 ? 'death' : 'deaths'}` : '', paused ? '<span class="paused">paused while you are out of the map</span>' : ''].filter(Boolean);
       $('now-name').innerHTML = `<div class="map-name">${esc(run.name)}</div><div class="map-meta">${meta.join(', ')}</div>`;
       $('now-head').innerHTML = `<div class="big">
           <span class="timer ${paused ? 'paused' : ''}" id="timer">${fmtTime(liveDuration(run))}</span>
@@ -155,6 +157,7 @@
     } else {
       feed.innerHTML = run.items.map((l) => `<li>
         <span class="qty">${l.qty}</span>
+        ${l.icon ? `<img src="${esc(l.icon)}" alt="" loading="lazy" width="26" height="26">` : '<span class="noicon"></span>'}
         <span class="nm">${esc(l.name)}${l.byHand ? '<span class="src">added by hand</span>' : ''}</span>
         <span class="val ${l.chaos > 0 ? '' : 'dim'}">${l.chaos > 0 ? fmtValue(l.chaos) : 'no price'}</span>
         <button type="button" class="link x" data-act="removeLootName" data-run="${esc(run.id)}" data-name="${esc(l.name)}" title="Remove from this map's loot" aria-label="Remove ${esc(l.name)}">×</button></li>`).join('');
@@ -230,27 +233,56 @@
     }).join('');
   }
 
-  // The right half: the running session, or a saved one picked from the strip above it.
+  // ---- strategies: tabs across the top; each has its own sessions ----------------
+  let stratSel = null; // the strategy being looked at; the one being run is config.activeStrategy
   let sessionSel = 'current';
   const saved = new Map(); // id -> the full saved session
   const dayOf = (ts) => new Date(ts).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
   const mapsWord = (n) => `${n} ${n === 1 ? 'map' : 'maps'}`;
 
+  function renderStrategies() {
+    const list = state.config.strategies || [], active = state.config.activeStrategy;
+    if (!list.some((x) => x.id === stratSel)) stratSel = active;
+    $('strat-tabs').innerHTML = list.map((x) => `<button type="button" role="tab" data-strat="${esc(x.id)}" aria-selected="${x.id === stratSel}">
+      ${x.id === active ? '<span class="live-dot" title="You are running this one"></span>' : ''}${esc(x.name)}</button>`).join('')
+      + '<button type="button" class="add" id="btn-strategy-new">+ New strategy</button>';
+    const cur = list.find((x) => x.id === stratSel);
+    // Everything this strategy has made: its saved sessions plus the running one.
+    const mine = (state.sessions || []).filter((x) => x.strategyId === stratSel).map((x) => x.totals);
+    if (stratSel === active && state.summary.runs.length) mine.push(state.summary.totals);
+    const sum = mine.reduce((a, t) => ({ maps: a.maps + t.maps, net: a.net + t.net, ms: a.ms + (t.elapsedMs || 0) }), { maps: 0, net: 0, ms: 0 });
+    const perHour = sum.ms > 60000 ? sum.net / (sum.ms / 3600000) : 0;
+    const stats = mine.length
+      ? `${mine.length} ${mine.length === 1 ? 'session' : 'sessions'}, ${mapsWord(sum.maps)}, <b class="${sum.net < 0 ? 'neg' : ''}">${fmtValue(sum.net)}</b> net${perHour ? `, ${fmtValue(perHour)} per hour` : ''}`
+      : 'No sessions yet';
+    $('strat-info').innerHTML = `
+      ${stratSel === active ? '<span class="running">Running now</span>' : `<button type="button" class="primary" data-act="runStrategy" data-id="${esc(cur.id)}"${state.summary.runs.length ? ' data-confirm="Switch strategy? The session you have open is saved and closed first."' : ''}>Run this strategy now</button>`}
+      <span class="strat-stats">${stats}</span>
+      <span class="strat-links">
+        ${cur.atlasUrl ? `<a href="${esc(cur.atlasUrl)}" target="_blank" rel="noreferrer">Open atlas tree</a>` : '<span class="dim">No atlas tree link</span>'}
+        <button type="button" class="link" id="btn-strategy-edit">Edit</button>
+      </span>`;
+  }
+
+  // The right half: the sessions of the strategy being looked at.
   function renderSession() {
-    const list = state.sessions || [];
-    if (sessionSel !== 'current' && !list.some((x) => x.id === sessionSel)) sessionSel = 'current';
+    const list = (state.sessions || []).filter((x) => x.strategyId === stratSel);
+    const running = stratSel === state.config.activeStrategy;
+    if (sessionSel === 'current' ? !running : !list.some((x) => x.id === sessionSel)) sessionSel = running ? 'current' : (list[0] ? list[0].id : null);
     const live = state.summary;
     const chip = (id, title, t, divine) => `<button type="button" role="tab" data-session="${esc(id)}" aria-selected="${id === sessionSel}">
       <b>${esc(title)}</b><span>${mapsWord(t.maps)}, <em class="${t.net < 0 ? 'neg' : ''}">${fmtValue(t.net, divine)}</em></span></button>`;
     const strip = $('session-strip');
     const left = strip.scrollLeft;
-    strip.innerHTML = chip('current', 'This session', live.totals, live.divine)
-      + (list.length ? list.map((x) => chip(x.id, `${dayOf(x.startedAt)}, ${clock(x.startedAt)}`, x.totals, x.divine)).join('')
-        : '<p class="strip-hint">Earlier sessions appear here once you press Start new session.</p>');
+    strip.innerHTML = (running ? chip('current', 'This session', live.totals, live.divine) : '')
+      + list.map((x) => chip(x.id, `${dayOf(x.startedAt)}, ${clock(x.startedAt)}`, x.totals, x.divine)).join('')
+      + (list.length ? '' : `<p class="strip-hint">${running ? 'Earlier sessions appear here once you press Start new session.' : 'Nothing has been run under this strategy yet. Press Run this strategy now and your maps are counted here.'}</p>`);
     strip.scrollLeft = left;
 
+    const empty = { maps: 0, deaths: 0, net: 0, netPerHour: 0, avgMapMs: 0 };
     let sum = live, head = '';
-    if (sessionSel !== 'current') {
+    if (!sessionSel) sum = { runs: [], totals: empty, currentId: null };
+    else if (sessionSel !== 'current') {
       sum = saved.get(sessionSel);
       if (!sum) {
         const id = sessionSel;
@@ -436,7 +468,7 @@
   function render() {
     if (!state) return;
     renderTrade();
-    renderStatus(); renderNow(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false); renderPrices(false);
+    renderStatus(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false); renderPrices(false);
   }
 
   function setState(s) {
@@ -477,6 +509,10 @@
     }
     const tab = e.target.closest('[data-tab]');
     if (tab) { showTab(tab.dataset.tab); return; }
+    const st = e.target.closest('[data-strat]');
+    if (st) { stratSel = st.dataset.strat; sessionSel = 'current'; expanded = null; renderStrategies(); renderSession(); return; }
+    if (e.target.closest('#btn-strategy-new')) { openStrategy(null); return; }
+    if (e.target.closest('#btn-strategy-edit')) { openStrategy(stratSel); return; }
     const pick = e.target.closest('[data-session]');
     if (pick) { sessionSel = pick.dataset.session; expanded = null; renderSession(); return; }
     const row = e.target.closest('[data-expand]');
@@ -629,6 +665,31 @@
       searchTimer = setTimeout(renderPriceRows, 150);
     });
   }
+
+  // ---- strategy dialog: new, rename, atlas tree link, delete -------------------------
+  const sdlg = $('strategy-dialog'), sform = $('strategy-form');
+  let editing = null; // id being edited, or null for a new one
+  function openStrategy(id) {
+    const cur = id ? state.config.strategies.find((x) => x.id === id) : null;
+    editing = cur ? cur.id : null;
+    $('strategy-dialog-title').textContent = cur ? 'Edit strategy' : 'New strategy';
+    sform.elements.name.value = cur ? cur.name : '';
+    sform.elements.atlasUrl.value = cur ? cur.atlasUrl || '' : '';
+    $('btn-strategy-delete').hidden = !cur || state.config.strategies.length < 2 || cur.id === state.config.activeStrategy;
+    sdlg.showModal();
+  }
+  $('btn-strategy-cancel').addEventListener('click', () => sdlg.close());
+  $('btn-strategy-delete').addEventListener('click', () => {
+    const n = (state.sessions || []).filter((x) => x.strategyId === editing).length;
+    if (!window.confirm(`Delete this strategy${n ? ` and its ${n} saved ${n === 1 ? 'session' : 'sessions'}` : ''}? This cannot be undone.`)) return;
+    act({ type: 'deleteStrategy', id: editing });
+    sdlg.close();
+  });
+  sform.addEventListener('submit', () => {
+    const id = editing || `s${Date.now().toString(36)}`;
+    if (!editing) stratSel = id; // show the new one straight away
+    act({ type: 'saveStrategy', id, name: sform.elements.name.value, atlasUrl: sform.elements.atlasUrl.value });
+  });
 
   // ---- settings ---------------------------------------------------------------------
   const dlg = $('settings');

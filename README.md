@@ -16,6 +16,7 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures
 | What was counted per map | The inventory picture from each map is kept and shown beside the timer and under the map's row |
 | Trade offers with an overlay on the game | Reads trade whispers from the game log; each button types one chat line |
 | Session history | **Start new session** saves the finished one; pick it from the row of sessions on the Mapping page to see its totals and maps |
+| Strategies | Tabs on the Mapping page, each with a name, an atlas tree link and its own sessions |
 
 ## How loot is counted
 

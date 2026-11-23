@@ -74,8 +74,27 @@ input::placeholder { color: #6f7a86; }
 .view { flex: 1; min-height: 0; overflow: auto; padding: 18px 22px; }
 .view[hidden] { display: none; }
 .pagetitle { font-size: 22px; color: var(--bone); font-stretch: 85%; margin: 0 0 14px; }
-.view.mapping { display: grid; gap: 1px; padding: 0; background: var(--seam); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; }
+.view.mapping { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 1px; padding: 0; background: var(--seam); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; }
 .view.mapping[hidden] { display: none; }
+/* strategies: tabs across the top of the mapping page, then one line about the chosen one */
+.strat { grid-column: 1 / -1; background: var(--stone); padding: 12px 22px 0; }
+.strat-tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--seam); }
+.strat-tabs button { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 6px 6px 0 0; background: transparent; color: var(--ash); padding: 8px 16px; font-family: var(--display); font-size: 16px; font-stretch: 90%; font-weight: 600; box-shadow: inset 0 -2px 0 transparent; }
+.strat-tabs button:hover { color: var(--bone); background: rgba(233, 226, 211, 0.05); }
+.strat-tabs button[aria-selected=true] { color: var(--bone); background: var(--slab); box-shadow: inset 0 -2px 0 var(--gold); }
+.strat-tabs button.add { font: 13px var(--body); color: var(--ash); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--moss); }
+.strat-info { display: flex; align-items: center; gap: 18px; min-height: 46px; padding: 8px 0; font-size: 14px; color: var(--ash); }
+.strat-info .running { color: var(--moss); font-weight: 600; }
+.strat-info button.primary { font-size: 13px; padding: 5px 12px; }
+.strat-stats b { color: var(--gold); font-weight: 600; }
+.strat-links { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.strat-info a { color: var(--portal); }
+.strat-info .link:hover { color: var(--bone); }
+#strategy-dialog { width: min(520px, 92vw); }
+#strategy-dialog input { width: 100%; }
+#btn-strategy-delete:hover { color: var(--blood); }
+#btn-strategy-delete[hidden] { visibility: hidden; display: block; }
 .view.mapping > section { background: var(--stone); padding: 20px 22px; min-height: 0; overflow: hidden; }
 .now { display: flex; flex-direction: column; }
 .session { display: flex; flex-direction: column; }
@@ -141,10 +160,11 @@ tr.run.open td { background: var(--slab); }
 .loot-head input, .loot-head button { font-size: 13px; padding: 5px 9px; }
 .loot-head input[type=number] { width: 62px; }
 .feed { flex: 1; min-height: 0; overflow-y: auto; margin-right: -10px; padding-right: 10px; }
-.feed li { display: grid; grid-template-columns: 44px 1fr auto 22px; gap: 10px; align-items: baseline; padding: 5px 0 5px 8px; border-radius: 4px; font-size: 15px; }
+.feed li { display: grid; grid-template-columns: 40px 26px 1fr auto 22px; gap: 10px; align-items: center; padding: 3px 0 3px 8px; border-radius: 4px; font-size: 15px; }
 .feed li:nth-child(odd) { background: rgba(36, 42, 49, 0.55); }
 .feed li:hover { background: var(--slab); }
 .feed .qty { color: var(--ash); text-align: right; font-family: var(--display); font-variant-numeric: tabular-nums; }
+.feed img, .feed .noicon { width: 26px; height: 26px; object-fit: contain; }
 .feed .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feed .src { font-size: 12px; color: var(--ash); margin-left: 8px; }
 .feed .x { font-size: 17px; line-height: 1; opacity: 0; }
@@ -299,7 +319,7 @@ fieldset label { margin-bottom: 8px; }
 @media (max-width: 900px) {
   .side { flex-basis: 60px; padding: 14px 8px; }
   .side-brand, .navi .lbl { display: none; }
-  .view.mapping { grid-template-columns: 1fr; overflow: auto; }
+  .view.mapping { grid-template-columns: 1fr; grid-template-rows: none; overflow: auto; }
   .view.mapping > section { overflow: visible; }
   .big .timer { font-size: 56px; }
   .totals { grid-template-columns: repeat(2, 1fr); }

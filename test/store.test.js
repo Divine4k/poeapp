@@ -53,7 +53,8 @@ test('sessions: a finished session is saved with its values frozen and can be re
   t += 600_000;
   s.endRun();
   assert.equal(s.summary(prices).runs[0].snapAt, 1_000_000);
-  const saved = archive.save(s.summary(prices), t);
+  const saved = archive.save(s.summary(prices), t, { strategyId: 'legion' });
+  assert.equal(archive.list()[0].strategyId, 'legion');
   assert.equal(saved.totals.net, 400);
   assert.equal(saved.runs[0].seen, undefined);
 
@@ -63,6 +64,8 @@ test('sessions: a finished session is saved with its values frozen and can be re
   assert.equal(fresh.list()[0].totals.net, 400);
   const full = fresh.get(saved.id);
   assert.equal(full.divine, 200);
+  assert.equal(full.strategyId, 'legion');
+  assert.equal(fresh.list()[0].strategyId, 'legion');
   assert.equal(full.runs[0].name, 'Dunes');
   assert.equal(full.runs[0].items[0].chaos, 400);
   assert.equal(full.endedAt, t);

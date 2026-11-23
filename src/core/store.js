@@ -107,10 +107,12 @@ class SessionArchive {
 
   // summary: what Session.summary() returns, taken after the last map was ended.
   // Returns the saved entry, or null when there was nothing to save.
-  save(summary, endedAt = Date.now()) {
+  // extra: fields to keep with it, such as the strategy it was run under.
+  save(summary, endedAt = Date.now(), extra = {}) {
     if (!summary || !summary.runs.length) return null;
     const first = summary.runs[0].startedAt;
     const entry = {
+      ...extra,
       id: `${first.toString(36)}-${endedAt.toString(36)}`,
       startedAt: first, endedAt, divine: summary.divine || 0, totals: summary.totals,
       runs: summary.runs.map((r) => ({ ...r, seen: undefined, segmentStart: null, endedAt: r.endedAt || endedAt })),
@@ -131,6 +133,6 @@ class SessionArchive {
   }
 }
 
-const brief = (s) => ({ id: s.id, startedAt: s.startedAt, endedAt: s.endedAt, divine: s.divine, totals: s.totals });
+const brief = (s) => ({ id: s.id, strategyId: s.strategyId || null, startedAt: s.startedAt, endedAt: s.endedAt, divine: s.divine, totals: s.totals });
 
 module.exports = { SnapshotStore, SessionArchive, markCarried, MAX_TRIPS };

@@ -39,6 +39,9 @@ const DEFAULT_CONFIG = {
   inventory: { displayId: null, key: 'Tab', onKey: true, timed: false, intervalMs: 1000, autoCopy: true },
   mapRules: DEFAULT_RULES,
   loadout: [],
+  // What you are farming: each has a name and an atlas tree link, and its own sessions.
+  strategies: [{ id: 'default', name: 'Default', atlasUrl: '' }],
+  activeStrategy: 'default',
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
   shareToken: '', // GitHub token for uploading named items, stored encrypted
   // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
@@ -117,6 +120,8 @@ function loadConfig() {
     inventory: { ...DEFAULT_CONFIG.inventory, ...(saved.inventory || {}) },
     trade: mergeTrade(DEFAULT_CONFIG.trade, saved.trade),
   };
+  if (!Array.isArray(config.strategies) || !config.strategies.length) config.strategies = DEFAULT_CONFIG.strategies;
+  if (!config.strategies.some((x) => x.id === config.activeStrategy)) config.activeStrategy = config.strategies[0].id;
   // Keep the user's rule choices but pick up rules added in newer versions.
   const byId = new Map((saved.mapRules || []).map((r) => [r.id, r]));
   config.mapRules = [
@@ -142,11 +147,35 @@ function buildState() {
     unknown: unknown.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses })),
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
-    summary: session.summary(prices),
-    sessions: archive ? archive.list() : [],
+    summary: withIcons(session.summary(prices)),
+    sessions: archive ? archive.list().map((x) => ({ ...x, strategyId: strategyOf(x) })) : [],
     trade: tradeState(),
   };
 }
+// The current map's loot gets its item pictures, for the loot list.
+function withIcons(summary) {
+  const cur = summary.runs.find((r) => r.id === summary.currentId);
+  if (cur) for (const i of cur.items) { const e = prices.get(i.name); i.icon = (e && e.icon) || null; }
+  return summary;
+}
+// Sessions saved before strategies existed, or whose strategy is gone, belong to the first one.
+function strategyOf(saved) {
+  return config.strategies.some((x) => x.id === saved.strategyId) ? saved.strategyId : config.strategies[0].id;
+}
+// Saves the running session under the strategy it was run with, then starts an empty one.
+// Returns false when saving failed, in which case the session is left open.
+function closeSession() {
+  session.endRun();
+  try {
+    const saved = archive && archive.save(session.summary(prices), Date.now(), { strategyId: config.activeStrategy });
+    session.reset(); syncLedger();
+    return saved ? 'saved' : 'empty';
+  } catch (e) {
+    say(`The session could not be saved (${e.message || e}), so it is still open.`, true);
+    return false;
+  }
+}
+const cleanUrl = (u) => { const v = String(u || '').trim(); return /^https?:\/\/\S+$/i.test(v) ? v : ''; };
 function push() {
   if (win && !win.isDestroyed()) win.webContents.send('state', buildState());
   syncOverlay();
@@ -715,17 +744,38 @@ const actions = {
   startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(); },
   endRun: () => { session.endRun(); syncLedger(); },
   deleteRun: (a) => { session.deleteRun(a.runId); if (snapshots) snapshots.remove(a.runId); syncLedger(); },
-  // The session that ends is kept under Sessions, with its values as they are now.
+  // The session that ends is kept, with its values as they are now.
   newSession: () => {
-    session.endRun();
-    try {
-      const saved = archive && archive.save(session.summary(prices));
-      if (saved) say('The finished session is saved. Pick it from the row of sessions above the map list to look at it again.');
-    } catch (e) {
-      say(`The session could not be saved (${e.message || e}), so it is still open.`, true);
-      return;
-    }
-    session.reset(); syncLedger();
+    if (closeSession() === 'saved') say('The finished session is saved. Pick it from the row of sessions above the map list to look at it again.');
+  },
+  // Strategies: what you are farming. The running session always belongs to the active one,
+  // so switching closes the session first.
+  runStrategy: (a) => {
+    const next = config.strategies.find((x) => x.id === a.id);
+    if (!next || next.id === config.activeStrategy) return;
+    const closed = closeSession();
+    if (closed === false) return;
+    applyConfig({ activeStrategy: next.id });
+    say(`Now running ${next.name}.${closed === 'saved' ? ' The session you had open is saved under its own strategy.' : ''}`);
+  },
+  saveStrategy: (a) => {
+    const name = String(a.name || '').trim().slice(0, 40);
+    if (!name) { say('Give the strategy a name.', true); return; }
+    const atlasUrl = cleanUrl(a.atlasUrl);
+    if (String(a.atlasUrl || '').trim() && !atlasUrl) say('That atlas tree link was not saved: it has to start with https://', true);
+    const id = String(a.id || '');
+    const list = config.strategies.some((x) => x.id === id)
+      ? config.strategies.map((x) => (x.id === id ? { ...x, name, atlasUrl } : x))
+      : [...config.strategies, { id: id || `s${Date.now().toString(36)}`, name, atlasUrl }];
+    applyConfig({ strategies: list });
+  },
+  deleteStrategy: (a) => {
+    if (config.strategies.length < 2) { say('This is the only strategy, so it stays. Rename it instead.', true); return; }
+    if (a.id === config.activeStrategy) { say('You are running this strategy. Run another one first, then delete it.', true); return; }
+    if (!config.strategies.some((x) => x.id === a.id)) return;
+    const gone = archive ? archive.list().filter((x) => strategyOf(x) === a.id).map((x) => x.id) : [];
+    for (const id of gone) for (const runId of archive.remove(id)) if (snapshots) snapshots.remove(runId);
+    applyConfig({ strategies: config.strategies.filter((x) => x.id !== a.id) });
   },
   deleteSession: (a) => {
     if (!archive) return;
