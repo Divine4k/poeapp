@@ -119,10 +119,10 @@
       }
       const brought = t.cells.some((c) => c.carried);
       const which = total > 1 ? `Inventory ${n} of ${total}${compact && n === total ? ' (latest)' : ''}, ` : 'Inventory ';
-      // The explanation of the red cross is given once, on the first picture shown.
+      // The explanation of the dimmed slots is given once, on the first picture shown.
       const legend = brought && (!compact || i === trips.findIndex((x) => x.t.cells.some((c) => c.carried)));
       return `<figure class="snap"><div class="snap-grid"><img src="${esc(t.image)}" alt="Inventory ${n} of ${total}"><div class="snap-cells">${cells}</div></div>
-        <figcaption>${which}at ${clock(t.at)}.${legend ? ' <span class="xkey">Red cross</span>: taken into the map with you, not loot.' : ''}${compact ? '' : ' Hover a slot for its name.'}</figcaption></figure>`;
+        <figcaption>${which}at ${clock(t.at)}.${legend ? ' <span class="xkey">Dimmed slots</span>: taken into the map with you, not loot.' : ''}${compact ? '' : ' Hover a slot for its name.'}</figcaption></figure>`;
     }).join('');
   }
 
@@ -225,7 +225,7 @@
     return runs.map((r) => {
       const live = r.id === sum.currentId;
       let html = `<tr class="run ${live ? 'live' : ''} ${open === r.id ? 'open' : ''}" data-expand="${esc(r.id)}">
-        <td>${esc(r.name)}${r.uncounted && (r.uncounted.stacks || r.uncounted.singles) ? ' <span class="flag" title="Some items in this map were not counted. Click the row for details.">incomplete</span>' : ''}</td>
+        <td>${esc(r.name)}</td>
         <td class="num">${fmtTime(live ? liveDuration(r) : r.durationMs)}</td>
         <td class="num">${fmtValue(r.lootValue, divine)}</td>
         <td class="num">${fmtValue(r.costValue, divine)}</td>

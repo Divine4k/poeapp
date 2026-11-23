@@ -33,7 +33,7 @@ Items are recognised by their picture, and the stack number is read from the cor
 - A single item is counted as one when its picture is known. Single items that are not gear or gems and have a price (emblems, invitations and the like) are learned for good when you hover one and press F8.
 - Divination cards, maps, gems and uniques cannot be told apart by picture. Hover one and press F8 to count that slot.
 - Rares are not priced.
-- Each map shows what it could not count, and is marked "incomplete" in the list.
+- Each map shows what it could not count: click its row in the list.
 
 ## Trading
 

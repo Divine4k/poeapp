@@ -137,15 +137,13 @@ input::placeholder { color: #6f7a86; }
 .snap-cells i.remembered { box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--gold); }
 .snap-cells i.unknown { box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--blood); }
 .snap-cells i.skipped, .snap-cells i.ignored { box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--seam); }
-/* taken into the map, so not loot: dimmed, with a red cross */
+/* taken into the map, so not loot: dimmed */
 .snap-cells i.carried {
-  box-shadow: inset 0 0 0 1px #101317, inset 0 0 0 2.5px var(--seam);
-  background:
-    linear-gradient(45deg, transparent 45%, var(--blood) 45%, var(--blood) 55%, transparent 55%),
-    linear-gradient(-45deg, transparent 45%, var(--blood) 45%, var(--blood) 55%, transparent 55%),
-    rgba(16, 19, 23, 0.55);
+  /* taken into the map with you: the slot is dimmed, with no coloured frame */
+  box-shadow: inset 0 0 0 1px #101317;
+  background: rgba(16, 19, 23, 0.62);
 }
-.xkey { color: var(--blood); font-weight: 600; }
+.xkey { color: var(--bone); font-weight: 600; }
 .snap figcaption { margin-top: 4px; font-size: 12px; color: var(--ash); }
 .snaps { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; }
 .snaps .snap { flex: 1 1 240px; max-width: 420px; }
