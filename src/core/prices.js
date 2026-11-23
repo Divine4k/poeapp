@@ -9,6 +9,9 @@ const BASE = 'https://poe.ninja/poe1/api/economy';
 const EXCHANGE_TYPES = [
   'Currency', 'Fragment', 'Thread', 'Scarab', 'DivinationCard', 'Oil', 'Fossil', 'Resonator', 'Essence',
   'DeliriumOrb', 'Omen', 'Tattoo', 'Artifact', 'AllflameEmber', 'Runegraft', 'Astrolabe', 'DjinnCoin',
+  // 3.30 categories. Ducat and EnshroudingCrystal are confirmed; Viscera and Corpse are requested
+  // on the chance the names are right, and are skipped when they come back empty.
+  'Ducat', 'EnshroudingCrystal', 'Viscera', 'Corpse',
 ];
 // Stash-listing based categories.
 const ITEM_TYPES = [
