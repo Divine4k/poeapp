@@ -20,7 +20,7 @@ test('check key message: prices', () => {
   assert.deepEqual(checkMessage({ priceCheck: price, notice: { at, text: 'Vaal Orb is already recognised.', bad: false } }, 4000),
     { title: 'Vaal Orb is already recognised', detail: 'Vaal Orb ×3 is worth 1.8c (0.6c each).', bad: false });
   const blind = checkMessage({ priceCheck: price, notice: { at, text: 'Could not count Vaal Orb: the app has not had a clear view of that slot yet. Move the mouse off the inventory for a second, then try again.', bad: true } }, 4000);
-  assert.deepEqual(blind, { title: 'Could not count Vaal Orb: the app has not had a clear view of that slot yet', detail: 'Vaal Orb ×3 is worth 1.8c (0.6c each). Move the mouse off the inventory for a second, then try again.', bad: true });
+  assert.deepEqual(blind, { title: 'Could not count Vaal Orb', detail: 'The app has not had a clear view of that slot yet. Move the mouse off the inventory for a second, then try again. Vaal Orb ×3 is worth 1.8c (0.6c each).', bad: true });
   const counted = checkMessage({ priceCheck: { at, name: 'The Nurse', qty: 1, found: true, each: 78, total: 78 }, notice: { at, text: 'Counting The Nurse in that slot: 78c. It shows up in the loot at the next inventory read.', bad: false } }, 4000);
   assert.equal(counted.title, 'Counting The Nurse in that slot: 78c');
   const unpriced = checkMessage({ priceCheck: { at, name: 'Odd Thing', qty: 1, found: false }, notice: { at, text: 'Odd Thing has no known price, so it is not counted.', bad: true } }, 4000);

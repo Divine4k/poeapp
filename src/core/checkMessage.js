@@ -33,7 +33,12 @@ function checkMessage({ mapCheck, priceCheck, notice, divine = 0 } = {}, since =
     // Over the inventory the key also names or counts the item in that slot. Whether that
     // worked is the headline; the price follows.
     if (note) {
-      return { title: firstSentence(note.text), detail: [p.found ? `${what} is worth ${value}.` : `No price found for ${what}.`, restOf(note.text)].filter(Boolean).join(' '), bad: !!note.bad };
+      // A long first sentence of the form "What happened: why" is cut at the colon, so the
+      // headline stays short enough to read at a glance and the reason moves to the small print.
+      let title = firstSentence(note.text), why = '';
+      const colon = title.indexOf(': ');
+      if (title.length > 44 && colon > 0) { why = `${title.slice(colon + 2, colon + 3).toUpperCase()}${title.slice(colon + 3)}.`; title = title.slice(0, colon); }
+      return { title, detail: [why, restOf(note.text), p.found ? `${what} is worth ${value}.` : `No price found for ${what}.`].filter(Boolean).join(' '), bad: !!note.bad };
     }
     if (!p.found) return { title: `${what}: no price found`, detail: '', bad: true };
     return { title: `${what}: ${value}`, detail: '', bad: false };
