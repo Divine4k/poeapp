@@ -97,12 +97,14 @@ function loadConfig() {
 
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => writeJson('session.json', session.toJSON()), 1500);
+  saveTimer = setTimeout(() => { writeJson('session.json', session.toJSON()); writeJson('ledger.json', ledger.toJSON()); }, 1500);
 }
 
 // ---- state to the window ---------------------------------------------------
 function buildState() {
   status.inventory.art.known = index.art.length;
+  status.inventory.awaitingArrival = ledger.pendingArrival && !!session.current;
+  status.inventory.noBaseline = !ledger.baseline;
   if (shared) status.shared = { ...shared.status, canUpload: !!shared.token, waiting: shared.pending.length };
   return {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, notice,
@@ -376,6 +378,7 @@ async function applyUpdate() {
     const { depsChanged } = await updater.apply();
     if (depsChanged) { status.update.step = 'Installing new parts (this can take a minute)'; push(); await updater.installDeps(); }
     writeJson('session.json', session.toJSON());
+    writeJson('ledger.json', ledger.toJSON());
     app.relaunch();
     app.exit(0);
   } catch (e) {
@@ -517,6 +520,7 @@ function setupIpc() {
 app.whenReady().then(() => {
   loadConfig();
   session.restore(readJson('session.json', null));
+  ledger.restore(readJson('ledger.json', null));
   loadLearned();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
   if (cached.size > 1) { setPrices(cached); syncArt(); }
@@ -546,5 +550,6 @@ app.on('will-quit', () => {
   clearInterval(timedTimer);
   if (hook) { try { hook.uIOhook.stop(); } catch (_) { /* closing anyway */ } }
   writeJson('session.json', session.toJSON());
+  writeJson('ledger.json', ledger.toJSON());
 });
 app.on('window-all-closed', () => app.quit());

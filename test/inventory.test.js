@@ -112,10 +112,34 @@ test('ledger: hideout changes are not loot, repeat trips to one map add up, dips
   assert.deepEqual(l.reading(m({ chaos: 8 })), [{ name: 'chaos', qty: 3 }]);
   l.leaveMap();
   assert.deepEqual(l.reading(m({ chaos: 9 })), [{ name: 'chaos', qty: 1 }]); // arrival reading still counts
-  assert.deepEqual(l.reading(m({})), []);                        // stashed everything
+  assert.deepEqual(l.reading(m({ chaos: 9, alt: 2 })), [{ name: 'alt', qty: 2 }]); // a later, cleaner reading still counts
+  assert.deepEqual(l.reading(m({})), []);                        // stashed everything: arrival is over
   assert.deepEqual(l.reading(m({ scarab: 4 })), []);             // took scarabs out: not loot
   l.enterMap(false);                                             // back into the same map
   assert.deepEqual(l.reading(m({ scarab: 4, chaos: 6 })), [{ name: 'chaos', qty: 6 }]);
+});
+
+test('ledger: a whole map without opening the inventory is counted on arrival, also after a restart', () => {
+  const m = (o) => new Map(Object.entries(o));
+  const l = new LootLedger();
+  l.reading(m({ portal: 40 }));                                  // hideout, before the map
+  l.enterMap(true);                                              // map run, inventory never opened
+  l.leaveMap();
+  const saved = JSON.parse(JSON.stringify(l));                   // app restarted (for example an update)
+  const l2 = new LootLedger();
+  l2.restore(saved);
+  assert.deepEqual(l2.reading(m({ portal: 39, chaos: 12, divine: 1 })), [{ name: 'chaos', qty: 12 }, { name: 'divine', qty: 1 }]);
+  // closed in the middle of a map: the next hideout reading still belongs to that map
+  const l3 = new LootLedger();
+  l3.reading(m({}));
+  l3.enterMap(true);
+  const l4 = new LootLedger();
+  l4.restore(JSON.parse(JSON.stringify(l3)));
+  assert.deepEqual(l4.reading(m({ chaos: 3 })), [{ name: 'chaos', qty: 3 }]);
+  // nothing saved yet: the first reading can only be a starting point
+  const fresh = new LootLedger();
+  fresh.restore(null);
+  assert.deepEqual(fresh.reading(m({ chaos: 3 })), []);
 });
 
 test('prices: item art URLs are carried through', () => {

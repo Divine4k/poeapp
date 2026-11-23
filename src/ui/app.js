@@ -90,6 +90,17 @@
         <span class="val">${l.chaos > 0 ? fmtValue(l.chaos) : 'no price'}</span>
         <button type="button" class="link" data-act="removeLoot" data-run="${esc(run.id)}" data-loot="${esc(l.id)}" aria-label="Remove ${esc(l.name)}">Remove</button></li>`).join('');
     }
+    const invS = state.status.inventory, invC = state.config.inventory, arr = $('arrival');
+    if (invS.noBaseline) {
+      arr.hidden = false; arr.className = 'notice bad';
+      arr.textContent = `The app has not seen your inventory yet, so it cannot tell what is new. Open it once in your hideout (${invC.key}) before the next map.`;
+    } else if (invS.awaitingArrival) {
+      arr.hidden = false; arr.className = 'notice bad';
+      arr.textContent = invC.timed
+        ? 'Back from the map: open your stash or inventory now and the loot is counted. Keep the mouse off the inventory for a second.'
+        : `Back from the map: press ${invC.key} before you stash anything, or the loot from this map is not counted. To have this happen by itself, turn on "Also check by itself" in Settings.`;
+    } else arr.hidden = true;
+
     const n = state.notice, note = $('notice');
     if (n && Date.now() - n.at < 30000) { note.hidden = false; note.className = n.bad ? 'notice bad' : 'notice'; note.textContent = n.text; }
     else note.hidden = true;
