@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('api', {
   setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
   action: (a) => ipcRenderer.invoke('action', a),
   search: (q) => ipcRenderer.invoke('search', q),
+  inventory: () => ipcRenderer.invoke('inventory'),
 });

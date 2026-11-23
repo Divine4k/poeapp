@@ -51,6 +51,7 @@ let updater = null;
 let shared = null;
 let flushTimer = null;
 let notice = null; // { text, bad, at }
+let lastInventory = { rev: 0, at: 0, cells: [] }; // what the last clean read saw, for the Inventory tab
 let unknownSeq = 1;
 let unknown = []; // [{ id, qty, print, image, guesses }]
 let learned = []; // [{ name, print(base64) }]
@@ -108,6 +109,7 @@ function buildState() {
   if (shared) status.shared = { ...shared.status, canUpload: !!shared.token, waiting: shared.pending.length };
   return {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, notice,
+    inventoryRev: lastInventory.rev,
     unknown: unknown.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses })),
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
@@ -218,6 +220,21 @@ async function readInventory() {
     status.inventory.lastReadAt = Date.now();
     status.inventory.recognised = result.recognised;
     updateUnknown(result.unknown);
+    const before = new Map(lastInventory.cells.map((c) => [c.cell, c]));
+    lastInventory = {
+      rev: lastInventory.rev + 1, at: Date.now(),
+      cells: result.cells.map((c) => {
+        const prev = before.get(c.cell);
+        const same = prev && similarity(prev.print, c.print) > 0.98;
+        const guess = c.status === 'unknown' || c.status === 'skipped' ? index.suggest(c.print, 1)[0] : null;
+        return {
+          cell: c.cell, print: c.print, status: c.status, name: c.name, qty: c.qty, source: c.source,
+          score: c.score ? Math.round(c.score * 100) : null,
+          guess: guess ? { name: guess.name, score: Math.round(guess.score * 100) } : null,
+          image: same ? prev.image : thumbnail(c.rgb),
+        };
+      }),
+    };
     const gains = ledger.reading(result.counts);
     if (gains.length && session.current) session.addLoot(gains, 'inventory');
     scheduleSave();
@@ -506,6 +523,13 @@ const actions = {
 function setupIpc() {
   ipcMain.handle('get-state', () => buildState());
   ipcMain.handle('set-config', (_e, patch) => { applyConfig(patch || {}); return true; });
+  ipcMain.handle('inventory', () => {
+    const cells = lastInventory.cells.map((c) => {
+      const each = c.name ? prices.chaosOf(c.name) : 0;
+      return { cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source, score: c.score, guess: c.guess, image: c.image, each, total: each * (c.qty || 0) };
+    });
+    return { rev: lastInventory.rev, at: lastInventory.at, cols: COLS, rows: ROWS, cells };
+  });
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];

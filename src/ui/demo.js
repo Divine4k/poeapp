@@ -47,10 +47,16 @@
         { mod: '+40% Monster Fire Resistance', dangerous: false, labels: [] },
       ],
     },
+    inventoryRev: 1,
     summary: { now, startedAt: now, currentId: 'r4', away: false, location: {}, divine: 212, runs, totals },
   };
   window.api = {
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
+    inventory: async () => {
+      const img = state.unknown[0].image;
+      const mk = (cell, status, name, qty, each, source, score) => ({ cell, status, name, qty, each, total: each * qty, source, score, guess: status === 'unknown' ? { name: 'Vaal Orb', score: 61 } : null, image: img });
+      return { rev: 1, at: now, cols: 12, rows: 5, cells: [mk(0, 'item', 'Chaos Orb', 20, 1, 'art', 97), mk(1, 'item', 'Divine Orb', 2, 212, 'learned', 99), mk(2, 'unknown', null, 17, 0), mk(12, 'remembered', 'Vaal Orb', 9, 0.6), mk(13, 'skipped', null, 0, 0), mk(14, 'item', 'Abyss Thread', 6, 5.5, 'shared', 98)] };
+    },
     search: async (q) => Object.keys(price).filter((n) => n.toLowerCase().includes(q.toLowerCase())).map((name) => ({ name, chaos: price[name] })),
   };
 })();
