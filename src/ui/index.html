@@ -104,16 +104,17 @@
 </main>
 
 <main class="view" id="tab-prices" role="tabpanel" hidden>
-  <h2 class="pagetitle">Prices</h2>
+  <input id="price-global" class="bigsearch" placeholder="Search every item…" aria-label="Search every item" autocomplete="off">
   <div id="price-check"></div>
   <div class="prices">
     <nav class="price-cats" id="price-cats" aria-label="Price categories"></nav>
     <div class="price-main">
+      <h2 class="pagetitle" id="price-title">Prices</h2>
       <input id="price-search" placeholder="Filter by name" aria-label="Filter by name" autocomplete="off">
       <p class="map-meta" id="price-count"></p>
       <div class="table-wrap">
         <table class="price-table">
-          <thead><tr><th>Name</th><th class="num">Value</th><th class="num">In chaos</th><th class="num">Last 7 days</th><th class="num">Traded</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th class="num">Value</th><th class="num">Last 7 days</th><th class="num" id="price-vol-head">Volume / hour</th><th></th></tr></thead>
           <tbody id="price-rows"></tbody>
         </table>
       </div>

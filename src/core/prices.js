@@ -29,6 +29,13 @@ function iconUrl(v) {
   return v.startsWith('/') ? `https://web.poecdn.com${v}` : null;
 }
 
+// The week's price movement as a short list of numbers, for drawing a small trend line.
+function sparkOf(s) {
+  if (!s || !Array.isArray(s.data)) return null;
+  const pts = s.data.filter((v) => typeof v === 'number' && isFinite(v)).map((v) => Math.round(v * 10) / 10);
+  return pts.length >= 2 ? pts.slice(-8) : null;
+}
+
 function parseExchange(json, category) {
   const out = [];
   if (!json || !Array.isArray(json.lines) || !json.core) return out;
@@ -54,6 +61,7 @@ function parseExchange(json, category) {
       name, chaos: v * factor, category, icon: icons.get(line.id) || null,
       change: line.sparkline && isFinite(Number(line.sparkline.totalChange)) ? Number(line.sparkline.totalChange) : null,
       volume: isFinite(Number(line.volumePrimaryValue)) ? Number(line.volumePrimaryValue) * factor : null,
+      spark: sparkOf(line.sparkline),
     });
   }
   return out;
@@ -77,7 +85,10 @@ function parseItemOverview(json, category) {
     const s = line.sparkLine || line.sparkline || line.lowConfidenceSparkLine;
     return s && isFinite(Number(s.totalChange)) ? Number(s.totalChange) : null;
   };
-  const extra = (line) => ({ icon: iconUrl(line.icon), change: trend(line), listings: isFinite(Number(line.listingCount)) ? Number(line.listingCount) : null });
+  const extra = (line) => ({
+    icon: iconUrl(line.icon), change: trend(line), listings: isFinite(Number(line.listingCount)) ? Number(line.listingCount) : null,
+    spark: sparkOf(line.sparkLine || line.sparkline || line.lowConfidenceSparkLine),
+  });
   const byName = new Map();
   for (const line of json.lines) {
     const v = Number(line.chaosValue);
@@ -151,6 +162,18 @@ class PriceTable {
   categoryCounts() {
     const out = {};
     for (const e of this.byNorm.values()) if (!e.hasVariants) out[e.category] = (out[e.category] || 0) + 1;
+    return out;
+  }
+
+  // A picture to stand for each category: its most valuable item's.
+  categoryIcons() {
+    const best = {};
+    for (const e of this.byNorm.values()) {
+      if (!e.icon) continue;
+      if (!best[e.category] || e.chaos > best[e.category].chaos) best[e.category] = e;
+    }
+    const out = {};
+    for (const k of Object.keys(best)) out[k] = best[k].icon;
     return out;
   }
 

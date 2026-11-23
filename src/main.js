@@ -532,12 +532,18 @@ function setupIpc() {
   });
   ipcMain.handle('price-categories', () => {
     const counts = prices.categoryCounts();
-    return CATEGORY_LABELS.map(([group, list]) => ({ group, categories: list.filter(([id]) => counts[id]).map(([id, label]) => ({ id, label, count: counts[id] })) }))
-      .filter((g) => g.categories.length);
+    const icons = prices.categoryIcons();
+    const iconOf = (name) => { const e = prices.get(name); return e && e.icon ? e.icon : null; };
+    icons.Currency = iconOf('Chaos Orb') || icons.Currency;
+    return {
+      chaosIcon: iconOf('Chaos Orb'), divineIcon: iconOf('Divine Orb'),
+      groups: CATEGORY_LABELS.map(([group, list]) => ({ group, categories: list.filter(([id]) => counts[id]).map(([id, label]) => ({ id, label, count: counts[id], icon: icons[id] || null })) }))
+        .filter((g) => g.categories.length),
+    };
   });
   ipcMain.handle('price-list', (_e, a) => {
     const r = prices.list(String((a && a.category) || ''), String((a && a.query) || ''), 400);
-    return { total: r.total, rows: r.rows.map((e) => ({ name: e.name, chaos: e.chaos, category: e.category, icon: e.icon || null, change: e.change == null ? null : e.change, volume: e.volume == null ? null : e.volume, listings: e.listings == null ? null : e.listings })) };
+    return { total: r.total, rows: r.rows.map((e) => ({ name: e.name, chaos: e.chaos, category: e.category, icon: e.icon || null, change: e.change == null ? null : e.change, volume: e.volume == null ? null : e.volume, listings: e.listings == null ? null : e.listings, spark: e.spark || null })) };
   });
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
   ipcMain.handle('action', async (_e, a) => {
