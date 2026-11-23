@@ -671,7 +671,8 @@ function showCheckToast(started) {
   const message = checkMessage({ mapCheck, priceCheck, notice, divine: prices.divine }, started);
   if (!message) return;
   if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
-  toast.show(overlayBounds(overlay.display(), 62, toastPlacement()), message, message.bad ? 4000 : 2500);
+  // Tall enough for a two-line headline and three lines of small print; a problem stays longer.
+  toast.show(overlayBounds(overlay.display(), 112, toastPlacement()), message, message.bad ? 6000 : 2500);
 }
 
 function registerHotkeys() {
@@ -718,7 +719,7 @@ const toastPlacement = () => ({ position: 'top', offsetY: 9, custom: (config.ove
 
 const WIDGETS = [
   { id: 'trade', label: 'Trade offers', sample: 84, placement: tradePlacement },
-  { id: 'toast', label: 'Check key message', sample: 62, placement: toastPlacement },
+  { id: 'toast', label: 'Check key message', sample: 112, placement: toastPlacement },
 ];
 
 // Layout mode: a see-through window over the whole game screen with a stand-in for each
