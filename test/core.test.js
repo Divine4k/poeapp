@@ -155,3 +155,10 @@ test('session: run lifecycle, timing, deaths, loot and costs', () => {
   assert.equal(s2.current.segmentStart, null);
 });
 
+
+test('prices: Chaos Orb keeps its picture and is always worth 1', () => {
+  const t = new PriceTable();
+  t.load([{ name: 'Chaos Orb', chaos: 0.98, category: 'Currency', icon: 'https://web.poecdn.com/c.png' }]);
+  assert.equal(t.chaosOf('Chaos Orb'), 1);
+  assert.deepEqual(t.iconEntries(), [{ name: 'Chaos Orb', icon: 'https://web.poecdn.com/c.png' }]);
+});

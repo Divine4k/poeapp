@@ -45,8 +45,10 @@ function similarity(a, b) {
 class IconIndex {
   // Pictures captured in game (named by you, or shared through the repository) are the exact
   // in-game rendering, so they must match almost perfectly. Downloaded item art is rendered
-  // slightly differently, so it has to beat the runner-up clearly as well.
-  constructor({ learnedThreshold = 0.9, artThreshold = 0.85, artMargin = 0.05 } = {}) {
+  // slightly differently, so it has to beat the runner-up as well. The numbers come from a real
+  // capture: correct matches scored 0.83 to 0.99 and look-alikes (the two scrolls) were 0.05 apart,
+  // while an item missing from the art list reached 0.80 against a wrong picture, only 0.03 ahead.
+  constructor({ learnedThreshold = 0.9, artThreshold = 0.82, artMargin = 0.04 } = {}) {
     this.learnedThreshold = learnedThreshold;
     this.artThreshold = artThreshold;
     this.artMargin = artMargin;

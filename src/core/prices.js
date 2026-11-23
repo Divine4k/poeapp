@@ -72,11 +72,13 @@ class PriceTable {
 
   load(entries) {
     this.byNorm = new Map();
-    this.byNorm.set('chaos orb', { name: 'Chaos Orb', chaos: 1, category: 'Currency' });
     for (const e of entries) {
       const k = normalize(e.name);
       if (!this.byNorm.has(k)) this.byNorm.set(k, e);
     }
+    // Chaos is the unit everything is priced in. Keep its picture if the data brought one.
+    const chaos = this.byNorm.get('chaos orb');
+    this.byNorm.set('chaos orb', { name: 'Chaos Orb', category: 'Currency', icon: chaos ? chaos.icon || null : null, chaos: 1 });
   }
 
   get size() { return this.byNorm.size; }

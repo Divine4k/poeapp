@@ -326,7 +326,7 @@ async function saveDiagnostic() {
       version: updater && updater.current, when: new Date().toISOString(), open,
       frame: { width: frame.width, height: frame.height }, rect, display: { scaleFactor: frame.display.scaleFactor, size: frame.display.size },
       counts: { art: index.art.length, learned: index.learned.length, shared: index.shared.length, prices: prices.size },
-      artProgress: status.inventory.art, cells, art,
+      artProgress: status.inventory.art, categories: prices.toJSON().entries.reduce((m, e) => { m[e.category] = (m[e.category] || 0) + 1; return m; }, {}), cells, art,
     };
     const file = path.join(app.getPath('desktop'), 'poeapp-diagnostic.json.gz');
     fs.writeFileSync(file, zlib.gzipSync(JSON.stringify(report)));

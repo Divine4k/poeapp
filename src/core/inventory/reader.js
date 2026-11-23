@@ -28,15 +28,18 @@ class InventoryReader {
         if (isEmptyCell(rgb)) { this.memory[k] = null; this.prints[k] = null; continue; }
         const print = fingerprint(rgb);
         this.prints[k] = print;
-        const hit = this.index.match(print);
+        let hit = this.index.match(print);
         if (hit && hit.ignored) { this.memory[k] = null; continue; }
+        const stack = readStack(rgb);
+        // Downloaded art only covers stackable items, and those always show a number. A cell
+        // without one that merely resembles such an item is something else.
+        if (hit && hit.source === 'art' && !stack) hit = null;
         if (hit) {
-          this.memory[k] = { name: hit.name, qty: readStack(rgb) || 1 };
+          this.memory[k] = { name: hit.name, qty: stack || 1 };
         } else if (!this.memory[k]) {
           // Not recognised, and nothing was known here before. Only cells with a stack number
           // are worth asking about; gear and other single items are skipped.
-          const qty = readStack(rgb);
-          if (qty > 0) unknown.push({ cell: k, qty, print, rgb });
+          if (stack > 0) unknown.push({ cell: k, qty: stack, print, rgb });
           continue;
         }
         // An unrecognised cell that held a known item a moment ago is most likely covered by a
