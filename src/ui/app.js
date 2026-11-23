@@ -52,13 +52,15 @@
       if (tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) items.push(['bad', `Trade key ${tc.hotkeys.dismiss} is taken by another app`]);
     }
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
-    const up = st.update, btn = $('btn-update');
+    const up = st.update, btn = $('btn-side-update');
     if (up.applying) items.push(['busy', up.step || 'Updating']);
     else if (up.error) items.push(['bad', `Update problem: ${up.error}`]);
     else if (up.available) items.push(['busy', `Update available: ${up.latest.message}`]);
-    btn.hidden = !up.available && !up.applying;
-    btn.disabled = !!up.applying;
-    btn.textContent = up.applying ? 'Updating' : 'Install update and restart';
+    // The button at the bottom of the sidebar checks, and turns into "Install update" when there is one.
+    btn.disabled = !!up.applying || !!up.checking;
+    btn.classList.toggle('has-update', !!up.available && !up.applying);
+    $('side-update-label').textContent = up.applying ? 'Updating…' : up.checking ? 'Checking…' : up.available ? 'Install update' : (up.checkedAt && Date.now() - up.checkedAt < 8000 ? 'Up to date' : 'Check for updates');
+    btn.title = up.available ? `Installs: ${up.latest.message}. The app restarts.` : (up.checkedAt ? `Last checked at ${clock(up.checkedAt)}` : '');
     const line = $('version-line');
     if (line) {
       const cur = up.current ? `Installed version ${up.current.sha.slice(0, 7)} (${up.current.message}).` : 'Installed from a download, so the exact version is not known yet. Install the update once to fix that.';
@@ -580,8 +582,11 @@
   });
 
   $('btn-read').addEventListener('click', () => act({ type: 'readInventory' }));
-  $('btn-update').addEventListener('click', () => act({ type: 'applyUpdate' }));
-  $('btn-check-update').addEventListener('click', () => act({ type: 'checkUpdate' }));
+  $('btn-side-update').addEventListener('click', async () => {
+    if (state.status.update.available) { act({ type: 'applyUpdate' }); return; }
+    await act({ type: 'checkUpdate' });
+    setTimeout(() => { if (state) renderStatus(); }, 8200); // lets "Up to date" fall back to the normal label
+  });
   $('btn-diagnostic').addEventListener('click', () => { act({ type: 'saveDiagnostic' }); dlg.close(); });
   $('btn-shortcut').addEventListener('click', () => { act({ type: 'makeShortcut' }); dlg.close(); });
   $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));

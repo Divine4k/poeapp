@@ -4,6 +4,11 @@ const fs = require('fs');
 const zlib = require('zlib');
 const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage, safeStorage } = require('electron');
 
+// Settings and saved sessions always live in the same folder, however the app was started
+// (start.bat or the installed program), so nothing is lost when switching between them.
+app.setPath('userData', path.join(app.getPath('appData'), 'poeapp'));
+if (process.platform === 'win32') app.setAppUserModelId('com.divine4k.mapcompanion');
+
 const { LogTail, findLogPath, readRecent } = require('./core/clientLog');
 const { PriceTable, PriceService, CATEGORY_LABELS } = require('./core/prices');
 const { parseItemText, priceName } = require('./core/itemText');
@@ -549,7 +554,9 @@ async function checkUpdate() {
 function restartApp() {
   if (process.platform === 'win32') {
     const { spawn } = require('child_process');
-    const cmd = `ping -n 3 127.0.0.1 >nul & start "" "${process.execPath}" "${app.getAppPath()}"`;
+    // The installed program starts by itself; from a download, Electron is told which folder to run.
+    const target = app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`;
+    const cmd = `ping -n 3 127.0.0.1 >nul & start "" ${target}`;
     spawn('cmd.exe', ['/d', '/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true, cwd: app.getAppPath() }).unref();
   } else {
     app.relaunch();
@@ -561,7 +568,9 @@ function restartApp() {
 function makeShortcut() {
   if (process.platform !== 'win32') { say('Shortcuts are only made on Windows.', true); return; }
   const link = path.join(app.getPath('desktop'), 'Map Companion.lnk');
-  const ok = shell.writeShortcutLink(link, { target: process.execPath, args: `"${app.getAppPath()}"`, cwd: app.getAppPath(), description: 'Map Companion' });
+  const ok = shell.writeShortcutLink(link, app.isPackaged
+    ? { target: process.execPath, description: 'Map Companion' }
+    : { target: process.execPath, args: `"${app.getAppPath()}"`, cwd: app.getAppPath(), description: 'Map Companion', icon: path.join(app.getAppPath(), 'build', 'icon.ico'), iconIndex: 0 });
   say(ok ? 'A "Map Companion" shortcut is on your Desktop. Start the app with it from now on.' : 'The shortcut could not be made.', !ok);
 }
 
@@ -573,7 +582,8 @@ async function applyUpdate() {
   push();
   try {
     if (!updater.latest) await updater.check();
-    const { depsChanged } = await updater.apply();
+    // The installed program cannot fetch new components itself; such an update needs the new installer.
+    const { depsChanged } = await updater.apply(undefined, { refuseDepsChange: app.isPackaged });
     if (depsChanged) { status.update.step = 'Installing new parts (this can take a minute)'; push(); await updater.installDeps(); }
     writeJson('session.json', session.toJSON());
     writeJson('ledger.json', ledger.toJSON());
@@ -790,7 +800,7 @@ function createWindow() {
   win = new BrowserWindow({
     x: target.workArea.x + 40, y: target.workArea.y + 40,
     width: Math.min(1500, target.workArea.width - 80), height: Math.min(950, target.workArea.height - 80),
-    backgroundColor: '#1b1f24', title: 'Map Companion', autoHideMenuBar: true,
+    backgroundColor: '#1b1f24', title: 'Map Companion', autoHideMenuBar: true, icon: path.join(__dirname, 'ui', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   if (second) win.maximize();

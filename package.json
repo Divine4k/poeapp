@@ -1,6 +1,6 @@
 {
   "name": "poeapp",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "description": "Second-screen mapping companion for Path of Exile 1: map timer, loot value, map mod check, costs, prices and trade offers with an in-game overlay.",
   "main": "src/main.js",
   "private": true,
@@ -13,5 +13,43 @@
   },
   "devDependencies": {
     "electron": "^33.2.0"
+  },
+  "productName": "Map Companion",
+  "author": "Divine4k",
+  "build": {
+    "appId": "com.divine4k.mapcompanion",
+    "productName": "Map Companion",
+    "asar": false,
+    "npmRebuild": false,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      ".version"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Map Companion",
+      "artifactName": "MapCompanion-Setup.${ext}",
+      "uninstallDisplayName": "Map Companion"
+    }
   }
 }

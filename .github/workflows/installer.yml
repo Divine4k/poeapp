@@ -1,0 +1,39 @@
+name: Build installer
+
+# Builds the Windows installer and publishes it as a GitHub release.
+# Runs when a version tag (v1.2.3) is pushed, or by hand from the Actions tab.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Tests
+        run: npm test
+      - name: Record the version being packaged
+        shell: bash
+        run: |
+          node -e "const cp=require('child_process');const sha=cp.execSync('git rev-parse HEAD').toString().trim();const message=cp.execSync('git log -1 --format=%s').toString().trim();const date=cp.execSync('git log -1 --format=%cI').toString().trim();require('fs').writeFileSync('.version',JSON.stringify({sha,message,date}));"
+          cat .version
+      - name: Build the installer
+        run: npx --yes electron-builder@25 --win nsis --x64 --publish never
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then TAG="installer-$(date +%Y%m%d-%H%M)"; fi
+          gh release create "$TAG" dist/MapCompanion-Setup.exe --title "Map Companion installer ($TAG)" --notes "Download MapCompanion-Setup.exe and run it. You can choose where to install. Later updates arrive inside the app." --latest

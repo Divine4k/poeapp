@@ -66,16 +66,21 @@ Named items are kept on your PC. They can also be uploaded to the shared list, w
 
 ## Install (Windows)
 
-1. Install [Node.js LTS](https://nodejs.org).
-2. Download this repository (Code > Download ZIP) and unzip it.
-3. Double-click `start.bat`. The first start installs what it needs and takes a few minutes.
-4. Optional: in Settings, click "Add a Desktop shortcut". The shortcut starts the app directly, without the command window flashing up.
+1. Open the [Releases page](https://github.com/Divine4k/poeapp/releases) and download `MapCompanion-Setup.exe` from the newest release.
+2. Run it. You can choose where it is installed. It adds a "Map Companion" shortcut to the Desktop and the Start menu.
+3. Windows may warn that the publisher is unknown, because the installer is not code-signed. Choose "More info", then "Run anyway".
+
+Updates arrive inside the app (bottom of the sidebar). Pick an install folder your Windows account can write to (the default is fine); in a protected folder such as Program Files the app cannot update itself.
 
 On first start the app downloads item pictures once (a few minutes in the background).
 
+### Running from the source instead
+
+Install [Node.js LTS](https://nodejs.org), download this repository as a ZIP, unzip it and double-click `start.bat`.
+
 ## Updating
 
-The app checks this repository every two minutes. When a newer version has been pushed, an **Install update and restart** button appears in the top bar. Settings also has **Check for updates**. Your settings, named items and session are kept.
+The app checks this repository every two minutes. When a newer version has been pushed, the **Check for updates** button at the bottom of the sidebar turns into **Install update**. Clicking it at any other time checks right away. Your settings, named items and session are kept.
 
 The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so anyone who can push there controls what gets installed.
 

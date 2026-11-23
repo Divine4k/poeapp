@@ -44,7 +44,7 @@ class Updater {
   }
 
   // Downloads the given commit and replaces the app's files. Returns { depsChanged }.
-  async apply(target = this.latest) {
+  async apply(target = this.latest, { refuseDepsChange = false } = {}) {
     if (!target) throw new Error('Nothing to update to');
     const res = await this.fetch(`${API}/tarball/${target.sha}`, { headers: HEADERS });
     if (!res.ok) throw new Error(`Download failed (${res.status})`);
@@ -52,10 +52,14 @@ class Updater {
     const has = (rel) => files.some((f) => f.rel === rel);
     if (!has('package.json') || !has('src/main.js')) throw new Error('The download does not look like this app. Nothing was changed.');
 
-    const depsOf = (text) => { try { const p = JSON.parse(text); return JSON.stringify([p.dependencies, p.optionalDependencies, p.devDependencies]); } catch (_) { return ''; } };
+    // Only what the running app loads matters here; build tools do not.
+    const depsOf = (text) => { try { const p = JSON.parse(text); return JSON.stringify([p.dependencies, p.optionalDependencies, refuseDepsChange ? null : p.devDependencies]); } catch (_) { return ''; } };
     let before = '';
     try { before = depsOf(fs.readFileSync(path.join(this.appDir, 'package.json'), 'utf8')); } catch (_) { /* treat as changed */ }
     const after = depsOf(files.find((f) => f.rel === 'package.json').data.toString('utf8'));
+    if (refuseDepsChange && before !== after) {
+      throw new Error('This update needs new components. Download and run the newest installer from the Releases page of the repository.');
+    }
 
     for (const f of files) {
       const dest = path.join(this.appDir, f.rel);
