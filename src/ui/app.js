@@ -553,8 +553,12 @@
     const first = !state;
     state = s; receivedAt = Date.now();
     applyNavOrder(s.config.navOrder);
-    if (!first && s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
-    else if (!first && s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
+    // The check key's answer shows in game. Only without that message does the app turn to the
+    // page holding the answer; otherwise the page you were on stays put.
+    if (s.config.checkToast === false) {
+      if (!first && s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
+      else if (!first && s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
+    }
     render();
   }
 
