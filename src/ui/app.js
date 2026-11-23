@@ -417,9 +417,8 @@
         <td><div class="pname">${r.icon ? `<img src="${esc(r.icon)}" alt="" loading="lazy" width="36" height="36">` : '<span class="noicon"></span>'}<span>${esc(r.name)}${everywhere ? `<small>${esc(labels.get(r.category) || r.category)}</small>` : ''}</span></div></td>
         <td class="num val">${valueCell(r.chaos)}</td>
         <td class="num"><span class="trend">${sparkline(r.spark, r.change)}${pct}</span></td>
-        <td class="num dim">${traded}</td>
-        <td class="num"><button type="button" class="link" data-act="addLoot" data-name="${esc(r.name)}" data-qty="1">Add to loot</button></td></tr>`;
-    }).join('') : `<tr><td colspan="5" class="empty">${query.trim() ? 'Nothing matches that name.' : 'No prices in this category yet.'}</td></tr>`;
+        <td class="num dim">${traded}</td></tr>`;
+    }).join('') : `<tr><td colspan="4" class="empty">${query.trim() ? 'Nothing matches that name.' : 'No prices in this category yet.'}</td></tr>`;
   }
 
   // Redraws the price page when it is opened or when new prices have arrived.
