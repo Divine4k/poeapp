@@ -5,7 +5,7 @@
 const path = require('path');
 const { BrowserWindow, screen } = require('electron');
 
-const { overlayBounds, OVERLAY_WIDTH: WIDTH } = require('./core/trade');
+const { overlayBounds, stashCellRect, OVERLAY_WIDTH: WIDTH } = require('./core/trade');
 
 class Overlay {
   constructor({ preload, page }) {
@@ -79,4 +79,36 @@ class Overlay {
   }
 }
 
-module.exports = { Overlay, overlayBounds, WIDTH };
+// A frame around one stash slot. Clicks go straight through it to the game.
+class Highlight {
+  constructor({ page }) {
+    this.page = page;
+    this.win = null;
+  }
+
+  // rect: where the slot is, in screen points, or null to hide.
+  show(rect) {
+    if (!rect) { if (this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.hide(); return; }
+    if (!this.win || this.win.isDestroyed()) {
+      this.win = new BrowserWindow({
+        ...rect, show: false, frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+        minimizable: false, maximizable: false, fullscreenable: false, focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+        title: 'Map Companion stash slot', webPreferences: { contextIsolation: true, nodeIntegration: false },
+      });
+      this.win.setIgnoreMouseEvents(true);
+      this.win.setAlwaysOnTop(true, 'screen-saver');
+      this.win.loadFile(this.page);
+      this.win.on('closed', () => { this.win = null; });
+    }
+    const now = this.win.getBounds();
+    if (now.x !== rect.x || now.y !== rect.y || now.width !== rect.width || now.height !== rect.height) this.win.setBounds(rect);
+    if (!this.win.isVisible()) { this.win.showInactive(); this.win.setAlwaysOnTop(true, 'screen-saver'); }
+  }
+
+  destroy() {
+    if (this.win && !this.win.isDestroyed()) this.win.destroy();
+    this.win = null;
+  }
+}
+
+module.exports = { Overlay, Highlight, overlayBounds, stashCellRect, WIDTH };

@@ -2,7 +2,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseLine } = require('../src/core/clientLog');
-const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds } = require('../src/core/trade');
+const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds, stashCellRect, overlayAllowed } = require('../src/core/trade');
+const { GameWatch, isGameName } = require('../src/gamewin');
 
 const line = (rest) => `2026/11/23 15:00:01 123456 cff945b9 [INFO Client 4321] ${rest}`;
 const PRICED = 'Hi, I would like to buy your Tabula Rasa Simple Robe listed for 12 chaos in Standard (stash tab "Sell"; position: left 3, top 5)';
@@ -170,12 +171,49 @@ test('catching up after a restart: recent lines once, old lines never', () => {
 
 test('overlay placement stays on the game screen', () => {
   const display = { bounds: { x: 1920, y: 0, width: 1920, height: 1080 } };
-  const top = overlayBounds(display, 300, { position: 'top' });
-  assert.deepEqual(top, { x: 1920 + 730, y: 65, width: 460, height: 300 });
-  const bottom = overlayBounds(display, 300, { position: 'bottom' });
-  assert.equal(bottom.y + bottom.height, 821);
+  // Default: right of the flasks, growing upward from just above the experience bar.
+  const bottom = overlayBounds(display, 120, {});
+  assert.deepEqual(bottom, { x: 1920 + 562, y: 933, width: 330, height: 120 });
+  const top = overlayBounds(display, 120, { position: 'top' });
+  assert.deepEqual(top, { x: 1920 + 795, y: 65, width: 330, height: 120 });
   const pushed = overlayBounds(display, 300, { position: 'right', offsetX: 50, offsetY: 90 });
   assert.equal(pushed.x + pushed.width, 1920 + 1920);
   assert.equal(pushed.y + pushed.height, 1080);
   assert.equal(overlayBounds(display, 5000, {}).height, 756);
+});
+
+test('stash slots: measured on 1080p, scaled by screen height', () => {
+  const hd = { bounds: { x: 0, y: 0, width: 1920, height: 1080 } };
+  // Normal tab: the grid lines in the screenshot are at x 16, 69, 121... and y 134, 186, 239...
+  assert.deepEqual(stashCellRect(hd, 12, 1, 1), { x: 13, y: 131, width: 59, height: 59 });
+  const last = stashCellRect(hd, 12, 12, 12);
+  assert.equal(last.x + last.width - 3, 648); assert.equal(last.y + last.height - 3, 766);
+  // Quad tab, the slot from the whisper "left 15, top 14".
+  assert.deepEqual(stashCellRect(hd, 24, 15, 14), { x: 382, y: 473, width: 32, height: 32 });
+  // 1440p on a second screen to the right.
+  const qhd = stashCellRect({ bounds: { x: 1920, y: 0, width: 2560, height: 1440 } }, 12, 1, 1);
+  assert.deepEqual(qhd, { x: 1920 + 18, y: 176, width: 76, height: 76 });
+});
+
+test('the overlay hides when another program is in front', () => {
+  assert.equal(overlayAllowed({ known: true, game: true, own: false }), true);
+  assert.equal(overlayAllowed({ known: true, game: false, own: true }), true); // this app's own window
+  assert.equal(overlayAllowed({ known: true, game: false, own: false }), false);
+  assert.equal(overlayAllowed({ known: false, game: false, own: false }), true); // nothing to go on
+});
+
+test('front window helper: only a fresh report of the game counts', async () => {
+  const w = new GameWatch();
+  assert.equal(w.gameInFront(), false);
+  w.report('chrome', 1000);
+  assert.equal(w.gameInFront(1100), false);
+  w.report('PathOfExileSteam', 2000);
+  assert.equal(w.gameInFront(2100), true);
+  assert.equal(w.gameInFront(2000 + 5000), false); // the helper went quiet
+  assert.equal(isGameName('PathOfExile_x64'), true); assert.equal(isGameName('firefox'), false); assert.equal(isGameName(''), false);
+  // A report from before the switch was asked for is not proof of anything.
+  w.report('PathOfExile', Date.now() - 500);
+  assert.equal(await w.waitForGame(150, Date.now()), false);
+  setTimeout(() => w.report('PathOfExile'), 40);
+  assert.equal(await w.waitForGame(1000, Date.now()), true);
 });

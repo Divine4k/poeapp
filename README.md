@@ -36,7 +36,7 @@ Items are recognised by their picture, and the stack number is read from the cor
 
 ## Trading
 
-When someone whispers you from the trade site, the offer appears on the **Trade** page and in a small overlay on top of the game: who, what, the price, and where the item sits in your stash. Your own whispers to sellers are listed the same way.
+When someone whispers you from the trade site, the offer appears on the **Trade** page and as one small line on top of the game, right of the flasks: the next step, the item and the price. Click the item's name there to open the full card with every button. Your own whispers to sellers are listed the same way.
 
 - **Buttons:** Invite, Trade, Thanks, Kick, Busy, "Interested?" and Sold for buyers; Hideout, Trade, Thanks and Leave when you are the buyer. The gold button is the next step.
 - **It follows the trade for you.** The log says when the buyer arrives and when the trade is accepted, so the gold button moves from Invite to Trade to Thanks to Kick by itself.
@@ -44,11 +44,15 @@ When someone whispers you from the trade site, the offer appears on the **Trade*
 - **Repeat and late buyers:** the same buyer asking twice stays one offer ("Asked 2 times"). A buyer for something you just sold is marked, and the gold button tells them it is sold.
 - **Value check:** offers below 80% of the poe.ninja price, for items poe.ninja lists under the same name, are marked "Below market".
 - **Finished trades** are listed with totals for today and overall, once the game reports "Trade accepted".
+- **The item's slot is framed in your stash** when you invite a buyer, when they arrive, and when you press Locate (the square on the overlay). The frame is in the right place for a normal or a quad tab at any screen size; if a quad tab is framed as a normal one, press the Normal tab / Quad tab button on the card once and the app remembers it. Stash tabs inside a folder sit a row lower and are not handled yet.
+- **Away from the game nothing is drawn.** The overlay and the frame hide when another program is in front and come back with the game.
 - **Show a test offer** puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
 
 The overlay sits on the screen chosen under Settings ("Screen the game runs on") and needs Windowed Fullscreen. Buttons on the overlay do not take the keyboard away from the game. Buttons on the Trade page switch to the game window first, which takes about half a second.
 
-Limits: only English trade whispers are recognised, the slot is shown as a small picture of the stash tab and is not outlined inside the game's stash, and the overlay stays visible when you switch from the game to another window on the same screen.
+**The app only types when Path of Exile is the window in front.** A small helper asks Windows which program is in front; if it is not the game and the game cannot be brought forward, nothing is typed and a red notice says so. If the helper cannot run on a PC, the buttons do not type at all.
+
+Limits: only English trade whispers are recognised.
 
 ## Naming items and the shared list
 
@@ -97,7 +101,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 
 - Tested on two real 1920x1080 captures: finding the grid, telling empty from filled cells, reading every stack number (68 of 68), recognising the same item across captures, and the loot counting.
 - Rescaled copies of those captures (900p, 1440p, 4K) also read correctly, but real captures at those sizes have not been tried.
-- **Trading:** the whisper reading, the steps of a trade and the overlay window were run on Linux against a made-up log. Typing in the game, switching to the game window and the overlay on top of the real game have not been tried on Windows.
+- **Trading:** the whisper reading, the steps of a trade and the overlay windows were run on Linux against a made-up log, and the stash frame was checked against two 1920x1080 screenshots. The helper that tells which window is in front, switching to the game window, and hiding on alt-tab are Windows-only and have not been run by the author.
 - **Not tested:** the app running against the live game, matching against downloaded item pictures, the key listener, and poe.ninja's live data. Expect to report problems on first use.
 
 ## Development

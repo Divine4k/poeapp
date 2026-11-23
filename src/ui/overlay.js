@@ -1,29 +1,37 @@
 'use strict';
-// The overlay on top of the game: the oldest open offers with their buttons.
+// The overlay on top of the game: one small line per open offer. A click on an offer's name
+// opens it into the full card with every button; a click on the card's top line closes it.
 (() => {
   const api = window.api;
-  const { cardHtml, tick } = window.TradeCard;
+  const { cardHtml, tileHtml, tick } = window.TradeCard;
   const stack = document.getElementById('stack');
-  const MAX = 4;
+  const MAX = 5;
   let drawn = '';
+  let open = null; // id of the offer shown as a full card
+  let last = null;
 
   function render(t) {
+    last = t;
     const offers = (t && t.offers) || [];
     const shown = offers.slice(0, MAX);
-    const key = JSON.stringify([shown, offers.length, t && t.divine]);
+    if (open !== null && !shown.some((o) => String(o.id) === open)) open = null;
+    const key = JSON.stringify([shown, offers.length, t && t.divine, t && t.locateId, open]);
     if (key !== drawn) {
       drawn = key;
       const more = offers.length - shown.length;
-      const hk = t && t.hotkeys && t.hotkeys.next;
-      stack.innerHTML = shown.map((o) => cardHtml(o, { divine: t.divine, labels: t.labels })).join('')
-        + (more > 0 ? `<p class="ov-more">${more} more ${more === 1 ? 'offer' : 'offers'} in the app${hk ? `. ${hk} does the next step for the top one` : ''}</p>` : '');
+      const opt = { divine: t.divine, labels: t.labels, locateId: t.locateId };
+      stack.innerHTML = shown.map((o) => (String(o.id) === open ? cardHtml(o, opt) : tileHtml(o, opt))).join('')
+        + (more > 0 ? `<p class="ov-more">${more} more in the app</p>` : '');
     }
     api.overlaySize(offers.length ? Math.ceil(stack.getBoundingClientRect().height) : 0);
   }
 
   stack.addEventListener('click', (e) => {
     const b = e.target.closest('[data-trade]');
-    if (b) api.action({ type: 'trade', id: b.dataset.id, do: b.dataset.trade });
+    if (b) { api.action({ type: 'trade', id: b.dataset.id, do: b.dataset.trade }); return; }
+    const opener = e.target.closest('[data-open]');
+    if (opener) { open = opener.dataset.open; render(last); return; }
+    if (e.target.closest('.tc header')) { open = null; render(last); }
   });
   setInterval(() => tick(stack), 1000);
   api.onTrade(render);

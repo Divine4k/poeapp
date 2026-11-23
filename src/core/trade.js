@@ -213,6 +213,14 @@ class TradeBook {
     else if (action === 'sold' || action === 'kick' || action === 'leave') this.remove(id);
   }
 
+  // Marks or unmarks an offer's stash tab as a quad tab (24 slots wide).
+  toggleQuad(id) {
+    const o = this.get(id);
+    if (!o || !o.tab) return;
+    if (o.left > 12 || o.top > 12) { this.quadTabs.add(o.tab); return; } // past slot 12, so it can only be a quad tab
+    if (this.quadTabs.has(o.tab)) this.quadTabs.delete(o.tab); else this.quadTabs.add(o.tab);
+  }
+
   remove(id) { this.offers = this.offers.filter((o) => String(o.id) !== String(id)); }
   removeHistory(id) { this.history = this.history.filter((h) => h.id !== id); }
   clearTests() { this.offers = this.offers.filter((o) => !o.test); }
@@ -278,16 +286,18 @@ class TradeBook {
   }
 }
 
-const OVERLAY_WIDTH = 460;
+const OVERLAY_WIDTH = 330;
 
 // Where the window goes on the game's screen. position: 'top' | 'bottom' | 'left' | 'right'.
 // offsetX / offsetY nudge it, in percent of the screen. All numbers are screen points.
-function overlayBounds(display, height, { position = 'top', offsetX = 0, offsetY = 0 } = {}) {
+function overlayBounds(display, height, { position = 'bottom', offsetX = 0, offsetY = 0 } = {}) {
   const b = display.bounds;
   const w = Math.min(OVERLAY_WIDTH, b.width);
   const h = Math.max(1, Math.min(Math.round(height), Math.round(b.height * 0.7)));
   let x = b.x + (b.width - w) / 2, y = b.y + b.height * 0.06;
-  if (position === 'bottom') y = b.y + b.height * 0.76 - h; // grows upward from above the skill bar
+  // bottom: the free strip right of the flasks, growing upward from just above the experience bar.
+  // The game's panels scale with the screen's height, so the flasks end about half a height in.
+  if (position === 'bottom') { x = b.x + b.height * 0.52; y = b.y + b.height * 0.975 - h; }
   else if (position === 'left') { x = b.x + b.width * 0.01; y = b.y + b.height * 0.28; }
   else if (position === 'right') { x = b.x + b.width * 0.99 - w; y = b.y + b.height * 0.28; }
   x += (b.width * (Number(offsetX) || 0)) / 100;
@@ -297,5 +307,25 @@ function overlayBounds(display, height, { position = 'top', offsetX = 0, offsetY
   return { x: Math.round(x), y: Math.round(y), width: w, height: h };
 }
 
+// Where one stash slot is on the game's screen, in screen points. Measured on 1920x1080
+// screenshots of a normal and a quad tab: the grid starts 16 px from the left and 134 px from
+// the top and is 632 px wide and high, and the stash scales with the screen's height.
+// grid: 12 for a normal tab, 24 for a quad tab. left / top: the slot, counted from 1.
+const STASH = { x: 16, y: 134, size: 632, base: 1080 };
+function stashCellRect(display, grid, left, top) {
+  const b = display.bounds;
+  const f = b.height / STASH.base;
+  const cell = (STASH.size / (grid === 24 ? 24 : 12)) * f;
+  const pad = 3; // room for the frame around the slot
+  return {
+    x: Math.round(b.x + STASH.x * f + (left - 1) * cell - pad), y: Math.round(b.y + STASH.y * f + (top - 1) * cell - pad),
+    width: Math.round(cell + pad * 2), height: Math.round(cell + pad * 2),
+  };
+}
+
+// Whether the windows on top of the game may be visible. front: { known, game, own }, what is
+// known about the window in front. Unknown (no helper) means show, as there is nothing to go on.
+const overlayAllowed = (front) => !front || !front.known || front.game || front.own;
+
 module.exports = {
-  overlayBounds, OVERLAY_WIDTH, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
+  overlayBounds, OVERLAY_WIDTH, stashCellRect, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
