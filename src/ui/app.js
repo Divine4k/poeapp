@@ -233,7 +233,7 @@
       box.innerHTML = `<p class="hint">Nothing read yet. Open your inventory in game (${esc(state.config.inventory.key)}) and keep the mouse off it for a second.</p>`;
       return;
     }
-    const how = { art: 'matched to its picture', learned: 'named by you', shared: 'from the shared list', pinned: 'counted by you for this slot' };
+    const how = { art: 'matched to its picture', learned: 'named by you', shared: 'from the shared list', pinned: 'counted by you for this slot', map: 'map tier read from its picture' };
     const describe = (c) => {
       if (c.status === 'item') return `${c.name} ×${c.qty}: ${fmtValue(c.total)}. Recognised: ${how[c.source] || ''}${c.score ? `, ${c.score}% match` : ''}.`;
       if (c.status === 'remembered') return `${c.name} ×${c.qty}: ${fmtValue(c.total)}. Covered in this read, so the last known value is used.`;

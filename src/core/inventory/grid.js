@@ -71,21 +71,20 @@ function isEmptyCell(cell) {
 }
 
 // The inventory is open when the frame bar directly above the grid is there: a dark line with
-// an evenly lit grey-brown line under it, across the full grid width.
+// an evenly lit grey-brown line right under it. An item tooltip can cover a good part of that
+// bar, so it only has to show along 40% of the grid width.
 function isInventoryOpen(frame, rect = gridRect(frame.width, frame.height)) {
   const tmp = [0, 0, 0];
-  const row = (dy) => {
-    let sum = 0, sq = 0, n = 0;
-    for (let x = rect.x0 + rect.cell * 0.5; x <= rect.x0 + rect.cell * (COLS - 0.5); x += rect.cell / 4) {
-      sample(frame, x, rect.y0 + dy * rect.cell, tmp, 0);
-      const v = (tmp[0] + tmp[1] + tmp[2]) / 3;
-      sum += v; sq += v * v; n++;
-    }
-    const mean = sum / n;
-    return { mean, std: Math.sqrt(Math.max(0, sq / n - mean * mean)) };
-  };
-  const dark = row(-0.2), lit = row(-0.05);
-  return dark.mean < 18 && dark.std < 10 && lit.mean > 28 && lit.mean < 80 && lit.std < 14;
+  const at = (x, dy) => { sample(frame, x, rect.y0 + dy * rect.cell, tmp, 0); return (tmp[0] + tmp[1] + tmp[2]) / 3; };
+  let good = 0, n = 0, sum = 0, sq = 0;
+  for (let x = rect.x0 + rect.cell * 0.5; x <= rect.x0 + rect.cell * (COLS - 0.5); x += rect.cell / 4) {
+    n++;
+    const dark = at(x, -0.2), lit = at(x, -0.05);
+    if (dark < 18 && lit > 28 && lit < 80) { good++; sum += lit; sq += lit * lit; }
+  }
+  if (good < n * 0.4) return false;
+  const mean = sum / good;
+  return Math.sqrt(Math.max(0, sq / good - mean * mean)) < 14; // the lit line is the same shade all along
 }
 
 function extractGrid(frame, rect = gridRect(frame.width, frame.height)) {

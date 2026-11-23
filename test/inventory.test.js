@@ -12,6 +12,8 @@ const { parseExchange, iconUrl } = require('../src/core/prices');
 const { loadFrame, TRUTH } = require('./helpers');
 
 const frames = { inv_map: loadFrame('inv_map'), inv_hideout: loadFrame('inv_hideout') };
+const tooltipFrame = loadFrame('inv_tooltip'); // a later capture: sixteen map tiers, and a tooltip over the left half
+const { readMapTier } = require('../src/core/inventory/maps');
 const each = (name, fn) => {
   const cells = extractGrid(frames[name]);
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) fn(TRUTH[name][r][c], cells[r * COLS + c], r, c);
@@ -19,6 +21,7 @@ const each = (name, fn) => {
 
 test('grid: open inventory is detected, closed is not', () => {
   for (const f of Object.values(frames)) assert.equal(isInventoryOpen(f), true);
+  assert.equal(isInventoryOpen(tooltipFrame), true); // a tooltip covers half of the frame bar
   const blank = { data: Buffer.alloc(frames.inv_map.data.length), width: 1920, height: 1080 };
   assert.equal(isInventoryOpen(blank), false);
   const rect = gridRect(1920, 1080);
@@ -255,4 +258,33 @@ test('digits: numbers on bright icons are still read', () => {
     });
   }
   assert.equal(checked, 62);
+});
+
+test('maps: every tier is read from its picture, nothing else is mistaken for a map', () => {
+  const cells = extractGrid(tooltipFrame);
+  const tiers = { '4,8': 1, '0,9': 2, '1,9': 3, '2,9': 4, '3,9': 5, '4,9': 6, '0,10': 7, '1,10': 8, '2,10': 9, '3,10': 10, '4,10': 11, '0,11': 12, '1,11': 13, '2,11': 14, '3,11': 15, '4,11': 16 };
+  for (const [k, tier] of Object.entries(tiers)) {
+    const [r, c] = k.split(',').map(Number);
+    assert.equal(readMapTier(cells[r * COLS + c]).tier, tier, k);
+  }
+  // the hovered tier 16 map (highlighted slot), and a tier 16 map in a capture taken hours earlier
+  assert.equal(readMapTier(cells[4 * COLS]).tier, 16);
+  assert.equal(readMapTier(extractGrid(frames.inv_hideout)[4 * COLS + 7]).tier, 16);
+  // every other filled slot in all three captures
+  let checked = 0;
+  const others = (list, skip) => list.forEach((cell, k) => { if (skip.has(k) || isEmptyCell(cell)) return; assert.equal(readMapTier(cell), null, `slot ${k}`); checked++; });
+  others(cells, new Set([...Object.keys(tiers).map((k) => { const [r, c] = k.split(',').map(Number); return r * COLS + c; }), 48]));
+  others(extractGrid(frames.inv_hideout), new Set([55]));
+  others(extractGrid(frames.inv_map), new Set());
+  assert.ok(checked > 100);
+});
+
+test('reader: a real tooltip capture, mouse on the bottom-left slot', () => {
+  const reader = new InventoryReader(new IconIndex());
+  const r = reader.read(tooltipFrame, { cursor: { row: 4, col: 0 } });
+  assert.ok(r);
+  for (let t = 1; t <= 15; t++) assert.equal(r.counts.get(`Map (Tier ${t})`), 1, `tier ${t}`);
+  assert.equal(r.counts.get('Map (Tier 16)'), 2);               // including the hovered, highlighted one
+  assert.equal(r.unknown.some((u) => u.cell < 48), false);       // nothing is reported from the covered rows
+  assert.equal(r.empties.length, 0);
 });
