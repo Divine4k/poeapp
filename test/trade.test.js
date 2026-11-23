@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseLine } = require('../src/core/clientLog');
-const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds, stashCellRect, overlayAllowed } = require('../src/core/trade');
+const { parseTradeMessage, priceChaos, chatCommand, nextAction, TradeBook, overlayBounds, placementFromRect, stashCellRect, overlayAllowed } = require('../src/core/trade');
 const { GameWatch, isGameName } = require('../src/gamewin');
 
 const line = (rest) => `2026/11/23 15:00:01 123456 cff945b9 [INFO Client 4321] ${rest}`;
@@ -180,6 +180,25 @@ test('overlay placement stays on the game screen', () => {
   assert.equal(pushed.x + pushed.width, 1920 + 1920);
   assert.equal(pushed.y + pushed.height, 1080);
   assert.equal(overlayBounds(display, 5000, {}).height, 756);
+});
+
+test('layout mode: a dragged spot is kept as a share of the screen', () => {
+  const screen = { width: 1920, height: 1080 };
+  // Dropped low on the screen: remembered by its bottom edge, so the list grows upward.
+  const low = placementFromRect({ x: 960, y: 900, width: 330, height: 84 }, screen);
+  assert.deepEqual(low, { x: 0.5, y: 984 / 1080, grow: 'up' });
+  const display = { bounds: { x: 1920, y: 0, width: 1920, height: 1080 } };
+  assert.deepEqual(overlayBounds(display, 84, { custom: low }), { x: 1920 + 960, y: 900, width: 330, height: 84 });
+  assert.equal(overlayBounds(display, 200, { custom: low }).y, 784); // more offers: taller, same bottom edge
+  // Dropped high: remembered by its top edge, growing downward.
+  const high = placementFromRect({ x: 96, y: 108, width: 330, height: 84 }, screen);
+  assert.deepEqual(high, { x: 0.05, y: 0.1, grow: 'down' });
+  assert.equal(overlayBounds(display, 200, { custom: high }).y, 108);
+  // The same spot on a bigger screen, and never off the edge.
+  assert.deepEqual(overlayBounds({ bounds: { x: 0, y: 0, width: 2560, height: 1440 } }, 84, { custom: high }), { x: 128, y: 144, width: 330, height: 84 });
+  assert.equal(overlayBounds(display, 84, { custom: { x: 0.99, y: 0.5, grow: 'down' } }).x, 1920 + 1920 - 330);
+  // A dragged spot wins over the preset.
+  assert.equal(overlayBounds(display, 84, { position: 'top', custom: high }).y, 108);
 });
 
 test('stash slots: measured on 1080p, scaled by screen height', () => {

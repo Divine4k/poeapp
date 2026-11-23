@@ -46,6 +46,7 @@ When someone whispers you from the trade site, the offer appears on the **Trade*
 - **Finished trades** are listed with totals for today and overall, once the game reports "Trade accepted".
 - **The item's slot is framed in your stash** when you invite a buyer, when they arrive, and when you press Locate (the square on the overlay). The frame is in the right place for a normal or a quad tab at any screen size; if a quad tab is framed as a normal one, press the Normal tab / Quad tab button on the card once and the app remembers it. Stash tabs inside a folder sit a row lower and are not handled yet.
 - **Away from the game nothing is drawn.** The overlay and the frame hide when another program is in front and come back with the game.
+- **Layout mode:** Shift+F2 dims the game and shows a box for each part of the overlay. Drag a box where you want it and press Done. A box left in the lower half of the screen grows upward, one in the upper half grows downward, and the spot is kept as a share of the screen, so it survives a change of resolution. Trade settings has a button for the same thing and one to go back to the default spot.
 - **Show a test offer** puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
 
 The overlay sits on the screen chosen under Settings ("Screen the game runs on") and needs Windowed Fullscreen. Buttons on the overlay do not take the keyboard away from the game. Buttons on the Trade page switch to the game window first, which takes about half a second.
@@ -81,7 +82,7 @@ The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so a
 ## Game settings
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.
-- F8 and F9 must not be bound to anything in game, and neither must the trade keys F2 and F3. Change them in Settings (trade keys: Trade, Trade settings) if they are.
+- F8 and F9 must not be bound to anything in game, and neither must the trade keys F2, F3 and Shift+F2. Change them in Settings (trade keys: Trade, Trade settings) if they are.
 - F9 sends a report of what the app sees (the inventory slots, how each was read) to the `data` branch of this repository under `reports/`, for troubleshooting. That needs the GitHub token from Settings; without one the report is kept in the app's own folder.
 - If your inventory key is not Tab, set it in Settings.
 

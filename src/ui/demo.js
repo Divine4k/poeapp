@@ -69,8 +69,8 @@
     id, dir, player, item, qty, price, league: 'Demo', tab, left, top, note: '', at: now - id * 47000, lastAt: now, asks: 1,
     state: 'new', here: false, thanked: false, soldAlready: false, value: null, market: null, low: false, next: dir === 'in' ? 'invite' : 'hideout', nextLabel: '', waiting: '', grid: tab ? 12 : 0, ...more,
   });
-  state.config.trade = { enabled: true, overlay: true, highlight: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { next: 'F2', dismiss: 'F3' }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
-  state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
+  state.config.trade = { enabled: true, overlay: true, highlight: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2' }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
+  state.status.hotkeys.layout = true; state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
   state.trade = {
     afk: false, divine: 212, canSend: true, locateId: 3, seen: { whispers: 5, offers: 3, lastWhisperAt: now }, enabled: true, hotkeys: state.config.trade.hotkeys,
     labels: { invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party', busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?' },

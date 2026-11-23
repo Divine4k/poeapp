@@ -48,6 +48,7 @@
     const tc = state.config.trade;
     if (tc && tc.enabled) {
       if (tc.hotkeys.next && !st.hotkeys.tradeNext) items.push(['bad', `Trade key ${tc.hotkeys.next} is taken by another app`]);
+      if (tc.hotkeys.layout && !st.hotkeys.layout) items.push(['bad', `Layout key ${tc.hotkeys.layout} is taken by another app`]);
       if (tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) items.push(['bad', `Trade key ${tc.hotkeys.dismiss} is taken by another app`]);
     }
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
@@ -440,7 +441,7 @@
     warn.hidden = !problems.length;
     warn.textContent = problems.join(' ');
     const hk = cfg.hotkeys;
-    $('trade-hint').textContent = `Whispers from the trade site show up here${cfg.overlay ? ' and on top of the game' : ''}. The gold button is the next step${hk.next ? `; ${hk.next} presses it for the oldest offer` : ''}${hk.dismiss ? `, ${hk.dismiss} dismisses it` : ''}.`;
+    $('trade-hint').textContent = `Whispers from the trade site show up here${cfg.overlay ? ' and on top of the game' : ''}. The gold button is the next step${hk.next ? `; ${hk.next} presses it for the oldest offer` : ''}${hk.dismiss ? `, ${hk.dismiss} dismisses it` : ''}.${hk.layout ? ` ${hk.layout} opens layout mode, where you drag the overlay to a new spot.` : ''}`;
     const seen = t.seen || { whispers: 0, offers: 0 };
     $('trade-seen').textContent = !state.status.log.ok ? 'The game log is not connected, so no whispers can be read.'
       : seen.whispers ? `Since the app started: ${seen.whispers} ${seen.whispers === 1 ? 'whisper' : 'whispers'} read from the game log, ${seen.offers} of them trade offers. Last one at ${clock(seen.lastWhisperAt)}.`
@@ -809,19 +810,15 @@
     if (!e.target.open) return;
     const c = state.config.trade, el = tradeForm.elements;
     el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound; el.highlight.checked = c.highlight !== false;
-    el.position.value = c.position || 'bottom';
-    el.offsetX.value = c.offsetX || 0; el.offsetY.value = c.offsetY || 0;
-    el.hkNext.value = c.hotkeys.next || ''; el.hkDismiss.value = c.hotkeys.dismiss || '';
+    el.hkNext.value = c.hotkeys.next || ''; el.hkDismiss.value = c.hotkeys.dismiss || ''; el.hkLayout.value = c.hotkeys.layout || '';
     el.msgThanks.value = c.messages.thanks; el.msgBusy.value = c.messages.busy; el.msgSold.value = c.messages.sold; el.msgStill.value = c.messages.still;
   });
   tradeForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const el = tradeForm.elements;
-    const pct = (v) => Math.max(-50, Math.min(50, Number(v) || 0));
     api.setConfig({ trade: {
       enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked, highlight: el.highlight.checked,
-      position: el.position.value, offsetX: pct(el.offsetX.value), offsetY: pct(el.offsetY.value),
-      hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim() },
+      hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim(), layout: el.hkLayout.value.trim() },
       messages: { thanks: el.msgThanks.value.trim(), busy: el.msgBusy.value.trim(), sold: el.msgSold.value.trim(), still: el.msgStill.value.trim() },
     } });
     $('trade-settings').open = false;

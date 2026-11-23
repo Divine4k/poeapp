@@ -110,8 +110,8 @@
           <label class="check"><input type="checkbox" name="highlight"> Frame the item's slot in the stash when I invite a buyer</label>
           <label class="check"><input type="checkbox" name="sound"> Play a sound for a new buyer</label>
           <div class="settings-grid">
-            <label>Where on the game screen <select name="position"><option value="bottom">Bottom, right of the flasks</option><option value="top">Top, centre</option><option value="left">Left side</option><option value="right">Right side</option></select></label>
-            <span class="row"><label>Move right (%) <input name="offsetX" type="number" min="-50" max="50" step="1"></label><label>Move down (%) <input name="offsetY" type="number" min="-50" max="50" step="1"></label></span>
+            <span class="row wide"><button type="button" data-act="layoutToggle">Move the overlay on the game screen</button><button type="button" data-act="layoutReset">Back to the default spot</button></span>
+            <label class="wide">Key: open layout mode, to drag the overlay where you want it <input name="hkLayout" placeholder="Shift+F2"></label>
             <label>Key: next step for the oldest offer <input name="hkNext" placeholder="F2"></label>
             <label>Key: dismiss the oldest offer <input name="hkDismiss" placeholder="F3"></label>
             <label class="wide">Thanks message <input name="msgThanks"></label>
