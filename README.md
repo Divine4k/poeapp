@@ -29,7 +29,8 @@ The app compares each inventory reading with what was there when you entered the
 
 Items are recognised by their picture, and the stack number is read from the corner of the slot.
 
-- Currency, threads, fragments, essences, fossils, oils and similar are recognised automatically.
+- Currency, threads, fragments, essences, fossils, oils and similar are recognised automatically, as a stack or as a single item with no number on it.
+- A single item is counted as one when its picture is known. Single items that are not gear or gems and have a price (emblems, invitations and the like) are learned for good when you hover one and press F8.
 - Divination cards, maps, gems and uniques cannot be told apart by picture. Hover one and press F8 to count that slot.
 - Rares are not priced.
 - Each map shows what it could not count, and is marked "incomplete" in the list.
