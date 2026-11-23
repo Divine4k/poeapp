@@ -36,7 +36,7 @@ Items are recognised by their picture, and the stack number is read from the cor
 
 ## Trading
 
-When someone whispers you from the trade site, the offer appears on the **Trade** page and as one small line on top of the game, right of the flasks: the next step, the item and the price. Click the item's name there to open the full card with every button. Your own whispers to sellers are listed the same way.
+When someone whispers you from the trade site, the offer appears on the **Trade** page and as one small line on top of the game, right of the flasks: the next step, the item, the price, and Busy and Sold. Click the item's name there to open the full card with every button. Your own whispers to sellers are listed the same way.
 
 - **Buttons:** Invite, Trade, Thanks, Kick, Busy, "Interested?" and Sold for buyers; Hideout, Trade, Thanks and Leave when you are the buyer. The gold button is the next step.
 - **It follows the trade for you.** The log says when the buyer arrives and when the trade is accepted, so the gold button moves from Invite to Trade to Thanks to Kick by itself.
@@ -44,7 +44,7 @@ When someone whispers you from the trade site, the offer appears on the **Trade*
 - **Repeat and late buyers:** the same buyer asking twice stays one offer ("Asked 2 times"). A buyer for something you just sold is marked, and the gold button tells them it is sold.
 - **Value check:** offers below 80% of the poe.ninja price, for items poe.ninja lists under the same name, are marked "Below market".
 - **Finished trades** are listed with totals for today and overall, once the game reports "Trade accepted".
-- **The item's slot is framed in your stash** when you invite a buyer, when they arrive, and when you press Locate (the square on the overlay). The frame is in the right place for a normal or a quad tab at any screen size; if a quad tab is framed as a normal one, press the Normal tab / Quad tab button on the card once and the app remembers it. Stash tabs inside a folder sit a row lower and are not handled yet.
+- **The item's slot is framed in your stash**, but only while the stash is open. It is armed when you invite a buyer, when they arrive, or when you press Locate (the square on the overlay), and waits up to four minutes for you to open the stash. A line under the stash names the tab the item is in. The app cannot read which tab you have open, so the frame is drawn on whatever tab is showing: go by the tab name on that line. If a quad tab is framed as a normal one, press the Normal tab / Quad tab button on the card once and the app remembers it. Stash tabs inside a folder sit a row lower and are not handled yet.
 - **Away from the game nothing is drawn.** The overlay and the frame hide when another program is in front and come back with the game.
 - **Layout mode:** Shift+F2 dims the game and shows a box for each part of the overlay. Drag a box where you want it and press Done. A box left in the lower half of the screen grows upward, one in the upper half grows downward, and the spot is kept as a share of the screen, so it survives a change of resolution. Trade settings has a button for the same thing and one to go back to the default spot.
 - **Show a test offer** puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
@@ -93,6 +93,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 - The app never touches game memory or files.
 - **F8** sends a single Ctrl+C to the game when you press it, then reads the clipboard once. That is the same pattern price-check tools use. You can switch the Ctrl+C off in Settings and press it yourself.
 - **Reading on your inventory key** is one read per key press. The app listens for that one key without blocking it.
+- **Finding the stash:** while a stash slot is waiting to be framed, each mouse click or key press of yours is followed by one look at the screen to see whether the stash is open. Outside that, trading reads nothing from the screen.
 - **Trade buttons and trade keys** type one chat line (such as `/invite Name`) per click or key press, the way PoE Lurker and Awakened PoE Trade do. Nothing is typed without a click or key press, and no button sends two lines.
 - **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
 - With "check by itself" off, press your inventory key once after arriving in the hideout, before you stash.

@@ -286,7 +286,7 @@ class TradeBook {
   }
 }
 
-const OVERLAY_WIDTH = 330;
+const OVERLAY_WIDTH = 400;
 
 // Where the window goes on the game's screen. position: 'top' | 'bottom' | 'left' | 'right'.
 // offsetX / offsetY nudge it, in percent of the screen. All numbers are screen points.
@@ -340,9 +340,16 @@ function stashCellRect(display, grid, left, top) {
   };
 }
 
+// A strip right under the stash grid, for a line saying which tab the framed item is in.
+function stashLabelRect(display) {
+  const b = display.bounds;
+  const f = b.height / STASH.base;
+  return { x: Math.round(b.x + STASH.x * f), y: Math.round(b.y + (STASH.y + STASH.size + 6) * f), width: Math.round(STASH.size * f), height: Math.max(22, Math.round(26 * f)) };
+}
+
 // Whether the windows on top of the game may be visible. front: { known, game, own }, what is
 // known about the window in front. Unknown (no helper) means show, as there is nothing to go on.
 const overlayAllowed = (front) => !front || !front.known || front.game || front.own;
 
 module.exports = {
-  overlayBounds, placementFromRect, OVERLAY_WIDTH, stashCellRect, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
+  overlayBounds, placementFromRect, OVERLAY_WIDTH, stashCellRect, stashLabelRect, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
