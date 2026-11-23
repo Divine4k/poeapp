@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { checkMessage } = require('../src/core/checkMessage');
+const { checkMessage, noteMessage } = require('../src/core/checkMessage');
 
 test('check key message: prices', () => {
   const at = 5000;
@@ -35,7 +35,13 @@ test('check key message: maps, nothing under the mouse, and stale results', () =
   assert.deepEqual(danger, { title: 'Strand Map (T16): do not run: 1 dangerous mod', detail: 'Monsters reflect 18% of Physical Damage', bad: true });
   assert.equal(checkMessage({ mapCheck: { at, name: 'Strand Map', unidentified: true, mods: [] } }, 4000).bad, true);
   const none = checkMessage({ notice: { at, text: 'No item under the mouse in game. Hover an item and press the key again.', bad: true }, priceCheck: { at: 100, name: 'Old', qty: 1, found: true, each: 1, total: 1 } }, 4000);
-  assert.deepEqual([none.title, none.bad], ['Nothing read', true]);
+  assert.deepEqual(none, { title: 'No item under the mouse in game', detail: 'Hover an item and press the key again.', bad: true });
+  // A name waiting for a clear look at its slot is good news, not a failure.
+  const waiting = checkMessage({ priceCheck: { at, name: 'Timeless Maraketh Splinter', qty: 99, found: true, each: 0.22, total: 21.8 }, notice: { at, text: 'Noted: Timeless Maraketh Splinter. It is saved at the next clear look at that slot. Move the mouse off the inventory for a second; nothing else to press.', bad: false } }, 4000);
+  assert.deepEqual([waiting.title, waiting.bad], ['Noted: Timeless Maraketh Splinter', false]);
+  assert.match(waiting.detail, /^It is saved at the next clear look at that slot\./);
+  assert.deepEqual(noteMessage({ text: 'Saved: Timeless Maraketh Splinter.', bad: false }), { title: 'Saved: Timeless Maraketh Splinter', detail: '', bad: false });
+  assert.equal(noteMessage(null), null);
   // Results from an earlier press say nothing about this one.
   assert.equal(checkMessage({ priceCheck: { at: 100, name: 'Old', qty: 1, found: true, each: 1, total: 1 }, notice: { at: 200, text: 'old', bad: false } }, 4000), null);
   assert.equal(checkMessage({}, 0), null);

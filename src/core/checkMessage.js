@@ -13,6 +13,12 @@ function worth(c, divine) {
 const firstSentence = (t) => { const i = t.indexOf('. '); return (i > 0 ? t.slice(0, i) : t).replace(/\.$/, ''); };
 const restOf = (t) => { const i = t.indexOf('. '); return i > 0 ? t.slice(i + 2).trim() : ''; };
 
+// A notice on its own: its first sentence as the headline, the rest underneath.
+function noteMessage(note) {
+  if (!note || !note.text) return null;
+  return { title: firstSentence(note.text), detail: restOf(note.text), bad: !!note.bad };
+}
+
 // state: { mapCheck, priceCheck, notice, divine } as the app holds them. since: when the key was
 // pressed; only results newer than that count. Returns { title, detail, bad } or null.
 function checkMessage({ mapCheck, priceCheck, notice, divine = 0 } = {}, since = 0) {
@@ -43,8 +49,8 @@ function checkMessage({ mapCheck, priceCheck, notice, divine = 0 } = {}, since =
     if (!p.found) return { title: `${what}: no price found`, detail: '', bad: true };
     return { title: `${what}: ${value}`, detail: '', bad: false };
   }
-  if (note) return { title: note.bad ? 'Nothing read' : 'Done', detail: note.text, bad: !!note.bad };
+  if (note) return noteMessage(note);
   return null;
 }
 
-module.exports = { checkMessage, worth };
+module.exports = { checkMessage, noteMessage, worth };
