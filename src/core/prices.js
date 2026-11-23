@@ -29,7 +29,12 @@ function parseExchange(json, category) {
   if (!json || !Array.isArray(json.lines) || !json.core) return out;
   const names = new Map();
   const icons = new Map();
-  for (const it of json.core.items || []) { names.set(it.id, it.name); icons.set(it.id, iconUrl(it.image || it.icon)); }
+  // The full item list is the top-level `items`; `core.items` only holds the reference currencies.
+  for (const it of [...(json.core.items || []), ...(json.items || [])]) {
+    if (!it || !it.id) continue;
+    names.set(it.id, it.name);
+    icons.set(it.id, iconUrl(it.image || it.icon));
+  }
   const primary = json.core.primary;
   let factor = 1;
   if (primary && primary !== 'chaos') {

@@ -87,7 +87,8 @@ input::placeholder { color: #6f7a86; }
 .feed .val, .rows .val { font-family: var(--display); font-variant-numeric: tabular-nums; }
 .unknown li { display: grid; grid-template-columns: 52px auto 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--slab); }
 .unknown img { width: 52px; height: 52px; image-rendering: auto; border: 1px solid var(--seam); }
-.unknown input { min-width: 0; }
+.unknown input { min-width: 0; width: 100%; }
+.guess-field small { display: block; color: var(--ash); font-size: 12px; margin-top: 2px; }
 .empty { color: var(--ash); padding: 10px 0; display: block !important; border: 0 !important; font-size: 14px !important; }
 
 /* session */

@@ -33,7 +33,7 @@
     },
     leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }],
     learned: ['Chaos Orb'],
-    unknown: [{ id: 1, qty: 3, image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
+    unknown: [{ id: 1, qty: 3, guess: { name: 'Vaal Orb', score: 78 }, image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
     priceCheck: null,
     mapCheck: {
       at: now, name: 'Strand Map', tier: 16, quantity: 92, packSize: 33, corrupted: false, unidentified: false, dangerCount: 1,

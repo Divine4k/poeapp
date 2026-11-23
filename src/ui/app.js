@@ -78,15 +78,16 @@
     const un = state.unknown || [];
     $('unknown-wrap').hidden = !un.length;
     const list = $('unknown');
-    // Rebuild only when the set of items changes, so typing a name is not interrupted.
-    const key = un.map((u) => u.id).join(',');
+    // Rebuild only when the set of items or guesses changes, so typing a name is not interrupted.
+    const key = un.map((u) => `${u.id}:${u.guess ? u.guess.name : ''}`).join(',');
     if (list.dataset.key !== key) {
       list.dataset.key = key;
       list.innerHTML = un.map((u) => `<li>
         <img src="${esc(u.image)}" alt="Unrecognised item">
         <span class="qty">×${u.qty}</span>
-        <input list="price-names" placeholder="Type this item's name" aria-label="Item name" data-learn-input="${u.id}">
-        <button type="button" data-learn="${u.id}">Save name</button></li>`).join('');
+        <span class="guess-field"><input list="price-names" value="${u.guess ? esc(u.guess.name) : ''}" placeholder="Type this item's name" aria-label="Item name" data-learn-input="${u.id}">
+          ${u.guess ? `<small>Best guess, ${u.guess.score}% match. Check it against the picture.</small>` : ''}</span>
+        <button type="button" data-learn="${u.id}">${u.guess ? 'Confirm' : 'Save name'}</button></li>`).join('');
     }
   }
 

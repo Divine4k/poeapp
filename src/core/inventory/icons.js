@@ -73,6 +73,13 @@ class IconIndex {
     return { best, score, second };
   }
 
+  // The closest downloaded picture, however weak: { name, score } or null. Used to pre-fill a
+  // guess for items that were not matched confidently.
+  suggest(print) {
+    const a = IconIndex.best(this.art, print);
+    return a.best ? { name: a.best.name, score: a.score } : null;
+  }
+
   // Returns { name, score, source } or null when nothing matches well enough.
   match(print) {
     const l = IconIndex.best(this.learned, print);

@@ -91,7 +91,7 @@ function buildState() {
   status.inventory.art.known = index.art.length;
   return {
     config, status, leagues, mapCheck, priceCheck,
-    unknown: unknown.map((u) => ({ id: u.id, qty: u.qty, image: u.image })),
+    unknown: unknown.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guess: u.guess })),
     learned: [...new Set(learned.map((l) => l.name))].sort(),
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
     summary: session.summary(prices),
@@ -174,7 +174,11 @@ function updateUnknown(found) {
   for (const u of found) {
     if (next.some((n) => similarity(n.print, u.print) > 0.95)) continue; // same item in several cells
     const prev = unknown.find((o) => similarity(o.print, u.print) > 0.95);
-    next.push(prev ? { ...prev, qty: u.qty } : { id: unknownSeq++, qty: u.qty, print: u.print, image: thumbnail(u.rgb) });
+    const guess = index.suggest(u.print);
+    next.push({
+      id: prev ? prev.id : unknownSeq++, qty: u.qty, print: u.print, image: thumbnail(u.rgb),
+      guess: guess && guess.score >= 0.5 ? { name: guess.name, score: Math.round(guess.score * 100) } : null,
+    });
     if (next.length >= 8) break;
   }
   unknown = next;

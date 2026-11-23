@@ -28,7 +28,9 @@ test('client log: areas, entering, deaths, chat is ignored', () => {
 
 test('prices: exchange and item overview parsing', () => {
   const ex = parseExchange({
-    core: { primary: 'chaos', rates: { divine: 0.005 }, items: [{ id: 'divine', name: 'Divine Orb' }, { id: 'alt', name: 'Orb of Alteration' }] },
+    // real shape: core.items holds only the reference currencies, the full list is top-level
+    core: { primary: 'chaos', rates: { divine: 0.005 }, items: [{ id: 'divine', name: 'Divine Orb' }] },
+    items: [{ id: 'divine', name: 'Divine Orb' }, { id: 'alt', name: 'Orb of Alteration', image: '/gen/image/x/y/CurrencyRerollMagic.png' }],
     lines: [{ id: 'divine', primaryValue: 200 }, { id: 'alt', primaryValue: 0.1 }, { id: 'ghost', primaryValue: 5 }],
   }, 'Currency');
   assert.deepEqual(ex.map((e) => [e.name, e.chaos]), [['Divine Orb', 200], ['Orb of Alteration', 0.1]]);
@@ -51,7 +53,7 @@ test('prices: exchange and item overview parsing', () => {
   assert.equal(t.chaosOf('Chaos Orb'), 1);
   assert.equal(t.divine, 200);
   assert.equal(t.search('orb')[0].name, 'Orb of Alteration'); // prefix matches first
-  assert.deepEqual(t.iconEntries(), []); // no art URLs in this sample
+  assert.deepEqual(t.iconEntries(), [{ name: 'Orb of Alteration', icon: 'https://web.poecdn.com/gen/image/x/y/CurrencyRerollMagic.png' }]);
   assert.equal(PriceTable.fromJSON(JSON.parse(JSON.stringify(t))).chaosOf('Headhunter'), 8000);
 });
 
