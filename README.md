@@ -95,6 +95,7 @@ The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so a
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.
 - F8 and F9 must not be bound to anything in game, and neither must the trade keys F2, F3 and Shift+F2. Change them in Settings (trade keys: Trade, Trade settings) if they are.
+- After F8, a short message shows in game for about two seconds: the item and its value, a map's verdict, or why nothing was read. It can be moved in layout mode (Shift+F2) and switched off in Settings.
 - F9 sends a report of what the app sees (the inventory slots, how each was read) to the `data` branch of this repository under `reports/`, for troubleshooting. That needs the GitHub token from Settings; without one the report is kept in the app's own folder.
 - If your inventory key is not Tab, set it in Settings.
 

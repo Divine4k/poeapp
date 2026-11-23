@@ -25,9 +25,10 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
+const { checkMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
-const { Overlay } = require('./overlay');
+const { Overlay, Toast } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
@@ -39,6 +40,7 @@ const DEFAULT_CONFIG = {
   logPath: '',
   characterName: '',
   hotkeys: { clipboard: 'F8', snapshot: 'F9' },
+  checkToast: true, // after the check key, say in game for a moment what was read
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
   // autoCopy: the check hotkey presses Ctrl+C in the game for you (one copy per key press).
@@ -98,6 +100,7 @@ const ledger = new LootLedger();
 const priceService = new PriceService({ fetchImpl: webFetch });
 const book = new TradeBook();
 let overlay = null;
+let toast = null; // the short message shown in game after the check key
 let layoutWin = null; // the full-screen window for dragging overlay parts into place
 const watch = new GameWatch();
 let chatBusy = false;
@@ -641,6 +644,7 @@ function checkText(text) {
 // same thing price-check tools do), then read the clipboard once.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function checkHovered() {
+  const started = Date.now();
   if (config.inventory.autoCopy && hook) {
     const before = clipboard.readText();
     try {
@@ -648,7 +652,7 @@ async function checkHovered() {
       hook.uIOhook.keyTap(hook.UiohookKey.C, [hook.UiohookKey.Ctrl]);
       let text = '';
       for (let i = 0; i < 16 && !text; i++) { await sleep(25); text = clipboard.readText(); }
-      if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); changed(); return; }
+      if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }
       checkText(text);
     } catch (e) {
       clipboard.writeText(before);
@@ -657,7 +661,17 @@ async function checkHovered() {
   } else {
     checkText(clipboard.readText());
   }
+  showCheckToast(started);
   changed();
+}
+
+// What the check key just did, in a line or two, shown in game for a moment.
+function showCheckToast(started) {
+  if (!toast || config.checkToast === false) return;
+  const message = checkMessage({ mapCheck, priceCheck, notice, divine: prices.divine }, started);
+  if (!message) return;
+  if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
+  toast.show(overlayBounds(overlay.display(), 62, toastPlacement()), message, message.bad ? 4000 : 2500);
 }
 
 function registerHotkeys() {
@@ -698,8 +712,12 @@ const tradePlacement = () => ({ position: config.trade.position, offsetX: config
 
 // Everything that can be placed on the overlay. A new overlay part gets a line here and can
 // then be dragged in layout mode like the rest. sample: its height in layout mode.
+// The check key's message: top centre, a little below the trade offers' default "top" spot.
+const toastPlacement = () => ({ position: 'top', offsetY: 9, custom: (config.overlayLayout || {}).toast || null });
+
 const WIDGETS = [
   { id: 'trade', label: 'Trade offers', sample: 84, placement: tradePlacement },
+  { id: 'toast', label: 'Check key message', sample: 62, placement: toastPlacement },
 ];
 
 // Layout mode: a see-through window over the whole game screen with a stand-in for each
@@ -857,7 +875,7 @@ function createWindow() {
   if (second) win.maximize();
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); });
+  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
@@ -1055,6 +1073,7 @@ app.whenReady().then(() => {
   archive = new SessionArchive(dataFile('sessions'));
   book.restore(readJson('trades.json', null));
   overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
+  toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
   watch.on('change', syncOverlay);
   watch.start();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));

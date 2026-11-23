@@ -831,6 +831,7 @@
     el.hkClip.value = c.hotkeys.clipboard;
     el.hkSnap.value = c.hotkeys.snapshot || '';
     el.autoCopy.checked = !!c.inventory.autoCopy;
+    el.checkToast.checked = c.checkToast !== false;
     el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.inventory.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
     el.invKey.value = c.inventory.key || 'Tab';
     el.onKey.checked = !!c.inventory.onKey;
@@ -857,6 +858,7 @@
       ...tokenPatch,
       league: el.league.value || c.league,
       characterName: el.characterName.value.trim(),
+      checkToast: el.checkToast.checked,
       logPath: el.logPath.value.trim(),
       hotkeys: { clipboard: el.hkClip.value.trim() || 'F8', snapshot: el.hkSnap.value.trim() },
       inventory: {
