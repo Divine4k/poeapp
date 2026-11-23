@@ -1,0 +1,16 @@
+/* Layout mode: the game dimmed, with a stand-in for every overlay part to drag into place. */
+html, body.layout { height: 100%; background: transparent; }
+body.layout { display: block; overflow: hidden; user-select: none; background: rgba(10, 12, 15, 0.5); }
+#stage { position: absolute; inset: 0; }
+.lw { position: absolute; cursor: grab; border: 2px dashed var(--gold); border-radius: 6px; background: rgba(27, 31, 36, 0.55); touch-action: none; }
+.lw:hover, .lw.drag { border-style: solid; background: rgba(27, 31, 36, 0.8); }
+.lw.drag { cursor: grabbing; box-shadow: 0 0 0 4px rgba(209, 173, 98, 0.25); }
+.lw-name { position: absolute; left: -2px; bottom: 100%; margin-bottom: 4px; padding: 2px 8px; border-radius: 4px; background: var(--gold); color: #1b1f24; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lw.low .lw-name { bottom: auto; top: 100%; margin: 4px 0 0; }
+.lw-sample { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 3px; padding: 2px; overflow: hidden; pointer-events: none; opacity: 0.85; }
+.lw-sample .tt-open { cursor: inherit; }
+.lw-bar { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); display: flex; align-items: center; gap: 28px; padding: 14px 18px; background: var(--slab); border: 1px solid var(--seam); border-radius: 8px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); }
+.lw-bar b { display: block; font-family: var(--display); font-size: 18px; font-stretch: 85%; }
+.lw-bar div span { font-size: 13px; color: var(--ash); }
+.lw-bar button { white-space: nowrap; }
+.lw-bar div { max-width: 46ch; }

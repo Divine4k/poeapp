@@ -290,10 +290,18 @@ const OVERLAY_WIDTH = 330;
 
 // Where the window goes on the game's screen. position: 'top' | 'bottom' | 'left' | 'right'.
 // offsetX / offsetY nudge it, in percent of the screen. All numbers are screen points.
-function overlayBounds(display, height, { position = 'bottom', offsetX = 0, offsetY = 0 } = {}) {
+// custom: a spot picked by dragging in layout mode, { x, y, grow }. x and y are fractions of the
+// screen for the corner that stays put: the top left when it grows 'down', the bottom left
+// when it grows 'up'. It wins over position.
+function overlayBounds(display, height, { position = 'bottom', offsetX = 0, offsetY = 0, custom = null } = {}) {
   const b = display.bounds;
   const w = Math.min(OVERLAY_WIDTH, b.width);
   const h = Math.max(1, Math.min(Math.round(height), Math.round(b.height * 0.7)));
+  if (custom && isFinite(custom.x) && isFinite(custom.y)) {
+    const cx = b.x + custom.x * b.width;
+    const cy = b.y + custom.y * b.height - (custom.grow === 'up' ? h : 0);
+    return { x: Math.round(Math.max(b.x, Math.min(cx, b.x + b.width - w))), y: Math.round(Math.max(b.y, Math.min(cy, b.y + b.height - h))), width: w, height: h };
+  }
   let x = b.x + (b.width - w) / 2, y = b.y + b.height * 0.06;
   // bottom: the free strip right of the flasks, growing upward from just above the experience bar.
   // The game's panels scale with the screen's height, so the flasks end about half a height in.
@@ -305,6 +313,15 @@ function overlayBounds(display, height, { position = 'bottom', offsetX = 0, offs
   x = Math.max(b.x, Math.min(x, b.x + b.width - w));
   y = Math.max(b.y, Math.min(y, b.y + b.height - h));
   return { x: Math.round(x), y: Math.round(y), width: w, height: h };
+}
+
+// Turns a box dragged in layout mode into the spot to remember. rect: { x, y, width, height }
+// and screen: { width, height }, in the same units. A box left in the lower half of the screen
+// grows upward from its bottom edge, so a list never runs off the screen.
+function placementFromRect(rect, screen) {
+  const up = rect.y + rect.height / 2 > screen.height / 2;
+  const clamp = (v) => Math.max(0, Math.min(1, v));
+  return { x: clamp(rect.x / screen.width), y: clamp((up ? rect.y + rect.height : rect.y) / screen.height), grow: up ? 'up' : 'down' };
 }
 
 // Where one stash slot is on the game's screen, in screen points. Measured on 1920x1080
@@ -328,4 +345,4 @@ function stashCellRect(display, grid, left, top) {
 const overlayAllowed = (front) => !front || !front.known || front.game || front.own;
 
 module.exports = {
-  overlayBounds, OVERLAY_WIDTH, stashCellRect, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
+  overlayBounds, placementFromRect, OVERLAY_WIDTH, stashCellRect, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };

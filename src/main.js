@@ -20,7 +20,7 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
-const { TradeBook, chatCommand, nextAction, stashCellRect, overlayAllowed, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
+const { TradeBook, chatCommand, nextAction, stashCellRect, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
 const { Overlay, Highlight } = require('./overlay');
 const { GameWatch } = require('./gamewin');
@@ -51,9 +51,11 @@ const DEFAULT_CONFIG = {
   // line per press); hotkeys.dismiss removes the oldest offer.
   trade: {
     enabled: true, overlay: true, highlight: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
-    hotkeys: { next: 'F2', dismiss: 'F3' },
+    hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2' },
     messages: { ...DEFAULT_MESSAGES },
   },
+  // Where each thing on the overlay sits, once it has been dragged in layout mode: id -> { x, y, grow }.
+  overlayLayout: {},
 };
 
 let win = null;
@@ -87,6 +89,7 @@ const priceService = new PriceService({ fetchImpl: webFetch });
 const book = new TradeBook();
 let overlay = null;
 let highlight = null;
+let layoutWin = null; // the full-screen window for dragging overlay parts into place
 const watch = new GameWatch();
 let chatBusy = false;
 let tradeSaveTimer = null;
@@ -95,7 +98,7 @@ const status = {
   log: { ok: false, path: '', error: 'Not started' },
   prices: { count: 0, updatedAt: 0, league: '', errors: [], loading: false },
   inventory: { keyHook: 'off', open: false, lastReadAt: 0, recognised: 0, error: null, art: { known: 0, done: 0, total: 0, failed: 0 } },
-  hotkeys: { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false },
+  hotkeys: { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false, layout: false },
   shared: { count: 0, loadedAt: 0, error: null, uploaded: 0, canUpload: false },
   update: { current: null, latest: null, available: false, checking: false, applying: false, step: '', error: null, checkedAt: 0 },
 };
@@ -617,7 +620,7 @@ async function checkHovered() {
 
 function registerHotkeys() {
   globalShortcut.unregisterAll();
-  status.hotkeys = { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false };
+  status.hotkeys = { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false, layout: false };
   const reg = (key, accel, fn) => {
     if (!accel) return;
     try { status.hotkeys[key] = globalShortcut.register(accel, fn); } catch (_) { status.hotkeys[key] = false; }
@@ -626,6 +629,7 @@ function registerHotkeys() {
   reg('snapshot', config.hotkeys.snapshot, () => { saveDiagnostic(true).then(changed); });
   if (config.trade.enabled) {
     reg('tradeNext', config.trade.hotkeys.next, () => { const o = book.firstActionable(); if (o) tradeDo(o.id, 'next').then(changed); });
+    reg('layout', config.trade.hotkeys.layout, () => toggleLayout());
     reg('tradeDismiss', config.trade.hotkeys.dismiss, () => { const o = book.offers[0]; if (o) { book.remove(o.id); saveTradesSoon(); changed(); } });
   }
 }
@@ -640,6 +644,53 @@ function saveTradesSoon() {
   clearTimeout(tradeSaveTimer);
   tradeSaveTimer = setTimeout(() => writeJson('trades.json', book.toJSON()), 1000);
 }
+const tradePlacement = () => ({ position: config.trade.position, offsetX: config.trade.offsetX, offsetY: config.trade.offsetY, custom: (config.overlayLayout || {}).trade || null });
+
+// Everything that can be placed on the overlay. A new overlay part gets a line here and can
+// then be dragged in layout mode like the rest. sample: its height in layout mode.
+const WIDGETS = [
+  { id: 'trade', label: 'Trade offers', sample: 84, placement: tradePlacement },
+];
+
+// Layout mode: a see-through window over the whole game screen with a stand-in for each
+// overlay part, to drag where you want it. Opened and closed with its own key.
+function layoutData() {
+  const d = overlay.display();
+  return {
+    hotkey: config.trade.hotkeys.layout,
+    widgets: WIDGETS.map((w) => {
+      const r = overlayBounds(d, w.sample, w.placement());
+      return { id: w.id, label: w.label, x: r.x - d.bounds.x, y: r.y - d.bounds.y, width: r.width, height: r.height, moved: !!(config.overlayLayout || {})[w.id] };
+    }),
+  };
+}
+function toggleLayout() {
+  if (layoutWin) { layoutWin.close(); return; }
+  if (!overlay) return;
+  const d = overlay.display();
+  layoutWin = new BrowserWindow({
+    ...d.bounds, show: false, frame: false, transparent: true, backgroundColor: '#00000000', resizable: false, movable: false,
+    minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: 'Map Companion layout',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  layoutWin.setAlwaysOnTop(true, 'screen-saver');
+  layoutWin.setMenuBarVisibility(false);
+  layoutWin.loadFile(path.join(__dirname, 'ui', 'layout.html'));
+  layoutWin.once('ready-to-show', () => { if (layoutWin) { layoutWin.setBounds(d.bounds); layoutWin.show(); layoutWin.focus(); } });
+  layoutWin.on('closed', () => { layoutWin = null; push(); });
+  syncOverlay();
+}
+// rects: what the layout window reports, [{ id, x, y, width, height }] in its own points.
+function saveLayout(rects, screenSize) {
+  const next = { ...(config.overlayLayout || {}) };
+  for (const r of Array.isArray(rects) ? rects : []) {
+    if (!WIDGETS.some((w) => w.id === r.id) || ![r.x, r.y, r.width, r.height].every(Number.isFinite)) continue;
+    if (r.reset) delete next[r.id];
+    else next[r.id] = placementFromRect(r, screenSize);
+  }
+  applyConfig({ overlayLayout: next });
+}
+
 function syncOverlay() {
   if (!overlay) return;
   const t = config.trade;
@@ -648,9 +699,9 @@ function syncOverlay() {
   const allowed = overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() });
   const on = t.enabled && t.overlay && allowed;
   overlay.update(data, {
-    show: on && data.offers.length > 0,
+    show: on && data.offers.length > 0 && !layoutWin, // in layout mode a stand-in is shown instead
     displayId: config.inventory.displayId,
-    placement: { position: t.position, offsetX: t.offsetX, offsetY: t.offsetY },
+    placement: tradePlacement(),
   });
   const o = on && t.highlight !== false ? locatedOffer() : null;
   highlight.show(o ? stashCellRect(overlay.display(), book.quadTabs.has(o.tab) ? 24 : 12, o.left, o.top) : null);
@@ -752,7 +803,7 @@ function createWindow() {
   if (second) win.maximize();
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (highlight) highlight.destroy(); });
+  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (highlight) highlight.destroy(); if (layoutWin) layoutWin.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
@@ -862,6 +913,14 @@ const actions = {
     reader.forgetCells();
   },
   trade: (a) => tradeDo(a.id, String(a.do || '')),
+  layoutToggle: () => toggleLayout(),
+  layoutSave: (a) => {
+    const s = a.screen || {};
+    if (Number(s.width) > 0 && Number(s.height) > 0) saveLayout(a.widgets, { width: Number(s.width), height: Number(s.height) });
+    if (layoutWin) layoutWin.close();
+  },
+  layoutCancel: () => { if (layoutWin) layoutWin.close(); },
+  layoutReset: () => applyConfig({ overlayLayout: {}, trade: { position: 'bottom', offsetX: 0, offsetY: 0 } }),
   tradeTest: () => addTestOffer(),
   tradeClear: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeForget: (a) => { book.removeHistory(String(a.id || '')); saveTradesSoon(); },
@@ -914,6 +973,7 @@ function setupIpc() {
     return { total: r.total, rows: r.rows.map((e) => ({ name: e.name, chaos: e.chaos, category: e.category, icon: e.icon || null, change: e.change == null ? null : e.change, volume: e.volume == null ? null : e.volume, listings: e.listings == null ? null : e.listings, spark: e.spark || null })) };
   });
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
+  ipcMain.handle('layout-get', () => layoutData());
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];

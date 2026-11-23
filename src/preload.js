@@ -14,5 +14,6 @@ contextBridge.exposeInMainWorld('api', {
   priceList: (a) => ipcRenderer.invoke('price-list', a),
   // the trade overlay window
   onTrade: (cb) => ipcRenderer.on('trade', (_e, data) => cb(data)),
+  layout: () => ipcRenderer.invoke('layout-get'),
   overlaySize: (height) => ipcRenderer.send('overlay-size', height),
 });
