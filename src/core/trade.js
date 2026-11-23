@@ -213,14 +213,6 @@ class TradeBook {
     else if (action === 'sold' || action === 'kick' || action === 'leave') this.remove(id);
   }
 
-  // Marks or unmarks an offer's stash tab as a quad tab (24 slots wide).
-  toggleQuad(id) {
-    const o = this.get(id);
-    if (!o || !o.tab) return;
-    if (o.left > 12 || o.top > 12) { this.quadTabs.add(o.tab); return; } // past slot 12, so it can only be a quad tab
-    if (this.quadTabs.has(o.tab)) this.quadTabs.delete(o.tab); else this.quadTabs.add(o.tab);
-  }
-
   remove(id) { this.offers = this.offers.filter((o) => String(o.id) !== String(id)); }
   removeHistory(id) { this.history = this.history.filter((h) => h.id !== id); }
   clearTests() { this.offers = this.offers.filter((o) => !o.test); }
@@ -324,32 +316,9 @@ function placementFromRect(rect, screen) {
   return { x: clamp(rect.x / screen.width), y: clamp((up ? rect.y + rect.height : rect.y) / screen.height), grow: up ? 'up' : 'down' };
 }
 
-// Where one stash slot is on the game's screen, in screen points. Measured on 1920x1080
-// screenshots of a normal and a quad tab: the grid starts 16 px from the left and 134 px from
-// the top and is 632 px wide and high, and the stash scales with the screen's height.
-// grid: 12 for a normal tab, 24 for a quad tab. left / top: the slot, counted from 1.
-const STASH = { x: 16, y: 134, size: 632, base: 1080 };
-function stashCellRect(display, grid, left, top) {
-  const b = display.bounds;
-  const f = b.height / STASH.base;
-  const cell = (STASH.size / (grid === 24 ? 24 : 12)) * f;
-  const pad = 3; // room for the frame around the slot
-  return {
-    x: Math.round(b.x + STASH.x * f + (left - 1) * cell - pad), y: Math.round(b.y + STASH.y * f + (top - 1) * cell - pad),
-    width: Math.round(cell + pad * 2), height: Math.round(cell + pad * 2),
-  };
-}
-
-// A strip right under the stash grid, for a line saying which tab the framed item is in.
-function stashLabelRect(display) {
-  const b = display.bounds;
-  const f = b.height / STASH.base;
-  return { x: Math.round(b.x + STASH.x * f), y: Math.round(b.y + (STASH.y + STASH.size + 6) * f), width: Math.round(STASH.size * f), height: Math.max(22, Math.round(26 * f)) };
-}
-
 // Whether the windows on top of the game may be visible. front: { known, game, own }, what is
 // known about the window in front. Unknown (no helper) means show, as there is nothing to go on.
 const overlayAllowed = (front) => !front || !front.known || front.game || front.own;
 
 module.exports = {
-  overlayBounds, placementFromRect, OVERLAY_WIDTH, stashCellRect, stashLabelRect, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
+  overlayBounds, placementFromRect, OVERLAY_WIDTH, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };

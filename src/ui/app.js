@@ -446,26 +446,14 @@
     $('trade-seen').textContent = !state.status.log.ok ? 'The game log is not connected, so no whispers can be read.'
       : seen.whispers ? `Since the app started: ${seen.whispers} ${seen.whispers === 1 ? 'whisper' : 'whispers'} read from the game log, ${seen.offers} of them trade offers. Last one at ${clock(seen.lastWhisperAt)}.`
         : 'No whispers read from the game log since the app started.';
-    // What the app makes of the stash while a slot is waiting to be framed, to see why a frame
-    // does or does not show.
-    const sv = t.stash || {}, sl = $('trade-stash');
-    sl.hidden = !sv.armed;
-    if (sv.armed) {
-      sl.textContent = sv.open === false ? 'Stash slot waiting: the stash is not open.'
-        : sv.open === null ? 'Stash slot waiting: the app cannot tell whether the stash is open, so the frame shows anyway.'
-          : !sv.reading ? `Stash open. The tab name is not being read${sv.problem ? ` (${sv.problem})` : ''}, so the frame shows on any tab.`
-            : sv.match === true ? `Stash open, tab read as "${sv.tabRead}": the right tab, slot framed.`
-              : sv.match === false ? `Stash open, tab read as "${sv.tabRead}": not the item's tab, so no frame.`
-                : 'Stash open, but the open tab\'s name could not be read, so the frame shows anyway.';
-    }
     $('btn-trade-clear').hidden = !t.offers.length;
 
     const box = $('trade-offers');
-    const key = JSON.stringify([t.offers, t.divine, t.locateId]);
+    const key = JSON.stringify([t.offers, t.divine]);
     if (key !== tradeDrawn) {
       tradeDrawn = key;
       box.innerHTML = t.offers.length
-        ? t.offers.map((o) => TradeCard.cardHtml(o, { divine: t.divine, labels: t.labels, locateId: t.locateId })).join('')
+        ? t.offers.map((o) => TradeCard.cardHtml(o, { divine: t.divine, labels: t.labels })).join('')
         : '<p class="empty">No open offers. When someone whispers you about an item, it appears here with the buttons to invite, trade and thank them.</p>';
     }
 
@@ -822,7 +810,7 @@
   $('trade-settings').addEventListener('toggle', (e) => {
     if (!e.target.open) return;
     const c = state.config.trade, el = tradeForm.elements;
-    el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound; el.highlight.checked = c.highlight !== false; el.matchTab.checked = c.matchTab !== false;
+    el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound;
     el.hkNext.value = c.hotkeys.next || ''; el.hkDismiss.value = c.hotkeys.dismiss || ''; el.hkLayout.value = c.hotkeys.layout || '';
     el.msgThanks.value = c.messages.thanks; el.msgBusy.value = c.messages.busy; el.msgSold.value = c.messages.sold; el.msgStill.value = c.messages.still;
   });
@@ -830,7 +818,7 @@
     e.preventDefault();
     const el = tradeForm.elements;
     api.setConfig({ trade: {
-      enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked, highlight: el.highlight.checked, matchTab: el.matchTab.checked,
+      enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked,
       hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim(), layout: el.hkLayout.value.trim() },
       messages: { thanks: el.msgThanks.value.trim(), busy: el.msgBusy.value.trim(), sold: el.msgSold.value.trim(), still: el.msgStill.value.trim() },
     } });

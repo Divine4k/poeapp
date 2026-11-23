@@ -36,7 +36,7 @@ Items are recognised by their picture, and the stack number is read from the cor
 
 ## Trading
 
-When someone whispers you from the trade site, the offer appears on the **Trade** page and as one small line on top of the game, right of the flasks: the next step, the item, the price, and Busy and Sold. Click the item's name there to open the full card with every button. Your own whispers to sellers are listed the same way.
+When someone whispers you from the trade site, the offer appears on the **Trade** page and as one small line on top of the game, right of the flasks: the next step, the item, the price, and Busy and Sold. The game itself outlines the item in your stash when the whisper arrives, so the app does not. Click the item's name there to open the full card with every button. Your own whispers to sellers are listed the same way.
 
 - **Buttons:** Invite, Trade, Thanks, Kick, Busy, "Interested?" and Sold for buyers; Hideout, Trade, Thanks and Leave when you are the buyer. The gold button is the next step.
 - **It follows the trade for you.** The log says when the buyer arrives and when the trade is accepted, so the gold button moves from Invite to Trade to Thanks to Kick by itself.
@@ -44,8 +44,7 @@ When someone whispers you from the trade site, the offer appears on the **Trade*
 - **Repeat and late buyers:** the same buyer asking twice stays one offer ("Asked 2 times"). A buyer for something you just sold is marked, and the gold button tells them it is sold.
 - **Value check:** offers below 80% of the poe.ninja price, for items poe.ninja lists under the same name, are marked "Below market".
 - **Finished trades** are listed with totals for today and overall, once the game reports "Trade accepted".
-- **The item's slot is framed in your stash**, but only while the stash is open. It is armed when you invite a buyer, when they arrive, or when you press Locate (the square on the overlay), and waits up to four minutes for you to open the stash. A line under the stash names the tab the item is in. The frame only shows when the item's tab is the open one: the app finds the open tab on the tab bar and reads its name with the text recognition built into Windows. On another tab the line says which tab to open instead. If the name cannot be read, the frame shows on any tab; the Trade page says what the tab was read as. Two tabs with the same name cannot be told apart. Switch this off under Trade settings to frame on any tab. If a quad tab is framed as a normal one, press the Normal tab / Quad tab button on the card once and the app remembers it. Stash tabs inside a folder sit a row lower and are not handled yet.
-- **Away from the game nothing is drawn.** The overlay and the frame hide when another program is in front and come back with the game.
+- **Away from the game nothing is drawn.** The overlay hides when another program is in front and comes back with the game.
 - **Layout mode:** Shift+F2 dims the game and shows a box for each part of the overlay. Drag a box where you want it and press Done. A box left in the lower half of the screen grows upward, one in the upper half grows downward, and the spot is kept as a share of the screen, so it survives a change of resolution. Trade settings has a button for the same thing and one to go back to the default spot.
 - **Show a test offer** puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
 
@@ -94,7 +93,6 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 - The app never touches game memory or files.
 - **F8** sends a single Ctrl+C to the game when you press it, then reads the clipboard once. That is the same pattern price-check tools use. You can switch the Ctrl+C off in Settings and press it yourself.
 - **Reading on your inventory key** is one read per key press. The app listens for that one key without blocking it.
-- **Finding the stash:** while a stash slot is waiting to be framed, each mouse click or key press of yours is followed by one look at the screen to see whether the stash is open and which tab is showing. Outside that, trading reads nothing from the screen.
 - **Trade buttons and trade keys** type one chat line (such as `/invite Name`) per click or key press, the way PoE Lurker and Awakened PoE Trade do. Nothing is typed without a click or key press, and no button sends two lines.
 - **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
 - With "check by itself" off, press your inventory key once after arriving in the hideout, before you stash.
@@ -104,8 +102,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 
 - Tested on two real 1920x1080 captures: finding the grid, telling empty from filled cells, reading every stack number (68 of 68), recognising the same item across captures, and the loot counting.
 - Rescaled copies of those captures (900p, 1440p, 4K) also read correctly, but real captures at those sizes have not been tried.
-- **Trading:** the whisper reading, the steps of a trade and the overlay windows were run on Linux against a made-up log, and the stash frame was checked against two 1920x1080 screenshots. The helper that tells which window is in front, switching to the game window, and hiding on alt-tab are Windows-only and have not been run by the author.
-- **Reading the open tab's name:** finding the open tab was checked on two real screenshots at four sizes. The text recognition itself runs only on Windows and has not been run by the author.
+- **Trading:** the whisper reading, the steps of a trade and the overlay windows were run on Linux against a made-up log. The helper that tells which window is in front, switching to the game window, and hiding on alt-tab are Windows-only and have not been run by the author.
 - **Not tested:** the app running against the live game, matching against downloaded item pictures, the key listener, and poe.ninja's live data. Expect to report problems on first use.
 
 ## Development
