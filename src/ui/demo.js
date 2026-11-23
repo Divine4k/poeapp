@@ -17,6 +17,7 @@
   cur.loot = [loot('l1', 'Chaos Orb', 7, 'inventory'), loot('l2', 'Vaal Orb', 3, 'inventory'), loot('l3', 'The Nurse', 1, 'manual'), loot('l4', 'Divine Orb', 1, 'inventory'), loot('l5', 'Exalted Orb', 2, 'inventory')];
   cur.lootValue = cur.loot.reduce((a, l) => a + l.chaos, 0); cur.net = cur.lootValue - cur.costValue;
   cur.uncounted = { stacks: 1, singles: 3 };
+  cur.items = [['Divine Orb', 1, 212], ['The Nurse', 1, 78, 1], ['Exalted Orb', 2, 28], ['Foulborn Exalted Orb', 1, 22.1], ["Gemcutter's Prism", 9, 21.9], ['Chaos Orb', 28, 28], ['Orb of Alteration', 48, 8.9], ['Timeless Vaal Splinter', 32, 7.1], ['Bestiary Thread', 2, 5.3], ['Exalted Shard', 4, 3.5], ['Timeless Templar Splinter', 21, 3.2], ['Vaal Orb', 3, 1.8], ['Chromatic Orb', 1, 1.7], ['Breach Thread', 2, 0.9], ['Orb of Fusing', 6, 0.8], ['Blight Thread', 2, 0.7], ['Mystery Shard', 3, 0]].map(([name, qty, chaos, byHand]) => ({ name, qty, chaos, byHand: byHand || 0 }));
   const runs = [run('r1', 'Jungle Valley', 4.1, 96, 22, 0), run('r2', 'Strand', 3.6, 14, 22, 1), run('r3', 'Dunes', 5.0, 431, 22, 0), cur];
   const totals = { maps: 4, deaths: 1, lootValue: 0, costValue: 0, net: 0, mapMs: 0 };
   for (const r of runs) { totals.lootValue += r.lootValue; totals.costValue += r.costValue; totals.net += r.net; totals.mapMs += r.durationMs; }

@@ -13,7 +13,6 @@
   <nav class="sidenav" role="tablist" aria-orientation="vertical" aria-label="Pages">
     <button type="button" class="navi" role="tab" data-tab="mapping" aria-selected="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="lbl">Mapping</span></button>
     <button type="button" class="navi" role="tab" data-tab="inventory" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span class="lbl">Inventory</span><span class="navdot" id="inv-dot" hidden></span></button>
-    <button type="button" class="navi" role="tab" data-tab="sessions" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg><span class="lbl">Sessions</span></button>
     <button type="button" class="navi" role="tab" data-tab="mapcheck" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg><span class="lbl">Map check</span></button>
     <button type="button" class="navi" role="tab" data-tab="costs" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14.5 9.5a6 6 0 1 1-5 5"/></svg><span class="lbl">Costs</span></button>
     <button type="button" class="navi" role="tab" data-tab="prices" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/></svg><span class="lbl">Prices</span></button>
@@ -39,23 +38,30 @@
 
 <main class="view mapping" id="tab-mapping" role="tabpanel">
   <section class="now" aria-label="Current map">
+    <div class="now-title">
+      <div id="now-name"></div>
+      <div class="now-actions">
+        <button type="button" id="btn-read">Read inventory now</button>
+        <button type="button" id="btn-run-toggle">Start a map manually</button>
+      </div>
+    </div>
     <div class="now-top">
       <div id="now-head"></div>
       <div id="now-snap"></div>
     </div>
-    <div class="now-actions">
-      <button type="button" id="btn-read">Read inventory now</button>
-      <button type="button" id="btn-run-toggle">Start a map manually</button>
+    <div class="loot-head">
+      <h2 id="loot-title">Loot this map</h2>
+      <form id="add-loot" class="inline-form" autocomplete="off">
+        <input id="add-loot-name" list="price-names" placeholder="Add loot by name" aria-label="Item name">
+        <input id="add-loot-qty" type="number" min="1" value="1" aria-label="Quantity">
+        <button type="submit">Add</button>
+      </form>
     </div>
-    <form id="add-loot" class="inline-form" autocomplete="off">
-      <input id="add-loot-name" list="price-names" placeholder="Add loot by name" aria-label="Item name">
-      <input id="add-loot-qty" type="number" min="1" value="1" aria-label="Quantity">
-      <button type="submit">Add</button>
-    </form>
-    <h2>Loot this map</h2>
     <ul class="feed" id="feed"></ul>
   </section>
-  <section class="session" aria-label="Session">
+  <section class="session" aria-label="Sessions">
+    <div class="session-strip" id="session-strip" role="tablist" aria-label="Sessions"></div>
+    <div id="session-head"></div>
     <div class="totals" id="totals"></div>
     <div class="table-wrap">
       <table>
@@ -73,22 +79,6 @@
     <h2>Not recognised yet</h2>
     <p class="hint small">Fastest: hover the item in game and press <span id="hk-name">F8</span>. Or pick a suggestion here.</p>
     <ul class="unknown" id="unknown"></ul>
-  </div>
-</main>
-
-<main class="view" id="tab-sessions" role="tabpanel" hidden>
-  <div class="sessions">
-    <nav class="session-list" id="session-list" aria-label="Sessions"></nav>
-    <div class="session-view">
-      <div id="session-head"></div>
-      <div class="totals" id="session-totals"></div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Map</th><th class="num">Time</th><th class="num">Loot</th><th class="num">Cost</th><th class="num">Net</th><th class="num">Deaths</th><th></th></tr></thead>
-          <tbody id="session-runs"></tbody>
-        </table>
-      </div>
-    </div>
   </div>
 </main>
 

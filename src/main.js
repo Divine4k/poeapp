@@ -612,7 +612,7 @@ const actions = {
     session.endRun();
     try {
       const saved = archive && archive.save(session.summary(prices));
-      if (saved) say('The finished session is saved. Find it under Sessions.');
+      if (saved) say('The finished session is saved. Pick it from the row of sessions above the map list to look at it again.');
     } catch (e) {
       say(`The session could not be saved (${e.message || e}), so it is still open.`, true);
       return;
@@ -628,6 +628,7 @@ const actions = {
     session.addLoot([{ name: a.name, qty: a.qty }], 'manual', a.runId || session.currentId);
   },
   removeLoot: (a) => session.removeLoot(a.runId, a.lootId),
+  removeLootName: (a) => session.removeLootName(a.runId, a.name),
   addCost: (a) => session.addCost(a.runId, a.cost),
   removeCost: (a) => session.removeCost(a.runId, a.costId),
   readInventory: () => readInventory(),

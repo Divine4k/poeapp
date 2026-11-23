@@ -163,6 +163,11 @@ class Session {
     if (run) run.loot = run.loot.filter((l) => l.id !== lootId);
   }
 
+  removeLootName(runId, name) {
+    const run = this.runs.find((r) => r.id === runId);
+    if (run) run.loot = run.loot.filter((l) => l.name !== name);
+  }
+
   removeBatch(runId, batch) {
     const run = this.runs.find((r) => r.id === runId);
     if (run) run.loot = run.loot.filter((l) => l.batch !== batch);
@@ -193,8 +198,9 @@ class Session {
       for (const l of run.loot) {
         const v = chaosOf(l.name) * l.qty;
         lootValue += v;
-        const g = grouped.get(l.name) || { name: l.name, qty: 0, chaos: 0 };
+        const g = grouped.get(l.name) || { name: l.name, qty: 0, chaos: 0, byHand: 0 };
         g.qty += l.qty; g.chaos += v;
+        if (l.source === 'manual') g.byHand += l.qty;
         grouped.set(l.name, g);
       }
       let costValue = 0;

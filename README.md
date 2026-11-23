@@ -14,7 +14,7 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures
 | Price check | Hover any item and press F8, or browse the Prices page |
 | Net profit | A cost loadout (scarabs, map, chisels) charged to every new map |
 | What was counted per map | The inventory picture from each map is kept and shown beside the timer and under the map's row |
-| Session history | **Start new session** saves the finished one under Sessions, with its totals and maps |
+| Session history | **Start new session** saves the finished one; pick it from the row of sessions on the Mapping page to see its totals and maps |
 
 ## How loot is counted
 
