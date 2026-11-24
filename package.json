@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js"
+    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js"
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"

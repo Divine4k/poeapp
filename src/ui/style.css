@@ -188,6 +188,13 @@ tr.run.open td { background: var(--slab); }
 dialog input[type=password] { width: 100%; }
 .unknown img { width: 52px; height: 52px; image-rendering: auto; border: 1px solid var(--seam); }
 .unknown input { min-width: 0; width: 100%; }
+.unknown .seen { margin: 0 0 6px; font-size: 13px; color: var(--ash); }
+.unknown .seen b { color: var(--moss); font-weight: 600; }
+.unknown .inline-form .link { flex: 0 0 auto; }
+.items-cols section { min-width: 0; }
+.list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.list-head h2 { margin: 0 0 4px; }
+.list-head input { width: 160px; font-size: 13px; padding: 4px 8px; }
 .guess-field small { display: block; color: var(--ash); font-size: 12px; margin-top: 2px; }
 .empty { color: var(--ash); padding: 10px 0; display: block !important; border: 0 !important; font-size: 14px !important; }
 

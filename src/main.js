@@ -25,6 +25,7 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
+const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
@@ -102,8 +103,9 @@ const logTrace = []; // the last area lines from the game log and what the track
 let singlesBaseline = 0;  // single (unnumbered) items in the inventory when the map was entered
 let carriedIn = null; // { runId, trip, cells } the inventory as it was when this trip into the map began
 let lastSingles = 0; // what the last clean read saw, for the Inventory tab
-let unknownSeq = 1;
-let unknown = []; // [{ id, qty, print, image, guesses }]
+// Items the reader could not name, kept until named, ignored or dismissed: [{ id, qty, print, image, guesses, at, here }]
+const backlog = new Backlog({ similar: (a, b) => similarity(a, b) > 0.95 });
+const saveBacklog = () => writeJson('unrecognised.json', backlog.save(encodePrint));
 let learned = []; // [{ name, print(base64) }]
 const session = new Session();
 const index = new IconIndex();
@@ -190,7 +192,7 @@ function buildState() {
   return {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
     inventoryRev: lastInventory.rev,
-    unknown: unknown.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses })),
+    unknown: backlog.items.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses, at: u.at, here: !!u.here })),
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
     summary: withIcons(session.summary(prices)),
@@ -365,17 +367,11 @@ function keepSnapshot(result) {
 }
 
 function updateUnknown(found) {
-  const next = [];
-  for (const u of found) {
-    if (next.some((n) => similarity(n.print, u.print) > 0.95)) continue; // same item in several cells
-    const prev = unknown.find((o) => similarity(o.print, u.print) > 0.95);
-    next.push({
-      id: prev ? prev.id : unknownSeq++, qty: u.qty, print: u.print, image: prev ? prev.image : thumbnail(u.rgb),
-      guesses: index.suggest(u.print, 3).filter((g) => g.score >= 0.4).map((g) => ({ name: g.name, score: Math.round(g.score * 100) })),
-    });
-    if (next.length >= 8) break;
-  }
-  unknown = next;
+  const added = backlog.update(found, (u) => ({
+    image: thumbnail(u.rgb),
+    guesses: index.suggest(u.print, 3).filter((g) => g.score >= 0.4).map((g) => ({ name: g.name, score: Math.round(g.score * 100) })),
+  }));
+  if (added) saveBacklog();
 }
 
 // Which inventory slot the mouse is over, or null.
@@ -471,8 +467,8 @@ function learnPrint(typed, print) {
   index.addLearned(name, print);
   learned.push({ name, print: encodePrint(print) });
   writeJson('learned.json', learned);
-  unknown = unknown.filter((u) => similarity(u.print, print) <= 0.95);
-  if (!name) { say('That item is ignored from now on. Undo it under Settings, Items you named.'); return; }
+  if (backlog.resolve(print)) saveBacklog();
+  if (!name) { say('That item is ignored from now on. Undo it on the Items page, under Items you named.'); return; }
   say(entry ? `Saved: ${name}.` : `Saved as "${name}", but no price is known under that name, so it counts as 0c. Check the spelling if that is wrong.`, !entry);
   if (shared) {
     shared.queue(name, print);
@@ -617,6 +613,7 @@ function readToken() {
 }
 
 function loadLearned() {
+  backlog.load(readJson('unrecognised.json', []), decodePrint);
   learned = readJson('learned.json', []);
   for (const l of learned) { try { index.addLearned(l.name, decodePrint(l.print)); } catch (_) { /* skip a broken entry */ } }
 }
@@ -1133,16 +1130,19 @@ const actions = {
   removeCost: (a) => session.removeCost(a.runId, a.costId),
   readInventory: () => readInventory(),
   learn: (a) => {
-    const u = unknown.find((x) => String(x.id) === String(a.id));
+    const u = backlog.get(a.id);
     const name = String(a.name || '').trim();
     if (!u) { say('That item is no longer in the list.', true); return; }
     if (!name) { say('Type the item name first, or pick one of the suggestions.', true); return; }
     learnPrint(name, u.print);
   },
   ignore: (a) => {
-    const u = unknown.find((x) => String(x.id) === String(a.id));
+    const u = backlog.get(a.id);
     if (u) learnPrint('', u.print);
   },
+  // Takes an item off the not-recognised list without naming it. It comes back if it is seen again.
+  dismissUnknown: (a) => { if (backlog.remove(a.id)) saveBacklog(); },
+  clearUnknown: () => { if (backlog.clear()) saveBacklog(); },
   saveDiagnostic: () => saveDiagnostic(),
   copyText: (a) => { clipboard.writeText(String(a.text || '').slice(0, 20000)); say('Copied. Paste it into a message to whoever is helping you.'); },
   makeShortcut: () => makeShortcut(),

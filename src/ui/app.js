@@ -192,26 +192,49 @@
     if (n && Date.now() - n.at < 30000) { note.hidden = false; note.className = n.bad ? 'notice bad' : 'notice'; note.textContent = n.text; }
     else note.hidden = true;
 
+    renderItems();
+  }
+
+  // ---- items page: what could not be recognised, and what you have named --------------
+  function renderItems() {
     const un = state.unknown || [];
-    $('unknown-wrap').hidden = !un.length;
-    $('inv-dot').hidden = !un.length;
+    $('items-dot').hidden = !un.length;
     $('hk-name').textContent = state.config.hotkeys.clipboard;
+    $('unknown-title').textContent = un.length ? `Not recognised: ${un.length}` : 'Not recognised';
+    $('btn-unknown-clear').hidden = !un.length;
     const list = $('unknown');
     // Rebuild only when the items or suggestions change, and never while a name is being typed.
-    const key = un.map((u) => `${u.id}:${u.guesses.map((g) => g.name).join('|')}`).join(',');
+    const key = un.map((u) => `${u.id}:${u.here}:${u.qty}:${u.guesses.map((g) => g.name).join('|')}`).join(',');
     const typing = list.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.value;
     if (list.dataset.key !== key && !typing) {
       list.dataset.key = key;
-      list.innerHTML = un.map((u) => `<li>
+      list.innerHTML = un.length ? un.map((u) => `<li>
         <img src="${esc(u.image)}" alt="Unrecognised item">
         <div class="pick">
+          <p class="seen">${u.here ? '<b>In your inventory now</b>' : `Last seen ${esc(dayOf(u.at))}, ${clock(u.at)}`}, stack of ${u.qty}</p>
           ${u.guesses.length ? `<div class="chips">${u.guesses.map((g) => `<button type="button" data-act="learn" data-id="${u.id}" data-name="${esc(g.name)}" title="${g.score}% match">${esc(g.name)}</button>`).join('')}</div>` : ''}
           <form class="inline-form" data-learn-form="${u.id}" autocomplete="off">
-            <input list="price-names" placeholder="Or type its name" aria-label="Item name">
+            <input list="price-names" placeholder="${u.guesses.length ? 'Or type its name' : 'Type its name'}" aria-label="Item name">
             <button type="submit">Save</button>
-            <button type="button" data-act="ignore" data-id="${u.id}">Ignore</button>
+            <button type="button" data-act="ignore" data-id="${u.id}" title="Never count or ask about this item again">Ignore</button>
+            <button type="button" class="link" data-act="dismissUnknown" data-id="${u.id}" title="Take it off this list. It comes back if it is seen again">Dismiss</button>
           </form>
-        </div></li>`).join('');
+        </div></li>`).join('')
+        : '<li class="empty">Nothing waiting. A stack the app cannot recognise lands here and stays until you name it.</li>';
+    }
+
+    const q = $('learned-filter').value.trim().toLowerCase();
+    const names = state.learned || [];
+    const shown = q ? names.filter((n) => n.toLowerCase().includes(q)) : names;
+    $('learned-title').textContent = names.length ? `Items you named: ${names.length}` : 'Items you named';
+    $('learned-filter').hidden = names.length < 8;
+    const lkey = shown.join('|');
+    const box = $('learned');
+    if (box.dataset.key !== lkey) {
+      box.dataset.key = lkey;
+      box.innerHTML = shown.length
+        ? shown.map((n) => `<li><span>${esc(n)}</span><span></span><button type="button" class="link" data-act="forget" data-name="${esc(n)}">Forget</button></li>`).join('')
+        : `<li class="empty">${names.length ? 'No named item matches that.' : 'Nothing yet. Items you name, here or with the check key, are listed here.'}</li>`;
     }
   }
 
@@ -791,9 +814,11 @@
     clearDropMarks();
   });
 
+  $('learned-filter').addEventListener('input', () => renderItems());
+
   function showTab(name) {
     for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
-    for (const id of ['mapping', 'inventory', 'trade', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
+    for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
     if (name === 'inventory') renderInventory(true);
     if (name === 'prices') renderPrices(true);
   }
@@ -1070,9 +1095,6 @@
     el.onKey.checked = !!c.inventory.onKey;
     el.timed.checked = !!c.inventory.timed;
     el.intervalSec.value = (c.inventory.intervalMs || 1000) / 1000;
-    $('learned').innerHTML = state.learned.length
-      ? state.learned.map((n) => `<li><span>${esc(n)}</span><span></span><button type="button" class="link" data-act="forget" data-name="${esc(n)}">Forget</button></li>`).join('')
-      : '<li class="empty">Nothing yet. Items the app cannot recognise show up under the loot list, where you can name them.</li>';
     $('rules').innerHTML = c.mapRules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled ? 'checked' : ''}> ${esc(r.label)}</label>`).join('');
     const sh = state.status.shared;
     $('shared-line').textContent = `${sh.count} shared items loaded.`
