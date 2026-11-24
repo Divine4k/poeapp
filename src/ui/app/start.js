@@ -11,7 +11,7 @@ setInterval(() => {
   if (run && bar) { const u = usualMs(run.name); if (u) bar.setAttribute('width', String(Math.round(Math.min(1, liveDuration(run) / u) * 100))); }
 }, 500);
 
-// The map card's clock with its hundredths: every screen refresh while a map runs.
+// The map card's clock with its thousandths: every screen refresh while a map runs.
 (function tick() {
   if (state) { const run = currentRun(); if (run && run.segmentStart !== null) drawClock(liveDuration(run)); }
   requestAnimationFrame(tick);

@@ -379,13 +379,12 @@ function bigValue(c, signed = true) {
 // How far into its usual time the map is, as a thin bar (SVG: the page allows no style attributes).
 const paceBar = (frac) => `<svg class="usual-bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true"><rect class="bg" width="100" height="4" rx="2"/><rect class="fg" id="usual-fill" width="${Math.round(Math.min(1, frac) * 100)}" height="4" rx="2"/></svg>`;
 
-// The big clock on the map card: minutes and seconds, with the hundredths smaller beside them.
-// Drawn on every screen refresh while the map runs (start.js), so the hundredths roll.
+// The big clock on the map card: minutes, seconds and thousandths.
+// Drawn on every screen refresh while the map runs (start.js), so the thousandths roll.
 function drawClock(ms) {
   const t = $('timer');
   if (!t) return;
-  const cs = Math.floor(Math.max(0, ms) / 10) % 100;
-  const main = fmtTime(ms), frac = `.${String(cs).padStart(2, '0')}`;
+  const main = fmtTime(ms), frac = `.${String(Math.floor(Math.max(0, ms)) % 1000).padStart(3, '0')}`;
   if (t.dataset.main !== main) { t.dataset.main = main; t.innerHTML = `${main}<span class="ms"></span>`; }
   t.lastChild.textContent = frac;
 }
