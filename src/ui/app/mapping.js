@@ -379,6 +379,17 @@ function bigValue(c, signed = true) {
 // How far into its usual time the map is, as a thin bar (SVG: the page allows no style attributes).
 const paceBar = (frac) => `<svg class="usual-bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true"><rect class="bg" width="100" height="4" rx="2"/><rect class="fg" id="usual-fill" width="${Math.round(Math.min(1, frac) * 100)}" height="4" rx="2"/></svg>`;
 
+// The big clock on the map card: minutes and seconds, with the hundredths smaller beside them.
+// Drawn on every screen refresh while the map runs (start.js), so the hundredths roll.
+function drawClock(ms) {
+  const t = $('timer');
+  if (!t) return;
+  const cs = Math.floor(Math.max(0, ms) / 10) % 100;
+  const main = fmtTime(ms), frac = `.${String(cs).padStart(2, '0')}`;
+  if (t.dataset.main !== main) { t.dataset.main = main; t.innerHTML = `${main}<span class="ms"></span>`; }
+  t.lastChild.textContent = frac;
+}
+
 function renderNow() {
   const run = currentRun();
   const toggle = $('btn-run-toggle');
@@ -398,7 +409,7 @@ function renderNow() {
     setHtml($('now-name'), '<div class="eb idle">Not in a map</div><div class="map-name">Waiting for a map</div><div class="map-meta">Enter a map and the timer starts by itself.</div>');
     setHtml($('now-time'), '<small>Time</small><div class="clock" id="timer"></div>');
     setHtml($('now-net'), '');
-    $('timer').textContent = '0:00';
+    drawClock(0);
   } else {
     const paused = run.segmentStart === null;
     const strats = state.config.strategies || [];
@@ -410,7 +421,7 @@ function renderNow() {
     const live = liveDuration(run), usual = usualMs(run.name);
     setHtml($('now-time'), `<small>Time</small><div class="clock ${paused ? 'paused' : ''}" id="timer"></div>
         ${usual ? `<div class="note" title="Your average for ${esc(run.name)}">${paceBar(live / usual)}usual ${fmtTime(usual)}</div>` : ''}`);
-    $('timer').textContent = fmtTime(live);
+    drawClock(live);
     const hours = live / 3600000;
     const pace = hours > 1 / 60 && run.net > 0 ? `on pace for ${fmtValue(run.net / hours)} / hour` : `${fmtValue(run.lootValue)} loot · ${fmtValue(run.costValue)} costs`;
     setHtml($('now-net'), `<small>Net this map</small><div class="money ${run.net < 0 ? 'neg' : ''}">${bigValue(run.net)}</div><div class="note" title="Loot ${esc(fmtValue(run.lootValue))}, costs ${esc(fmtValue(run.costValue))}">${pace}</div>`);

@@ -187,6 +187,7 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .mapcard small { display: block; font-size: 11.5px; font-weight: 560; color: var(--ash); margin-bottom: 6px; }
 .clock { font: 300 54px/0.9 var(--display); letter-spacing: -0.045em; }
 .clock.paused { color: var(--ash); }
+.clock .ms { margin-left: 2px; font-size: 0.42em; font-weight: 400; letter-spacing: -0.01em; color: var(--ash); font-variant-numeric: tabular-nums; }
 .money { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .money b { font: 650 40px/1 var(--display); letter-spacing: -0.035em; color: var(--gold); text-shadow: 0 0 28px color-mix(in srgb, var(--gold) 30%, transparent); }
 .money span { font-size: 15px; font-weight: 560; color: var(--soft); }

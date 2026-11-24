@@ -6,12 +6,16 @@
 setInterval(() => {
   if (!state) return;
   const run = currentRun();
-  const t = $('timer');
-  if (run && t) t.textContent = fmtTime(liveDuration(run));
   // The bar under the timer: how far into your usual time for this map.
   const bar = $('usual-fill');
   if (run && bar) { const u = usualMs(run.name); if (u) bar.setAttribute('width', String(Math.round(Math.min(1, liveDuration(run) / u) * 100))); }
 }, 500);
+
+// The map card's clock with its hundredths: every screen refresh while a map runs.
+(function tick() {
+  if (state) { const run = currentRun(); if (run && run.segmentStart !== null) drawClock(liveDuration(run)); }
+  requestAnimationFrame(tick);
+})();
 
 api.onState(setState);
 api.getState().then(setState);
