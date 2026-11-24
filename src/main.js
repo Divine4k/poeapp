@@ -200,10 +200,9 @@ function buildState() {
     trade: tradeState(),
   };
 }
-// The current map's loot gets its item pictures, for the loot list.
+// Loot gets its item pictures: the current map's list and the session's best drops show them.
 function withIcons(summary) {
-  const cur = summary.runs.find((r) => r.id === summary.currentId);
-  if (cur) for (const i of cur.items) { const e = prices.get(i.name); i.icon = (e && e.icon) || null; }
+  for (const r of summary.runs) for (const i of r.items) { const e = prices.get(i.name); i.icon = (e && e.icon) || null; }
   return summary;
 }
 // Sessions saved before strategies existed, or whose strategy is gone, belong to the first one.

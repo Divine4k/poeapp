@@ -10,7 +10,7 @@ window.Theme = (() => {
   const PREMIUM = ['wraeclast'];
   const ALL = [...STANDARD, ...PREMIUM];
   const NAMES = {
-    auto: ['Automatic', 'Light or Slate, following Windows.'], slate: ['Slate', 'The default: dark grey with gold.'], light: ['Light', 'White panels, dark text.'],
+    auto: ['Automatic', 'Light or Obsidian, following Windows.'], slate: ['Obsidian', 'The default: near black with warm gold.'], light: ['Light', 'White panels, dark text.'],
     dim: ['Dim', 'A softer dark grey.'], midnight: ['Midnight', 'Deep blue with ice blue.'], ember: ['Ember', 'Charcoal with fire orange.'],
     verdant: ['Verdant', 'Dark forest with jade.'], paper: ['Paper', 'Warm paper with rust red.'], contrast: ['High contrast', 'Black and white, yellow accent. Easiest to read.'],
     custom: ['Custom', 'Your own four colours.'],
@@ -18,7 +18,7 @@ window.Theme = (() => {
   };
   // The colours a custom theme can start from: background, panels, text, accent.
   const BASES = {
-    slate: { bg: '#1B1F24', surface: '#242A31', ink: '#E9E2D3', accent: '#D1AD62' }, light: { bg: '#EEF0F3', surface: '#FFFFFF', ink: '#15181D', accent: '#9A6B12' },
+    slate: { bg: '#101113', surface: '#17181C', ink: '#F1EFEA', accent: '#E5BD6C' }, light: { bg: '#EEF0F3', surface: '#FFFFFF', ink: '#15181D', accent: '#9A6B12' },
     dim: { bg: '#1E1E1E', surface: '#282828', ink: '#ECECEC', accent: '#E3B341' }, midnight: { bg: '#10151F', surface: '#18202E', ink: '#E4EBF5', accent: '#7FB4FF' },
     ember: { bg: '#1A1514', surface: '#241D1B', ink: '#F2E6DC', accent: '#FF8A4C' }, verdant: { bg: '#121A17', surface: '#1A2420', ink: '#E3EEE6', accent: '#6FCF97' },
     paper: { bg: '#F3EEE3', surface: '#FFFCF6', ink: '#1E1A14', accent: '#B5481A' }, contrast: { bg: '#000000', surface: '#0B0B0B', ink: '#FFFFFF', accent: '#FFD500' },

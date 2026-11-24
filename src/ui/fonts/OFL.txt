@@ -1,6 +1,9 @@
-Cinzel (c) The Cinzel Project Authors and EB Garamond (c) The EB Garamond Project Authors,
-both under the SIL Open Font License 1.1, from the @fontsource packages on npm.
-Used by the Wraeclast theme (src/ui/themes.css).
+Inter (c) The Inter Project Authors, Cinzel (c) The Cinzel Project Authors and
+EB Garamond (c) The EB Garamond Project Authors, all under the SIL Open Font License 1.1,
+from the @fontsource packages on npm. Inter is the app's own font (src/ui/style.css);
+Cinzel and EB Garamond are used by the Wraeclast theme (src/ui/themes.css).
+
+Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)
 
 Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)
 

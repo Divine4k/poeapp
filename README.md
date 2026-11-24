@@ -125,7 +125,9 @@ Install [Node.js LTS](https://nodejs.org), download this repository as a ZIP, un
 
 The app checks this repository every two minutes. When a newer version has been pushed, the **Check for updates** button at the bottom of the sidebar turns into **Install update**. Clicking it at any other time checks right away; the button always says what it is doing (checking, up to date, downloading, restarting, or what went wrong). An update found while the app starts is also offered on the loading screen. The app closes and opens again by itself, and your settings, named items and session are kept.
 
-The look of the window is chosen in Settings, under Look. Premium: Wraeclast, the whole window as in the game (gold-leaf letters, carved frames, embers). Standard: Automatic (follows Windows), Slate, Light, Dim, Midnight, Ember, Verdant, Paper, High contrast, and Custom with your own four colours. Animations can be switched off there too. Wraeclast uses the fonts Cinzel and EB Garamond (SIL Open Font License, `src/ui/fonts/OFL.txt`).
+The look of the window is chosen in Settings, under Look. Premium: Wraeclast, the whole window as in the game (gold-leaf letters, carved frames, embers). Standard: Automatic (follows Windows), Obsidian (the default), Light, Dim, Midnight, Ember, Verdant, Paper, High contrast, and Custom with your own four colours. Animations can be switched off there too. The app's letters are Inter; Wraeclast uses Cinzel and EB Garamond (all SIL Open Font License, `src/ui/fonts/OFL.txt`).
+
+While you run a map that has a picture (Strand and Dunes so far, in `src/ui/maps`), the picture sits behind the map card on the Mapping page. The card also says how long that map usually takes you, and whether its mods are safe for your build when you checked the map before running it.
 
 The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so anyone who can push there controls what gets installed.
 

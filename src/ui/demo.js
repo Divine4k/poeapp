@@ -13,12 +13,16 @@
     items: [{ name: 'Chaos Orb', qty: 9, chaos: 9 }], loot: [], seen: [], snapAt: now,
     costs: [{ id: 'c1', name: 'Ambush Scarab of Containment', qty: 2, each: 9, total: 18, chaos: null }],
   });
-  const cur = run('r4', 'Strand', 3.2, 0, 22, 0, true);
+  const cur = run('r4', new URLSearchParams(location.search).get('map') || 'Strand', 3.2, 0, 22, 0, true);
   cur.loot = [loot('l1', 'Chaos Orb', 7, 'inventory'), loot('l2', 'Vaal Orb', 3, 'inventory'), loot('l3', 'The Nurse', 1, 'manual'), loot('l4', 'Divine Orb', 1, 'inventory'), loot('l5', 'Exalted Orb', 2, 'inventory')];
   cur.lootValue = cur.loot.reduce((a, l) => a + l.chaos, 0); cur.net = cur.lootValue - cur.costValue;
   cur.uncounted = { stacks: 1, singles: 3 };
   cur.items = [['Divine Orb', 1, 212], ['The Nurse', 1, 78, 1], ['Exalted Orb', 2, 28], ['Foulborn Exalted Orb', 1, 22.1], ["Gemcutter's Prism", 9, 21.9], ['Chaos Orb', 28, 28], ['Orb of Alteration', 48, 8.9], ['Timeless Vaal Splinter', 32, 7.1], ['Bestiary Thread', 2, 5.3], ['Exalted Shard', 4, 3.5], ['Timeless Templar Splinter', 21, 3.2], ['Vaal Orb', 3, 1.8], ['Chromatic Orb', 1, 1.7], ['Breach Thread', 2, 0.9], ['Orb of Fusing', 6, 0.8], ['Blight Thread', 2, 0.7], ['Mystery Shard', 3, 0]].map(([name, qty, chaos, byHand], i) => ({ name, qty, chaos, byHand: byHand || 0, icon: i === 16 ? null : dot(['#e8dcc0', '#8e6bd1', '#d4a017', '#3aa6a6', '#5b8dd9', '#c9a227'][i % 6]) }));
   const runs = [run('r1', 'Jungle Valley', 4.1, 96, 22, 0), run('r2', 'Strand', 3.6, 14, 22, 1), run('r3', 'Dunes', 5.0, 431, 22, 0), cur];
+  // One map after the other, with a minute in the hideout between them.
+  let at = now - 19 * 60000;
+  for (const r of runs) { r.startedAt = at; at += r.durationMs; r.endedAt = r === cur ? null : at; at += 60000; }
+  cur.startedAt = now - cur.durationMs;
   const totals = { maps: 4, deaths: 1, lootValue: 0, costValue: 0, net: 0, mapMs: 0 };
   for (const r of runs) { totals.lootValue += r.lootValue; totals.costValue += r.costValue; totals.net += r.net; totals.mapMs += r.durationMs; }
   totals.avgMapMs = totals.mapMs / 4; totals.netPerHour = totals.net / 0.4; totals.elapsedMs = 24 * 60000;
@@ -85,7 +89,7 @@
       ],
     },
     inventoryRev: 1,
-    summary: { now, startedAt: now, currentId: 'r4', away: false, location: {}, divine: 212, runs, totals },
+    summary: { now, startedAt: runs[0].startedAt, currentId: 'r4', away: false, location: {}, divine: 212, runs, totals },
     sessions: [
       { id: 's2', strategyId: 'st1', startedAt: now - 26 * 3600000, endedAt: now - 24 * 3600000, divine: 205, totals: { ...totals, maps: 3, net: 1890, netPerHour: 945, elapsedMs: 2 * 3600000 } },
       { id: 's1', strategyId: 'st2', startedAt: now - 51 * 3600000, endedAt: now - 50 * 3600000, divine: 198, totals: { ...totals, maps: 3, net: -40, netPerHour: -40, elapsedMs: 3600000 } },

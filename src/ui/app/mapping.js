@@ -48,8 +48,15 @@ function statusChips() {
   else if (cl.enabled && cl.signedIn && cl.waiting) chip('busy', `${cl.waiting} to upload`, `${cl.waiting} finished ${cl.waiting === 1 ? 'session is' : 'sessions are'} waiting to go up.`, 'account');
   return chips;
 }
+// When nothing is wrong, the fine ones fold into one "All working" chip (its hover text lists
+// them). Anything wrong shows on its own with a Fix button; things under way (prices loading,
+// trade offers) show beside it.
 function renderStatus() {
-  setHtml($('status'), statusChips().map((x) => `<li><${x.go ? `button type="button" data-go="${x.go}"${x.go === 'logcheck' ? ' data-logcheck' : ''}` : 'span'} class="chip ${x.cls}" title="${esc(x.tip)}">${esc(x.label)}</${x.go ? 'button' : 'span'}></li>`).join(''));
+  const all = statusChips();
+  const bad = all.filter((x) => x.cls === 'bad'), busy = all.filter((x) => x.cls === 'busy');
+  const fine = all.filter((x) => x.cls === 'ok' || x.cls === '');
+  const shown = bad.length ? [...bad, ...busy] : [{ cls: 'ok all', label: 'All working', tip: fine.map((x) => `${x.label}: ${x.tip.replace(/ Click.*$/, '')}`).join('\n'), go: null }, ...busy];
+  setHtml($('status'), shown.map((x) => `<li><${x.go ? `button type="button" data-go="${x.go}"${x.go === 'logcheck' ? ' data-logcheck' : ''}` : 'span'} class="chip ${x.cls}" title="${esc(x.tip)}">${esc(x.label)}${x.cls === 'bad' && x.go ? '<em>Fix</em>' : ''}</${x.go ? 'button' : 'span'}></li>`).join(''));
   renderUpdate();
 }
 $('status').addEventListener('click', (e) => {
@@ -84,6 +91,8 @@ function updateLook() {
 function renderUpdate() {
   const look = updateLook(), btn = $('btn-side-update'), up = state.status.update;
   btn.className = `navi upd ${look.cls}`;
+  // The narrow sidebar has room for one word under the icon.
+  btn.dataset.short = look.busy ? (look.label === 'Checking…' ? 'Checking' : 'Updating') : look.cls === 'has-update' ? 'Update' : look.cls === 'done' ? 'Up to date' : look.cls === 'bad' ? 'Failed' : 'Updates';
   btn.disabled = !!look.busy;
   btn.setAttribute('aria-busy', String(!!look.busy));
   $('side-update-icon').classList.toggle('spin', !!look.busy);
@@ -252,17 +261,17 @@ function renderAttention() {
   if (box.hidden) { box.innerHTML = ''; return; }
   const n = un.length + doubts.length;
   const cards = un.map((u) => `<li>
-        <img src="${esc(u.image)}" alt="">
-        <div><p><b>Not recognised</b>, stack of ${u.qty}. Not counted until you say what it is:</p>
+        <span class="it"><img src="${esc(u.image)}" alt=""></span>
+        <div><p><b>What is this?</b> Stack of ${u.qty}, not counted until you say.</p>
         <div class="chips">${u.guesses.map((g) => `<button type="button" data-act="learn" data-id="${u.id}" data-name="${esc(g.name)}" title="${g.score}% alike">${esc(g.name)}</button>`).join('')}
           <button type="button" class="other" data-fix="unknown:${u.id}">Something else…</button>
-          <button type="button" class="link" data-act="ignore" data-id="${u.id}" title="Never count or ask about this item again">Ignore it</button></div></div></li>`).join('')
+          <button type="button" class="link" data-act="ignore" data-id="${u.id}" title="Never count or ask about this item again">Ignore</button></div></div></li>`).join('')
     + doubts.map((d) => `<li>
-        <img src="${esc(d.image)}" alt="">
-        <div><p><b>Not sure</b>: counted as ${esc(d.name)}${d.qty > 1 ? ` ×${d.qty}` : ''}, but it looks much like ${esc(d.options.join(' or ') || 'another item')}. Which is it?</p>
-        <div class="chips">${[d.name, ...d.options].map((name) => `<button type="button" data-act="fixSlot" data-id="${esc(d.id)}" data-name="${esc(name)}">${esc(name)}</button>`).join('')}
+        <span class="it"><img src="${esc(d.image)}" alt=""></span>
+        <div><p><b>Is this right?</b> Counted as ${esc(d.name)}${d.qty > 1 ? ` ×${d.qty}` : ''}, but it looks much like ${esc(d.options.join(' or ') || 'another item')}.</p>
+        <div class="chips">${[d.name, ...d.options].map((name, i) => `<button type="button"${i ? '' : ' class="yes"'} data-act="fixSlot" data-id="${esc(d.id)}" data-name="${esc(name)}">${i ? '' : '✓ '}${esc(name)}</button>`).join('')}
           <button type="button" class="other" data-fix="${esc(d.id)}">Something else…</button></div></div></li>`).join('');
-  box.innerHTML = `<h2>${n === 1 ? 'One item needs a look' : `${n} items need a look`}</h2><ul>${cards}</ul>
+  box.innerHTML = `<div class="p-head"><h2 class="needs">${n === 1 ? 'One item needs a look' : `${n} items need a look`}</h2></div><ul>${cards}</ul>
       ${waiting > 0 ? `<p class="more">${waiting} more from earlier ${waiting === 1 ? 'is' : 'are'} waiting on the <button type="button" class="link" data-tab="items">Items page</button>.</p>` : ''}`;
 }
 
@@ -331,25 +340,80 @@ $('fix-remove').addEventListener('click', () => { if (fixTarget) act({ type: 'fo
 $('fix-options').addEventListener('click', (e) => { const b = e.target.closest('[data-fix-name]'); if (b) sendFix(b.dataset.fixName); });
 
 // ---- current map ------------------------------------------------------------
+// Pictures of maps (src/ui/maps), shown behind the map card while you run that map. Add a
+// picture there and a line here: its file, and how bright it is from 0 (dark) to 1 (sand, snow).
+// Bright ones get a darker veil so the white numbers on them stay readable.
+const MAP_PICTURES = {
+  Strand: ['maps/strand.jpg', 0.2],
+  Dunes: ['maps/dunes.jpg', 0.6],
+};
+const mapPicture = (name) => MAP_PICTURES[String(name || '').replace(/ Map$/, '')] || null;
+
+// How long a map usually takes you: that map in every saved session, and the ones already
+// finished in this session.
+function usualMs(name) {
+  let n = 0, ms = 0;
+  for (const x of state.sessions || []) { const m = x.mapTimes && x.mapTimes[name]; if (m) { n += m.n; ms += m.ms; } }
+  for (const r of state.summary.runs) if (r.name === name && r.id !== state.summary.currentId && r.durationMs >= 30000) { n++; ms += r.durationMs; }
+  return n ? ms / n : 0;
+}
+
+// Whether this map's mods were checked (the check key on the map before you ran it), and how
+// that went. Only the answer shows here; the mods themselves are on the Map check page.
+function mapSafety(run) {
+  const mc = state.mapCheck;
+  if (!mc || !run || String(mc.name || '').replace(/ Map$/, '') !== run.name) return null;
+  if (mc.at < (run.startedAt || 0) - 30 * 60000) return null; // checked long before: another copy of the map
+  if (!mc.dangerCount) return { ok: true, text: '✓ Safe to run', tip: 'None of the mods you ticked on the Map check page.' };
+  const bad = (mc.mods || []).filter((m) => m.dangerous).map((m) => (m.labels && m.labels.length ? m.labels.join(', ') : m.mod));
+  return { ok: false, text: `⚠ ${mc.dangerCount} ${mc.dangerCount === 1 ? 'bad mod' : 'bad mods'}`, tip: bad.join('\n') };
+}
+
+// A value split into its number and unit, so the number can be big: "+1.44" and "div".
+function bigValue(c, signed = true) {
+  const m = /^(-?)([\d.]+)\s*(div|c)$/.exec(fmtValue(c));
+  if (!m) return esc(fmtValue(c));
+  const sign = m[1] ? '−' : (signed && c > 0 ? '+' : '');
+  return `<b>${sign}${m[2]}</b><span>${m[3]}</span>`;
+}
+// How far into its usual time the map is, as a thin bar (SVG: the page allows no style attributes).
+const paceBar = (frac) => `<svg class="usual-bar" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true"><rect class="bg" width="100" height="4" rx="2"/><rect class="fg" id="usual-fill" width="${Math.round(Math.min(1, frac) * 100)}" height="4" rx="2"/></svg>`;
+
 function renderNow() {
   const run = currentRun();
-  $('btn-run-toggle').textContent = run ? 'End this map' : 'Start a map manually';
+  const toggle = $('btn-run-toggle');
+  toggle.textContent = run ? 'End map' : 'Start a map manually';
+  toggle.classList.toggle('primary', !!run);
+
+  // The map's picture behind the card (set through the style object: no inline style attributes).
+  const pic = run && mapPicture(run.name), ph = $('mc-photo');
+  $('mapcard').classList.toggle('has-photo', !!pic);
+  if (ph.dataset.pic !== (pic ? pic[0] : '')) {
+    ph.dataset.pic = pic ? pic[0] : '';
+    ph.style.setProperty('--photo', pic ? `url("${pic[0]}")` : 'none');
+    ph.style.setProperty('--shade', String(pic ? pic[1] : 0));
+  }
+
   if (!run) {
-    $('now-name').innerHTML = `<div class="map-name">Not in a map</div>
-        <div class="map-meta">Enter a map and the timer starts by itself.</div>`;
-    $('now-head').innerHTML = '<div class="big"><span class="timer" id="timer">0:00</span></div>';
+    setHtml($('now-name'), '<div class="eb idle">Not in a map</div><div class="map-name">Waiting for a map</div><div class="map-meta">Enter a map and the timer starts by itself.</div>');
+    setHtml($('now-time'), '<small>Time</small><div class="clock" id="timer"></div>');
+    setHtml($('now-net'), '');
+    $('timer').textContent = '0:00';
   } else {
     const paused = run.segmentStart === null;
     const strats = state.config.strategies || [];
     const running = strats.find((x) => x.id === state.config.activeStrategy);
-    const meta = [strats.length > 1 && running ? `Counted under ${esc(running.name)}` : '', run.level ? `Area level ${run.level}` : '', run.deaths ? `${run.deaths} ${run.deaths === 1 ? 'death' : 'deaths'}` : '', paused ? '<span class="paused">paused while you are out of the map</span>' : ''].filter(Boolean);
-    $('now-name').innerHTML = `<div class="map-name">${esc(run.name)}</div><div class="map-meta">${meta.join(', ')}</div>`;
-    $('now-head').innerHTML = `<div class="big">
-          <span class="timer ${paused ? 'paused' : ''}" id="timer">${fmtTime(liveDuration(run))}</span>
-          <span class="value ${run.net < 0 ? 'neg' : ''}">${fmtValue(run.net)}<small>net this map</small></span>
-        </div>
-        <dl class="split"><div><dt>Loot</dt><dd>${fmtValue(run.lootValue)}</dd></div><div><dt>Costs</dt><dd>${fmtValue(run.costValue)}</dd></div></dl>
-        ${uncountedLine(run, true)}`;
+    const safe = mapSafety(run);
+    const meta = [run.level ? `Area level ${run.level}` : '', strats.length > 1 && running ? `counted under ${esc(running.name)}` : '', run.deaths ? `${run.deaths} ${run.deaths === 1 ? 'death' : 'deaths'}` : ''].filter(Boolean);
+    setHtml($('now-name'), `<div class="eb ${paused ? 'paused' : ''}">${paused ? 'Paused while you are out of the map' : 'In map'}${safe ? `<span class="safe ${safe.ok ? '' : 'bad'}" title="${esc(safe.tip)}">${esc(safe.text)}</span>` : ''}</div>
+        <div class="map-name">${esc(run.name)}</div><div class="map-meta">${meta.join(' · ')}</div>`);
+    const live = liveDuration(run), usual = usualMs(run.name);
+    setHtml($('now-time'), `<small>Time</small><div class="clock ${paused ? 'paused' : ''}" id="timer"></div>
+        ${usual ? `<div class="note" title="Your average for ${esc(run.name)}">${paceBar(live / usual)}usual ${fmtTime(usual)}</div>` : ''}`);
+    $('timer').textContent = fmtTime(live);
+    const hours = live / 3600000;
+    const pace = hours > 1 / 60 && run.net > 0 ? `on pace for ${fmtValue(run.net / hours)} / hour` : `${fmtValue(run.lootValue)} loot · ${fmtValue(run.costValue)} costs`;
+    setHtml($('now-net'), `<small>Net this map</small><div class="money ${run.net < 0 ? 'neg' : ''}">${bigValue(run.net)}</div><div class="note" title="Loot ${esc(fmtValue(run.lootValue))}, costs ${esc(fmtValue(run.costValue))}">${pace}</div>`);
   }
 
   // The picture is only redrawn when it changes, so it does not flicker with the timer.
@@ -361,19 +425,41 @@ function renderNow() {
     snapBox.dataset.key = snapKey;
     snapBox.innerHTML = snapHtml(snap, true);
   }
+  setHtml($('now-uncounted'), run ? uncountedLine(run, true) : '');
 
   // One line per item, most valuable first.
   const feed = $('feed');
-  $('loot-title').textContent = run && run.items.length ? `Loot this map: ${run.items.length} ${run.items.length === 1 ? 'item' : 'items'}` : 'Loot this map';
-  if (!run || !run.items.length) {
-    feed.innerHTML = `<li class="empty">${run ? `No loot yet. Open your inventory (${esc(state.config.inventory.key)}) after picking things up.` : 'Loot shows up here once a map is running.'}</li>`;
-  } else {
-    feed.innerHTML = run.items.map((l) => `<li>
-        <span class="qty">${l.qty}</span>
-        ${l.icon ? `<img src="${esc(l.icon)}" alt="" loading="lazy" width="26" height="26">` : '<span class="noicon"></span>'}
-        <span class="nm">${esc(l.name)}${l.byHand ? '<span class="src">added by hand</span>' : ''}</span>
+  const n = run ? run.items.length : 0;
+  $('loot-title').innerHTML = run && n ? `Loot this map <small>${n} ${n === 1 ? 'item' : 'items'} · worth ${esc(fmtValue(run.lootValue))}</small>` : 'Loot this map';
+  const divine = state.summary.divine || 0;
+  const html = !run || !n
+    ? `<li class="empty">${run ? `No loot yet. Open your inventory (${esc(state.config.inventory.key)}) after picking things up.` : 'Loot shows up here once a map is running.'}</li>`
+    : run.items.map((l) => `<li>
+        <span class="it${divine && l.chaos >= divine ? ' g-gold' : ''}">${l.icon ? `<img src="${esc(l.icon)}" alt="" loading="lazy">` : ''}</span>
+        <span class="nm"><b>${esc(l.name)}</b><small>×${l.qty}${l.byHand ? ' · added by hand' : ''}</small></span>
         <span class="val ${l.chaos > 0 ? '' : 'dim'}">${l.chaos > 0 ? fmtValue(l.chaos) : 'no price'}</span>
         <button type="button" class="link x" data-act="removeLootName" data-run="${esc(run.id)}" data-name="${esc(l.name)}" title="Remove from this map's loot" aria-label="Remove ${esc(l.name)}">×</button></li>`).join('');
-  }
+  setHtml(feed, html);
+  renderBestDrops();
   renderItems();
+}
+
+// The most valuable drops of the session, over all its maps. Only once there is more than one map.
+function renderBestDrops() {
+  const box = $('best-drops'), runs = state.summary.runs;
+  const by = new Map();
+  for (const r of runs) for (const i of r.items) {
+    if (!(i.chaos > 0)) continue;
+    const e = by.get(i.name) || { name: i.name, qty: 0, chaos: 0, icon: i.icon, maps: new Set() };
+    e.qty += i.qty; e.chaos += i.chaos; e.icon = e.icon || i.icon; e.maps.add(r.name);
+    by.set(i.name, e);
+  }
+  const top = [...by.values()].sort((a, b) => b.chaos - a.chaos).slice(0, 3);
+  box.hidden = runs.length < 2 || !top.length;
+  if (box.hidden) return;
+  const divine = state.summary.divine || 0;
+  setHtml(box, `<div class="p-head"><h2>Best drops this session</h2></div><ul class="feed drops">${top.map((e) => `<li>
+      <span class="it${divine && e.chaos >= divine ? ' g-gold' : ''}">${e.icon ? `<img src="${esc(e.icon)}" alt="" loading="lazy">` : ''}</span>
+      <span class="nm"><b>${esc(e.name)}</b><small>×${e.qty} · ${esc([...e.maps].slice(0, 3).join(', '))}</small></span>
+      <span class="val">${fmtValue(e.chaos)}</span></li>`).join('')}</ul>`);
 }

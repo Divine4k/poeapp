@@ -99,11 +99,24 @@ sidenav.addEventListener('dragend', () => {
 
 $('learned-filter').addEventListener('input', () => renderItems());
 
+// ---- the sidebar: narrow (icons with a word under them), or opened out with the names ----
+// Only how this window looks, so it is kept in the window (localStorage), not in the settings.
+function setWide(on) {
+  document.body.classList.toggle('wide-side', on);
+  $('btn-widen').setAttribute('aria-pressed', String(on));
+  $('btn-widen').title = on ? 'Make the sidebar narrow' : 'Show the page names';
+  try { localStorage.setItem('wideSide', on ? '1' : ''); } catch (_) { /* storage off: it just isn't kept */ }
+}
+$('btn-widen').addEventListener('click', () => { setWide(!document.body.classList.contains('wide-side')); chartKey = ''; if (state) renderSession(); });
+try { setWide(localStorage.getItem('wideSide') === '1'); } catch (_) { setWide(false); }
+
 function showTab(name) {
   if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
   for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
   if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
   for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'trouble', 'settings']) $(`tab-${id}`).hidden = id !== name;
+  $('strat').hidden = name !== 'mapping'; // strategies sit in the top bar, for the Mapping page only
+  if (name === 'mapping') { chartKey = ''; renderSession(); } // the chart is drawn at its real size, which is 0 while hidden
   if (name === 'inventory') renderInventory(true);
   if (name === 'items') { refreshKnown(); renderKnown(); }
   if (name === 'prices') renderPrices(true);

@@ -170,6 +170,18 @@ class SessionArchive {
   }
 }
 
-const brief = (s) => ({ id: s.id, strategyId: s.strategyId || null, startedAt: s.startedAt, endedAt: s.endedAt, divine: s.divine, totals: s.totals });
+// Time spent per map name, so the Mapping page can say how long a map usually takes you.
+// Maps under half a minute (opened and left at once) would only pull the usual time down.
+function mapTimes(runs) {
+  const out = {};
+  for (const r of runs || []) {
+    const ms = r.durationMs || r.activeMs || 0;
+    if (!r.name || ms < 30000) continue;
+    const m = out[r.name] || (out[r.name] = { n: 0, ms: 0 });
+    m.n++; m.ms += ms;
+  }
+  return out;
+}
+const brief = (s) => ({ id: s.id, strategyId: s.strategyId || null, startedAt: s.startedAt, endedAt: s.endedAt, divine: s.divine, totals: s.totals, mapTimes: mapTimes(s.runs) });
 
-module.exports = { recheckCells, SnapshotStore, SessionArchive, markCarried, MAX_TRIPS };
+module.exports = { recheckCells, SnapshotStore, SessionArchive, markCarried, mapTimes, MAX_TRIPS };

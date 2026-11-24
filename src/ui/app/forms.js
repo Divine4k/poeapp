@@ -6,6 +6,13 @@ $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? '
 $('btn-new-session').addEventListener('click', () => {
   if (!state.summary.runs.length || window.confirm('Start a new session? The current one is saved and stays in the row of sessions above the map list.')) act({ type: 'newSession' });
 });
+// Adding loot by name is rare, so its fields stay folded until asked for.
+$('btn-add-loot').addEventListener('click', () => {
+  const f = $('add-loot'), open = f.hidden;
+  f.hidden = !open;
+  $('btn-add-loot').setAttribute('aria-expanded', String(open));
+  if (open) $('add-loot-name').focus();
+});
 
 async function suggest(q) {
   if (!q || q.length < 2) return;

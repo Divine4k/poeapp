@@ -66,6 +66,7 @@ test('sessions: a finished session is saved with its values frozen and can be re
   assert.equal(full.divine, 200);
   assert.equal(full.strategyId, 'legion');
   assert.equal(fresh.list()[0].strategyId, 'legion');
+  assert.deepEqual(fresh.list()[0].mapTimes, { Dunes: { n: 1, ms: 600_000 } });
   assert.equal(full.runs[0].name, 'Dunes');
   assert.equal(full.runs[0].items[0].chaos, 400);
   assert.equal(full.endedAt, t);
@@ -100,4 +101,13 @@ test('snapshots: what was taken into the map is marked slot by slot', () => {
   const s = new SnapshotStore(tmp());
   s.record('r', 1, { at: 1, cells: out, image: 'a' });
   assert.deepEqual(s.get('r').trips[0].cells[0], { cell: 0, status: 'item', name: 'Portal Scroll', qty: 19, source: null, carried: true, carriedQty: 19 });
+});
+
+test('sessions: time per map name leaves out maps left at once', () => {
+  const { mapTimes } = require('../src/core/store');
+  assert.deepEqual(mapTimes([
+    { name: 'Strand', durationMs: 200_000 }, { name: 'Strand', durationMs: 220_000 },
+    { name: 'Dunes', durationMs: 10_000 }, { name: '', durationMs: 90_000 }, { name: 'Mesa', activeMs: 60_000 },
+  ]), { Strand: { n: 2, ms: 420_000 }, Mesa: { n: 1, ms: 60_000 } });
+  assert.deepEqual(mapTimes(undefined), {});
 });

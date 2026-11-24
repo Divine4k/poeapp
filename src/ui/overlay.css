@@ -1,28 +1,28 @@
 /* The window on top of the game: see-through around the offers, nothing else on screen. */
 html, body.overlay { height: auto; background: transparent; }
 body.overlay { display: block; overflow: hidden; user-select: none; }
-#stack { display: flex; flex-direction: column; gap: 3px; padding: 2px; }
+#stack { display: flex; flex-direction: column; gap: 4px; padding: 3px; }
 
 /* one offer on one line: next step, item, price, busy, sold, dismiss */
-.tt { display: flex; align-items: stretch; gap: 3px; height: 26px; background: rgba(27, 31, 36, 0.9); border: 1px solid var(--seam); border-left: 3px solid var(--gold); border-radius: 4px; font-size: 12px; overflow: hidden; }
-.tt.out { border-left-color: var(--portal); }
-.tt.done { border-left-color: var(--moss); }
-.tt button { border: 0; border-radius: 0; padding: 0 7px; font-size: 12px; line-height: 1; }
-.tt button.primary { flex: 0 0 auto; min-width: 58px; }
+.tt { display: flex; align-items: center; gap: 4px; height: 34px; padding: 0 3px; background: color-mix(in srgb, var(--slab) 93%, transparent); border: 0; border-radius: var(--r-md); box-shadow: inset 0 0 0 1px var(--line2), 0 3px 12px rgba(0, 0, 0, 0.5); font-size: 12.5px; overflow: hidden; }
+.tt.out { box-shadow: inset 0 0 0 1px var(--line2), inset 3px 0 0 var(--portal), 0 3px 12px rgba(0, 0, 0, 0.5); }
+.tt.done { box-shadow: inset 0 0 0 1px var(--line2), inset 3px 0 0 var(--moss), 0 3px 12px rgba(0, 0, 0, 0.5); }
+.tt button { height: 28px; border: 0; border-radius: 7px; padding: 0 8px; font-size: 12px; line-height: 1; box-shadow: none; }
+.tt button.primary { flex: 0 0 auto; min-width: 60px; font-weight: 650; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28); }
 .tt-wait { flex: 0 0 auto; min-width: 58px; display: flex; align-items: center; justify-content: center; color: var(--gold); }
 .tt-open { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; background: transparent; text-align: left; color: var(--bone); }
-.tt-open:hover { background: rgba(233, 226, 211, 0.08); }
+.tt-open:hover { background: color-mix(in srgb, var(--bone) 6%, transparent); }
 .tt-item { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tt-price { flex: 0 0 auto; color: var(--gold); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tt-price { flex: 0 0 auto; color: var(--gold); font-weight: 650; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tt-warn { flex: 0 0 auto; color: var(--blood); font-size: 11px; white-space: nowrap; }
-.tt-say { flex: 0 0 auto; background: transparent; color: var(--ash); padding: 0 5px !important; border-left: 1px solid var(--seam) !important; }
-.tt-say:hover { color: var(--bone); background: rgba(233, 226, 211, 0.08); }
+.tt-say { flex: 0 0 auto; background: transparent; color: var(--ash); padding: 0 6px !important; }
+.tt-say:hover { color: var(--bone); background: color-mix(in srgb, var(--bone) 7%, transparent); }
 .tt-ico { flex: 0 0 auto; background: transparent; color: var(--ash); padding: 0 6px !important; }
 .tt-ico:hover { color: var(--bone); }
 
 /* an offer opened with a click: the full card */
-#stack .tc { background: rgba(27, 31, 36, 0.95); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55); padding: 7px 9px 8px; }
+#stack .tc { background: color-mix(in srgb, var(--slab) 96%, transparent); box-shadow: inset 0 0 0 1px var(--line2), 0 4px 14px rgba(0, 0, 0, 0.55); padding: 9px 11px 10px; }
 #stack .tc-item, #stack .tc-price { font-size: 15px; }
 #stack .tc-btns button { padding: 3px 7px; font-size: 12px; }
 #stack .tc-player { cursor: pointer; }
-.ov-more { margin: 0; padding: 2px 8px; font-size: 11px; color: var(--bone); background: rgba(27, 31, 36, 0.9); border-radius: 4px; text-align: center; }
+.ov-more { margin: 0; padding: 3px 8px; font-size: 11px; color: var(--bone); background: color-mix(in srgb, var(--slab) 90%, transparent); border-radius: 7px; text-align: center; }
