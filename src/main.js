@@ -59,9 +59,10 @@ const DEFAULT_CONFIG = {
   // line per press); hotkeys.dismiss removes the oldest offer.
   trade: {
     enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
-    // The keys after layout are unset until you choose them. invite, trade, busy, still and
-    // whisper act on the newest buyer; hideout and remaining type /hideout and /remaining.
-    hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: '', remaining: '' },
+    // invite, trade, busy, still and whisper act on the newest buyer and are unset until you
+    // choose them. hideout and remaining type /hideout and /remaining; they are only held while
+    // the game is in front, so F5 still refreshes a browser page.
+    hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' },
     // Steps taken without a key press once the game reports "Trade accepted", and around it.
     // All off unless switched on: GGG's rule is one action per key press or click.
     auto: { thankSold: false, kickSold: false, thankBought: false, leaveBought: false, homeBought: false, joinHideout: false, ignoreSold: false, closeBoughtSec: 0 },
@@ -140,6 +141,14 @@ function loadConfig() {
     inventory: { ...DEFAULT_CONFIG.inventory, ...(saved.inventory || {}) },
     trade: mergeTrade(DEFAULT_CONFIG.trade, saved.trade),
   };
+  // The hideout key used to be unset. Settings saved back then hold an empty key, which would
+  // hide the F5 default, so it is filled in once. Clearing the key afterwards sticks.
+  if (!saved.hideoutKeyGiven) {
+    const hk = config.trade.hotkeys;
+    const used = [...Object.values(config.hotkeys), ...Object.values(hk)].some((k) => String(k || '').trim().toUpperCase() === 'F5');
+    if (!hk.hideout && !used) config.trade = { ...config.trade, hotkeys: { ...hk, hideout: 'F5' } };
+    config.hideoutKeyGiven = true;
+  }
   if (!Array.isArray(config.strategies) || !config.strategies.length) config.strategies = DEFAULT_CONFIG.strategies;
   if (!config.strategies.some((x) => x.id === config.activeStrategy)) config.activeStrategy = config.strategies[0].id;
   // Keep the user's rule choices but pick up rules added in newer versions.
@@ -722,8 +731,11 @@ function showToast(message) {
   toast.show(overlayBounds(overlay.display(), 112, toastPlacement()), message, message.bad ? 6000 : 2500);
 }
 
+let gameKeysOn = false; // the hideout and remaining keys are held right now
+let gameKeysTaken = []; // those of them another app already holds
 function registerHotkeys() {
   globalShortcut.unregisterAll();
+  gameKeysOn = false;
   status.hotkeys = { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false, layout: false };
   const reg = (key, accel, fn) => {
     if (!accel) return;
@@ -739,9 +751,18 @@ function registerHotkeys() {
     for (const action of ['invite', 'trade', 'busy', 'still', 'whisper']) {
       extra(hk[action], () => { const o = book.latestIncoming(); if (o) tradeDo(o.id, action).then(changed); else { say('No buyer to act on.'); changed(); } });
     }
-    extra(hk.hideout, () => sendChat('/hideout').then(changed));
-    extra(hk.remaining, () => sendChat('/remaining').then(changed));
-    status.hotkeys.tradeTaken = taken;
+    // Keys that only mean something in the game are held only while the game is in front.
+    // Anywhere else they stay with the program you are in (F5 refreshes the browser).
+    gameKeysOn = watch.gameInFront();
+    const mine = [hk.hideout, hk.remaining].filter(Boolean);
+    if (gameKeysOn) {
+      const before = taken.length;
+      extra(hk.hideout, () => sendChat('/hideout').then(changed));
+      extra(hk.remaining, () => sendChat('/remaining').then(changed));
+      gameKeysTaken = taken.splice(before);
+    }
+    gameKeysTaken = gameKeysTaken.filter((k) => mine.includes(k)); // remembered while you are away from the game
+    status.hotkeys.tradeTaken = [...taken, ...gameKeysTaken];
     reg('tradeDismiss', config.trade.hotkeys.dismiss, () => { const o = book.offers[0]; if (o) { book.remove(o.id); saveTradesSoon(); changed(); } });
   }
 }
@@ -1134,6 +1155,7 @@ app.whenReady().then(() => {
   overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
   toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
   watch.on('change', syncOverlay);
+  watch.on('change', () => { if (watch.gameInFront() !== gameKeysOn) { registerHotkeys(); push(); } });
   watch.start();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
   if (cached.size > 1) { setPrices(cached); syncArt(); }
