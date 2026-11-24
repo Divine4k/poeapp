@@ -291,3 +291,36 @@ test('learning by itself: clear reads through downloaded art are saved as they l
   // Every unclear slot keeps its closest names for the hover text.
   assert.ok(first.cells.filter((c) => c.status === 'unknown').every((c) => Array.isArray(c.near)));
 });
+
+test('shared list stays bounded: one picture per item from apps, a few from people', () => {
+  const { MAX_PER_NAME } = require('../src/shared');
+  const { isEmptyCell } = require('../src/core/inventory/grid');
+  const prints = map.filter((rgb) => !isEmptyCell(rgb)).map((rgb) => fingerprint(rgb));
+  const list = [];
+  assert.equal(mergeItems(list, [{ name: 'A', print: prints[0], auto: true }]), 1);
+  assert.equal(mergeItems(list, [{ name: 'A', print: prints[1], auto: true }]), 0); // an app adds nothing once the item is there
+  assert.equal(mergeItems(list, [{ name: 'A', print: prints[1] }, { name: 'A', print: prints[2] }, { name: 'A', print: prints[3] }]), MAX_PER_NAME - 1);
+  assert.equal(mergeItems(list, [{ name: 'B', print: prints[0] }]), 0); // the same picture is never added twice
+  const s = new SharedItems({ fetchImpl: async () => ({ ok: false, status: 500 }), token: 't' });
+  s.items = list;
+  s.queue('A', prints[5], { auto: true });
+  s.queue('C', prints[6], { auto: true });
+  s.queue('C', prints[6], { auto: true });
+  assert.deepEqual(s.pending.map((p) => p.name), ['C']);
+});
+
+test('ledger: a corrected name moves what was counted, so nothing is counted twice', () => {
+  const { LootLedger } = require('../src/core/inventory/ledger');
+  const L = new LootLedger();
+  const read = (o) => L.reading({ counts: new Map(Object.entries(o)) });
+  read({ 'Portal Scroll': 10, 'Eldritch Chaos Orb': 2 });         // hideout: 2 chaos carried in, read under the wrong name
+  L.enterMap();
+  assert.deepEqual(read({ 'Portal Scroll': 10, 'Eldritch Chaos Orb': 10 }), [{ name: 'Eldritch Chaos Orb', qty: 8 }]);
+  // You correct it: 2 were carried in, 8 were counted as loot.
+  L.rename('Eldritch Chaos Orb', 'Chaos Orb', { carried: 2, gained: 8 });
+  assert.deepEqual(read({ 'Portal Scroll': 10, 'Chaos Orb': 10 }), []);                       // same stack, new name: no new loot
+  assert.deepEqual(read({ 'Portal Scroll': 10, 'Chaos Orb': 13 }), [{ name: 'Chaos Orb', qty: 3 }]);
+  // An item that had no name: 4 of it were carried in, then it is named.
+  L.rename(null, 'Ritual Thread', { carried: 4 });
+  assert.deepEqual(read({ 'Portal Scroll': 10, 'Chaos Orb': 13, 'Ritual Thread': 6 }), [{ name: 'Ritual Thread', qty: 2 }]);
+});

@@ -109,7 +109,9 @@ function recheckCells(cells, identify, canChange = () => true) {
   for (const c of cells) {
     if (!['item', 'remembered', 'unknown'].includes(c.status) || !(c.qty > 0)) continue;
     if (c.source === 'pinned' || c.source === 'map') continue;
-    if (c.name && !canChange(c.name)) continue;
+    // Slots saved since 0.15 say how they were read; for older ones the name has to be one a
+    // picture can lead to.
+    if (c.name && !c.source && !canChange(c.name)) continue;
     const hit = identify(c);
     if (!hit || !hit.name || hit.name === c.name) continue;
     const loot = c.carried ? 0 : Math.max(0, c.qty - (c.carriedQty || 0));

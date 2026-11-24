@@ -195,6 +195,11 @@ function buildState() {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
     inventoryRev: lastInventory.rev,
     unknown: backlog.items.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses, at: u.at, here: !!u.here })),
+    // Slots of the latest reading where look-alikes could not be told apart, one per item.
+    doubts: [...new Map(lastInventory.cells.filter((c) => c.how === 'doubt' && c.name).map((c) => [c.name, {
+      id: `inv:${c.cell}`, name: c.name, qty: c.qty, image: c.image,
+      options: [...new Set((c.near || []).map((n) => n.name).filter((n) => n !== c.name))].slice(0, 2),
+    }])).values()],
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
     itemsRev: `${itemsRev}:${learned.length}:${index.shared.length}:${index.art.length}`,
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
@@ -378,8 +383,8 @@ function cellsOfPicture(dataUrl) {
 
 // Looks at the kept pictures of every map in the open session again, with the item pictures
 // and names known now, and corrects the loot that was counted under a wrong name or not at all.
-function recheckMaps() {
-  if (!snapshots) return;
+function recheckMaps(quiet = false) {
+  if (!snapshots) return { slots: 0, maps: 0 };
   let maps = 0, slots = 0;
   const moved = new Map(); // "from -> to" -> quantity
   for (const run of session.runs) {
@@ -406,6 +411,8 @@ function recheckMaps() {
       for (const ch of changes) {
         touched = true; slots++;
         const n = session.moveLoot(run.id, ch.from, ch.to, ch.qty);
+        // The map being run: what was counted under the old name must not be counted again under the new.
+        if (n && run.id === session.currentId && (ledger.inMap || ledger.pendingArrival)) ledger.rename(ch.from, ch.to, { gained: n, cell: ch.cell });
         if (n) { const key = `${ch.from || 'not recognised'} → ${ch.to}`; moved.set(key, (moved.get(key) || 0) + n); }
       }
     }
@@ -415,9 +422,44 @@ function recheckMaps() {
       session.markSnapshot(run.id);
     }
   }
-  if (!slots) { say('Checked the maps of this session again: nothing to correct.'); return; }
+  if (quiet) return { slots, maps };
+  if (!slots) { say('Checked the maps of this session again: nothing to correct.'); return { slots, maps }; }
   const list = [...moved].map(([k, n]) => `${k} ×${n}`).join(', ');
   say(`Corrected ${slots} ${slots === 1 ? 'slot' : 'slots'} in ${maps} ${maps === 1 ? 'map' : 'maps'}${list ? `: ${list}` : ''}.`);
+  return { slots, maps };
+}
+
+// "This picture is this item", said by you. The one place a correction goes through, wherever
+// it was made: a picture saved under another name is renamed, a new one is added, the list of
+// what you carried into the map follows, and the shared list is corrected or extended.
+function teach(typed, print, image = null) {
+  const entry = prices.get(typed);
+  const name = entry ? entry.name : String(typed || '').trim();
+  const same = (l) => { try { return similarity(decodePrint(l.print), print) > 0.95; } catch (_) { return false; } };
+  const mine = learned.filter(same);
+  const was = [...new Set(mine.filter((l) => l.name !== name).map((l) => l.name || 'ignored'))];
+  for (const l of mine) { l.name = name; delete l.auto; if (image && !l.image) l.image = image; }
+  if (!mine.length) learned.push(image ? { name, print: encodePrint(print), image } : { name, print: encodePrint(print) });
+  relearn();
+  if (backlog.resolve(print)) saveBacklog();
+  // What went into the map with you under the old name (or without one) is not loot under the new.
+  if (carriedIn) {
+    for (const c of carriedIn.cells) {
+      if (!c.print || c.name === name || similarity(c.print, print) <= 0.9) continue;
+      ledger.rename(c.name, name, { carried: c.qty || 1 });
+      c.name = name;
+    }
+  }
+  if (shared) {
+    const sync = async () => {
+      if (shared.token) await shared.correct(print, name);
+      shared.queue(name, print);
+      await shared.flush();
+      index.setShared(shared.items); itemsRev++; push();
+    };
+    sync().catch((e) => console.error('shared update failed', e.message));
+  }
+  return { name, entry, was };
 }
 
 // A kept slot picture (data URL, 52x52) back as RGB pixels, or null.
@@ -501,9 +543,41 @@ function autoLearn(cells) {
     if (added >= 12) break;
     learned.push({ name: c.name, print: encodePrint(c.print), image: thumbnail(c.rgb), auto: true });
     index.addLearned(c.name, c.print, { sharp: sharpPrint(c.rgb), auto: true });
+    // Offered to the shared list too, for items it has no picture of yet (needs the token).
+    if (shared && shared.token) shared.queue(c.name, c.print, { auto: true });
     added++;
   }
-  if (added) { itemsRev++; writeJson('learned.json', learned); }
+  if (added) {
+    itemsRev++; writeJson('learned.json', learned);
+    // Uploads are gathered for a minute, so a full inventory becomes one change to the list.
+    if (shared && shared.token && shared.pending.length && !autoFlush) {
+      autoFlush = setTimeout(async () => { autoFlush = null; await shared.flush(); index.setShared(shared.items); itemsRev++; push(); }, 60000);
+    }
+  }
+}
+let autoFlush = null;
+
+// Tells you in game, once per item, when a reading needs you: a stack that was not recognised,
+// or look-alikes that could not be told apart.
+const alerted = { unknown: new Set(), doubt: new Set() };
+function alertReading(cells) {
+  if (config.inventory.alerts === false) return;
+  const fresh = backlog.items.filter((u) => u.here && !alerted.unknown.has(u.id));
+  const doubts = cells.filter((c) => c.how === 'doubt' && c.name && !alerted.doubt.has(c.name));
+  if (!fresh.length && !doubts.length) return;
+  for (const u of fresh) alerted.unknown.add(u.id);
+  for (const c of doubts) alerted.doubt.add(c.name);
+  let title, detail;
+  if (fresh.length) {
+    const guess = fresh.length === 1 && fresh[0].guesses && fresh[0].guesses[0];
+    title = fresh.length === 1 ? 'An item was not recognised' : `${fresh.length} items were not recognised`;
+    detail = `${guess ? `It looks closest to ${guess.name}. ` : ''}Not counted until named: one click on the Mapping page of Map Companion.`;
+  } else {
+    const other = (doubts[0].near || []).find((n) => n.name !== doubts[0].name);
+    title = `Not sure about ${doubts[0].name}`;
+    detail = `${other ? `It could also be ${other.name}. ` : ''}Counted as ${doubts[0].name} for now. Confirm it on the Mapping page of Map Companion.`;
+  }
+  showToast({ title, detail, bad: true }, true);
 }
 
 // Keeps this reading as the picture of what the current map brought in.
@@ -552,6 +626,7 @@ async function readInventory() {
     settlePendingNames();
     if (config.inventory.autoLearn !== false) autoLearn(result.cells);
     updateUnknown(result.unknown);
+    try { alertReading(result.cells); } catch (e) { console.error('alert failed', e.message); }
     const before = new Map(lastInventory.cells.map((c) => [c.cell, c]));
     lastInventory = {
       rev: lastInventory.rev + 1, at: Date.now(),
@@ -989,8 +1064,9 @@ function showCheckToast(started) {
   if (tradeCheck && tradeCheck.at >= started && tradeCheck.inGame) return; // its own window is on screen
   showToast(checkMessage({ mapCheck, priceCheck, tradeCheck, notice, divine: prices.divine }, started));
 }
-function showToast(message) {
-  if (!toast || config.checkToast === false || !message) return;
+// always: shown even when the message after the check key is turned off (reading alerts have their own switch).
+function showToast(message, always = false) {
+  if (!toast || (!always && config.checkToast === false) || !message) return;
   if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
   // Tall enough for a two-line headline and three lines of small print; a problem stays longer.
   toast.show(overlayBounds(overlay.display(), 112, toastPlacement()), message, message.bad ? 6000 : 2500);
@@ -1303,7 +1379,10 @@ const actions = {
     const name = String(a.name || '').trim();
     if (!u) { say('That item is no longer in the list.', true); return; }
     if (!name) { say('Type the item name first, or pick one of the suggestions.', true); return; }
-    learnPrint(name, u.print, u.image);
+    const t = teach(name, u.print, u.image);
+    const fixed = recheckMaps(true);
+    const also = fixed.slots ? ` Added it to ${fixed.maps} ${fixed.maps === 1 ? 'map' : 'maps'} of this session where it had not been counted.` : '';
+    say(t.entry ? `Saved: ${t.name}.${also}` : `Saved as "${t.name}", but no price is known under that name, so it counts as 0c. Check the spelling if that is wrong.`, !t.entry);
   },
   ignore: (a) => {
     const u = backlog.get(a.id);
@@ -1348,6 +1427,37 @@ const actions = {
     relearn();
     say(entry ? `That picture now counts as ${name}.` : `Saved as "${name}", but no price is known under that name, so it counts as 0c.`, !entry);
     if (shared && shared.token && await shared.correct(print, name)) { index.setShared(shared.items); itemsRev++; say(`That picture now counts as ${name}, here and in the shared list for everyone.`); }
+  },
+  // A slot was read wrong, or not at all, and you say what it is. id: "inv:<slot>" for the
+  // inventory as last read, "snap:<trip>:<slot>" with runId for a map's kept picture.
+  fixSlot: (a) => {
+    const [where, x, y] = String(a.id || '').split(':');
+    const typed = String(a.name || '').trim();
+    if (!typed) { say('Type the item name first, or pick one of the suggestions.', true); return; }
+    let print = null, image = null, live = null;
+    if (where === 'inv') {
+      live = lastInventory.cells.find((c) => c.cell === Number(x));
+      if (live) { print = live.print; image = live.image; }
+    } else if (where === 'snap' && snapshots) {
+      const trip = snapshots.get(String(a.runId || '')).trips.find((t) => t.trip === Number(x));
+      const c = trip && trip.cells.find((q) => q.cell === Number(y));
+      if (c) {
+        let cut = null;
+        try { cut = cellsOfPicture(trip.image); } catch (_) { /* no picture */ }
+        const rgb = cut ? cut(c.cell) : null;
+        try { print = c.packed ? unpackPrint(c.packed) : null; } catch (_) { /* fall back to the picture */ }
+        print = print || (rgb ? fingerprint(rgb) : null);
+        image = rgb ? thumbnail(rgb) : null;
+      }
+    }
+    if (!print) { say('That slot is no longer there. Read the inventory again and try once more.', true); return; }
+    const t = teach(typed, print, image);
+    const fixed = recheckMaps(true);
+    if (live) {
+      lastInventory = { ...lastInventory, rev: lastInventory.rev + 1, cells: lastInventory.cells.map((c) => (c.print && similarity(c.print, print) > 0.95 ? { ...c, name: t.name, status: 'item', source: 'learned', how: null, score: 100 } : c)) };
+    }
+    const also = fixed.slots ? ` Corrected ${fixed.slots} ${fixed.slots === 1 ? 'slot' : 'slots'} in ${fixed.maps} ${fixed.maps === 1 ? 'map' : 'maps'} of this session.` : '';
+    say(`Fixed: that picture counts as ${t.name} from now on.${also}${t.entry ? '' : ' No price is known under that name, so it counts as 0c.'}`, !t.entry);
   },
   forgetItem: (a) => {
     const [list, n] = String(a.id || '').split(':');

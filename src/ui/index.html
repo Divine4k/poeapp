@@ -52,6 +52,7 @@
         <button type="button" id="btn-run-toggle">Start a map manually</button>
       </div>
     </div>
+    <div id="attention" hidden></div>
     <div class="now-top">
       <div id="now-head"></div>
       <div id="now-snap"></div>
@@ -251,6 +252,7 @@
       <label>Key that opens your inventory in game <input name="invKey" placeholder="Tab"></label>
       <label class="check"><input type="checkbox" name="onKey"> Read the inventory once each time I press that key</label>
       <label class="check"><input type="checkbox" name="checkToast"> After the check key, show in game for a moment what was read (when off, the app switches to the Map check or Prices page instead)</label>
+      <label class="check"><input type="checkbox" name="invAlerts"> Tell me in game when an item is not recognised or a read is uncertain</label>
       <label class="check"><input type="checkbox" name="autoCopy"> The check key copies the hovered item for me (sends one Ctrl+Alt+C to the game per press)</label>
       <label class="check"><input type="checkbox" name="timed"> Also check by itself (needed to count loot when you open the stash with a click)</label>
       <label>Seconds between checks <input name="intervalSec" type="number" min="0.5" max="30" step="0.5"></label>
@@ -295,6 +297,20 @@
     <button type="button" id="btn-logcheck-copy">Copy this to send to someone</button>
     <button type="button" class="primary" id="btn-logcheck-close">Close</button>
   </div>
+</dialog>
+
+<dialog id="fix">
+  <form method="dialog" id="fix-form" autocomplete="off">
+    <h2>What is this item?</h2>
+    <div class="fix-top"><div class="fix-pic" id="fix-pic"></div><p id="fix-now"></p></div>
+    <div class="chips" id="fix-options"></div>
+    <label class="wide">Or type its name <input id="fix-name" list="price-names" placeholder="Item name"></label>
+    <p class="fine">The app remembers the picture under the name you give. Maps of this session where it was read wrong are corrected too.</p>
+    <div class="dialog-actions">
+      <span></span>
+      <span class="row"><button type="button" id="fix-cancel">Cancel</button><button type="submit" class="primary" value="save">Save</button></span>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="strategy-dialog">

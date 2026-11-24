@@ -93,6 +93,7 @@
     snaps.set(key, null);
     api.runSnapshot(run.id).then((d) => {
       if (snaps.size > 80) snaps.clear();
+      d.runId = run.id;
       snaps.set(key, d); snaps.set(`last:${run.id}`, d);
       redraw();
     });
@@ -129,7 +130,8 @@
       let cells = '';
       for (let k = 0; k < data.cols * data.rows; k++) {
         const c = by.get(k);
-        cells += c ? `<i class="${esc(c.status)}${c.carried ? ' carried' : ''}" title="${esc(snapTip(c, divine))}"></i>` : '<i></i>';
+        const fixable = c && c.qty > 0 && ['item', 'remembered', 'unknown'].includes(c.status) && c.source !== 'pinned' && c.source !== 'map' && data.runId;
+        cells += c ? `<i class="${esc(c.status)}${c.carried ? ' carried' : ''}${fixable ? ' fixable' : ''}"${fixable ? ` data-fix="snap:${t.trip}:${c.cell}" data-run="${esc(data.runId)}"` : ''} title="${esc(snapTip(c, divine))}${fixable ? ' Click to correct.' : ''}"></i>` : '<i></i>';
       }
       const brought = t.cells.some((c) => c.carried);
       const which = total > 1 ? `Inventory ${n} of ${total}${compact && n === total ? ' (latest)' : ''}, ` : 'Inventory ';
@@ -143,6 +145,79 @@
         <figcaption>${caption}</figcaption></figure>`;
     }).join('');
   }
+
+  // ---- things that need you: shown on the Mapping page until dealt with ---------------
+  // Each card is one click: pick what the item is. Not-recognised stacks are not counted until
+  // named; uncertain ones are counted as the cheaper look-alike until confirmed.
+  function renderAttention() {
+    const box = $('attention');
+    const un = (state.unknown || []).filter((u) => u.here).slice(0, 4), doubts = (state.doubts || []).slice(0, 3);
+    const waiting = (state.unknown || []).length - un.length;
+    const key = JSON.stringify([un.map((u) => [u.id, u.qty, u.guesses.map((g) => g.name)]), doubts.map((d) => [d.id, d.name, d.options]), waiting]);
+    if (box.dataset.key === key) return;
+    if (box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.value) return;
+    box.dataset.key = key;
+    box.hidden = !un.length && !doubts.length;
+    if (box.hidden) { box.innerHTML = ''; return; }
+    const n = un.length + doubts.length;
+    const cards = un.map((u) => `<li>
+        <img src="${esc(u.image)}" alt="">
+        <div><p><b>Not recognised</b>, stack of ${u.qty}. Not counted until you say what it is:</p>
+        <div class="chips">${u.guesses.map((g) => `<button type="button" data-act="learn" data-id="${u.id}" data-name="${esc(g.name)}" title="${g.score}% alike">${esc(g.name)}</button>`).join('')}
+          <button type="button" class="other" data-fix="unknown:${u.id}">Something else…</button>
+          <button type="button" class="link" data-act="ignore" data-id="${u.id}" title="Never count or ask about this item again">Ignore it</button></div></div></li>`).join('')
+      + doubts.map((d) => `<li>
+        <img src="${esc(d.image)}" alt="">
+        <div><p><b>Not sure</b>: counted as ${esc(d.name)}${d.qty > 1 ? ` ×${d.qty}` : ''}, but it looks much like ${esc(d.options.join(' or ') || 'another item')}. Which is it?</p>
+        <div class="chips">${[d.name, ...d.options].map((name) => `<button type="button" data-act="fixSlot" data-id="${esc(d.id)}" data-name="${esc(name)}">${esc(name)}</button>`).join('')}
+          <button type="button" class="other" data-fix="${esc(d.id)}">Something else…</button></div></div></li>`).join('');
+    box.innerHTML = `<h2>${n === 1 ? 'One item needs a look' : `${n} items need a look`}</h2><ul>${cards}</ul>
+      ${waiting > 0 ? `<p class="more">${waiting} more from earlier ${waiting === 1 ? 'is' : 'are'} waiting on the <button type="button" class="link" data-tab="items">Items page</button>.</p>` : ''}`;
+  }
+
+  // The dialog behind every "click to correct": a slot of the inventory, of a map's picture, or
+  // a card above. target: what fixSlot or learn needs to find the picture again.
+  let fixTarget = null;
+  function openFix(id, runId) {
+    const [where, x, y] = id.split(':');
+    let pic = '', now = '', options = [];
+    if (where === 'inv') {
+      const c = invCells.get(Number(x)) || (state.doubts || []).find((d) => d.id === id);
+      if (!c) return;
+      pic = `<img src="${esc(c.image)}" alt="">`;
+      now = c.name ? `The app reads this as <b>${esc(c.name)}</b>${c.qty > 1 ? ` ×${c.qty}` : ''}.` : `The app does not recognise this stack of ${c.qty}.`;
+      options = (c.near || []).map((n) => n.name).concat(c.options || [], c.guess ? [c.guess.name] : []);
+      if (c.name) options.unshift(c.name);
+      fixTarget = { type: 'fixSlot', id };
+    } else if (where === 'snap') {
+      const data = snaps.get(`last:${runId}`), t = data && data.trips.find((q) => String(q.trip) === x), c = t && t.cells.find((q) => String(q.cell) === y);
+      if (!c) return;
+      const col = c.cell % data.cols, row = Math.floor(c.cell / data.cols);
+      pic = `<div class="crop"><img src="${esc(t.image)}" alt="" class="c${col} r${row}"></div>`;
+      now = c.name ? `The app read this as <b>${esc(c.name)}</b>${c.qty > 1 ? ` ×${c.qty}` : ''} in that map.` : `The app did not recognise this stack of ${c.qty} in that map.`;
+      options = (c.near || []).map((n) => n.name);
+      if (c.name) options.unshift(c.name);
+      fixTarget = { type: 'fixSlot', id, runId };
+    } else {
+      const u = (state.unknown || []).find((q) => String(q.id) === x);
+      if (!u) return;
+      pic = `<img src="${esc(u.image)}" alt="">`;
+      now = `The app does not recognise this stack of ${u.qty}.`;
+      options = u.guesses.map((g) => g.name);
+      fixTarget = { type: 'learn', id: u.id };
+    }
+    options = [...new Set(options)].slice(0, 4);
+    $('fix-pic').innerHTML = pic;
+    $('fix-now').innerHTML = now;
+    $('fix-options').innerHTML = options.map((name) => `<button type="button" data-fix-name="${esc(name)}">${esc(name)}</button>`).join('');
+    $('fix-name').value = '';
+    $('fix').showModal();
+    $('fix-name').focus();
+  }
+  const sendFix = (name) => { if (fixTarget && name) act({ ...fixTarget, name }); fixTarget = null; $('fix').close(); };
+  $('fix-form').addEventListener('submit', (e) => { e.preventDefault(); const name = $('fix-name').value.trim(); if (name) sendFix(name); });
+  $('fix-cancel').addEventListener('click', () => { fixTarget = null; $('fix').close(); });
+  $('fix-options').addEventListener('click', (e) => { const b = e.target.closest('[data-fix-name]'); if (b) sendFix(b.dataset.fixName); });
 
   // ---- current map ------------------------------------------------------------
   function renderNow() {
@@ -596,6 +671,7 @@
 
   // ---- inventory tab ------------------------------------------------------------------
   let invRev = -1;
+  const invCells = new Map(); // slot -> what the Inventory page last showed there, for the fix dialog
   async function renderInventory(force) {
     if ($('tab-inventory').hidden) return;
     if (!force && state.inventoryRev === invRev) return;
@@ -618,7 +694,9 @@
     let grid = '';
     for (let k = 0; k < inv.cols * inv.rows; k++) {
       const c = byCell.get(k);
-      grid += c ? `<div class="slot ${c.status}" title="${esc(describe(c))}"><img src="${esc(c.image)}" alt="${esc(c.name || c.status)}"></div>` : '<div class="slot empty"></div>';
+      const fixable = c && c.qty > 0 && ['item', 'remembered', 'unknown'].includes(c.status) && c.source !== 'pinned' && c.source !== 'map';
+      grid += c ? `<div class="slot ${c.status}${fixable ? ' fixable' : ''}"${fixable ? ` data-fix="inv:${c.cell}"` : ''} title="${esc(describe(c))}${fixable ? ' Click to correct.' : ''}"><img src="${esc(c.image)}" alt="${esc(c.name || c.status)}"></div>` : '<div class="slot empty"></div>';
+      if (c) invCells.set(c.cell, c);
     }
     const totals = new Map();
     let sum = 0, unpriced = 0;
@@ -788,7 +866,7 @@
   function render() {
     if (!state) return;
     renderTrade();
-    renderStatus(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false);
+    renderStatus(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false);
   }
 
   function setState(s) {
@@ -877,6 +955,8 @@
   document.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-trade]');
     if (tb) { act(tb.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
+    const fx = e.target.closest('[data-fix]');
+    if (fx) { e.stopPropagation(); openFix(fx.dataset.fix, fx.dataset.run); return; }
     const rn = e.target.closest('[data-rename]');
     if (rn) { renaming = rn.dataset.rename || null; document.activeElement.blur(); renderKnown(); return; }
     const b = e.target.closest('[data-act]');
@@ -1152,6 +1232,7 @@
     el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.inventory.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
     el.invKey.value = c.inventory.key || 'Tab';
     el.onKey.checked = !!c.inventory.onKey;
+    el.invAlerts.checked = c.inventory.alerts !== false;
     el.timed.checked = !!c.inventory.timed;
     el.intervalSec.value = (c.inventory.intervalMs || 1000) / 1000;
     $('rules').innerHTML = c.mapRules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled ? 'checked' : ''}> ${esc(r.label)}</label>`).join('');
@@ -1179,6 +1260,7 @@
         displayId: el.displayId.value || null,
         key: el.invKey.value.trim() || 'Tab',
         onKey: el.onKey.checked,
+        alerts: el.invAlerts.checked,
         autoCopy: el.autoCopy.checked,
         timed: el.timed.checked,
         intervalMs: Math.max(500, Math.round((Number(el.intervalSec.value) || 1) * 1000)),

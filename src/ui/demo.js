@@ -37,7 +37,7 @@
       update: { current: { sha: 'abc1234def', message: 'Read loot from the inventory' }, latest: { sha: 'fff9999', message: 'Fix poe.ninja item list parsing' }, available: true, checking: false, applying: false, step: '', error: null, checkedAt: now },
     },
     leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }],
-    learned: ['Alchemy Shard', 'Chaos Orb', 'Legion Thread', '(ignored items)'], itemsRev: '1',
+    learned: ['Alchemy Shard', 'Chaos Orb', 'Legion Thread', '(ignored items)'], itemsRev: '1', doubts: [{ id: 'inv:3', name: 'Chaos Orb', qty: 8, image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==', options: ['Eldritch Chaos Orb'] }],
     notice: { text: 'Saved: Chaos Orb.', bad: false, at: now },
     unknown: [{ id: 1, qty: 3, at: now, here: true, guesses: [{ name: 'Vaal Orb', score: 78 }, { name: 'Orb of Fusing', score: 61 }, { name: 'Exalted Orb', score: 55 }], image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
     priceCheck: null,

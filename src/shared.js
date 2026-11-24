@@ -9,12 +9,23 @@ const BRANCH = 'data';
 const FILE = 'items.json';
 const URL_BASE = `https://api.github.com/repos/${REPO}/contents/${FILE}`;
 
+// The list cannot grow without end: an item always looks the same, so a few pictures per item
+// are all there is to know. With every stackable item of the game in it, at these limits, the
+// file stays under about 3 MB.
+const MAX_PER_NAME = 3;     // pictures of one item, named by players
+const MAX_ITEMS = 4000;     // entries in all
+
 // Adds entries to a list unless the same picture is already there. Returns how many were added.
+// An entry marked auto (learned by an app by itself, not named by a person) is only added when
+// the list has no picture of that item yet.
 function mergeItems(list, additions) {
   let added = 0;
   for (const a of additions) {
     if (!a || !a.name || !a.print) continue;
+    if (list.length >= MAX_ITEMS) break;
     if (list.some((e) => similarity(e.print, a.print) > 0.97)) continue;
+    const same = list.filter((e) => e.name === a.name).length;
+    if (same >= (a.auto ? 1 : MAX_PER_NAME)) continue;
     list.push({ name: a.name, print: a.print });
     added++;
   }
@@ -69,7 +80,12 @@ class SharedItems {
     return this.items;
   }
 
-  queue(name, print) { this.pending.push({ name, print }); }
+  // auto: learned by the app itself. Those are only worth uploading for items the list lacks.
+  queue(name, print, { auto = false } = {}) {
+    if (auto && this.items.some((e) => e.name === name)) return;
+    if (this.pending.some((p) => similarity(p.print, print) > 0.97)) return;
+    this.pending.push({ name, print, auto });
+  }
 
   // Uploads one new file to the data branch (used for troubleshooting reports). Needs the token.
   async uploadFile(repoPath, buffer, message) {
@@ -147,4 +163,4 @@ class SharedItems {
   }
 }
 
-module.exports = { SharedItems, mergeItems, parse, serialise };
+module.exports = { SharedItems, mergeItems, parse, serialise, MAX_PER_NAME, MAX_ITEMS };

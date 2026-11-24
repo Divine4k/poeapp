@@ -447,3 +447,43 @@ fieldset label { margin-bottom: 8px; }
 .known .acts { display: flex; gap: 14px; }
 .known .inline-form { grid-column: 2 / 4; display: flex; gap: 8px; align-items: center; }
 .known .inline-form input { flex: 1 1 auto; min-width: 0; }
+
+/* Mapping page: readings that need you */
+#attention { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--gold); border-radius: 6px; background: rgba(209, 173, 98, 0.06); }
+#attention h2 { margin: 0 0 8px; font-size: 15px; color: var(--gold); }
+#attention ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+#attention li { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: start; }
+#attention img { width: 44px; height: 44px; border: 1px solid var(--seam); }
+#attention p { margin: 0 0 6px; font-size: 13px; }
+#attention .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+#attention .chips .other { border-style: dashed; }
+#attention .more { margin: 10px 0 0; color: var(--ash); }
+/* Slots that can be corrected with a click */
+.fixable { cursor: pointer; }
+.snap-cells i.fixable:hover, .slot.fixable:hover { outline: 2px solid var(--bone); outline-offset: -2px; }
+#fix { width: min(460px, 92vw); }
+.fix-top { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; margin-bottom: 12px; }
+.fix-top p { margin: 0; }
+.fix-pic img { width: 64px; height: 64px; border: 1px solid var(--seam); display: block; }
+.fix-pic .crop { width: 64px; height: 64px; overflow: hidden; border: 1px solid var(--seam); position: relative; }
+.fix-pic .crop img { position: absolute; width: 768px; height: 320px; border: 0; max-width: none; }
+#fix .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+#fix label.wide { display: block; }
+#fix label.wide input { width: 100%; margin-top: 4px; }
+.fix-pic .crop img.c0 { left: 0px; }
+.fix-pic .crop img.c1 { left: -64px; }
+.fix-pic .crop img.c2 { left: -128px; }
+.fix-pic .crop img.c3 { left: -192px; }
+.fix-pic .crop img.c4 { left: -256px; }
+.fix-pic .crop img.c5 { left: -320px; }
+.fix-pic .crop img.c6 { left: -384px; }
+.fix-pic .crop img.c7 { left: -448px; }
+.fix-pic .crop img.c8 { left: -512px; }
+.fix-pic .crop img.c9 { left: -576px; }
+.fix-pic .crop img.c10 { left: -640px; }
+.fix-pic .crop img.c11 { left: -704px; }
+.fix-pic .crop img.r0 { top: 0px; }
+.fix-pic .crop img.r1 { top: -64px; }
+.fix-pic .crop img.r2 { top: -128px; }
+.fix-pic .crop img.r3 { top: -192px; }
+.fix-pic .crop img.r4 { top: -256px; }

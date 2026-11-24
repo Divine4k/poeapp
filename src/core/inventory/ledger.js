@@ -74,6 +74,23 @@ class LootLedger {
     return gains;
   }
 
+  // An item turned out to be something else (a wrong name was corrected, or an item that was not
+  // recognised got its name). Moves what was already counted, so the next reading does not
+  // count it a second time. from: the old name, or null when it had none.
+  // carried: how many of them were in the inventory before the map. gained: how many were
+  // already counted as loot under the old name, or have just been added by hand under the new.
+  rename(from, to, { carried = 0, gained = 0, cell = null } = {}) {
+    const move = (map, n) => {
+      if (!map || !(n > 0)) return;
+      if (from) { const left = (map.get(from) || 0) - n; if (left > 0) map.set(from, left); else map.delete(from); }
+      map.set(to, (map.get(to) || 0) + n);
+    };
+    move(this.baseline, carried);
+    move(this.credited, gained);
+    move(this.hideout, carried + gained);
+    if (cell !== null) { const a = this.arrival.get(cell); if (a && (a.name === from || !from)) a.name = to; }
+  }
+
   toJSON() {
     const list = (m) => (m ? [...m] : null);
     return {
