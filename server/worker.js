@@ -34,6 +34,16 @@ const ROLES = ['', 'moderator', 'admin'];
 const roleOf = (u) => (u.admin ? 'admin' : u.role === 'moderator' ? 'moderator' : '');
 const REPO = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 const GH_TOKEN = /^[A-Za-z0-9_]{20,255}$/;
+// Copying a token can bring along spaces, line breaks or invisible characters (zero-width
+// spaces, a byte order mark). A token never holds any of those, so they are dropped.
+const cleanToken = (t) => String(t || '').replace(/[\s\u200B-\u200D\u2060\uFEFF]/g, '');
+// Why a pasted token was refused, without repeating it: its length and the first odd character.
+function tokenProblem(t) {
+  if (t.length < 20 || t.length > 255) return `It is ${t.length} characters long; a GitHub token has 40 to 100.`;
+  const i = [...t].findIndex((c) => !/[A-Za-z0-9_]/.test(c));
+  const c = [...t][i];
+  return `Character ${i + 1} of ${t.length} is "${c}" (U+${c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}); a token only has letters, digits and _. Copy it again with GitHub's copy button.`;
+}
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const fail = (status, error) => json({ error }, status);
@@ -294,8 +304,8 @@ async function putGithub(request, env, me, now) {
     next.repo = repo;
   }
   if (body.token !== undefined) {
-    const token = String(body.token || '').trim();
-    if (token && !GH_TOKEN.test(token)) return fail(400, 'That does not look like a GitHub token.');
+    const token = cleanToken(body.token);
+    if (token && !GH_TOKEN.test(token)) return fail(400, `That does not look like a GitHub token. ${tokenProblem(token)}`);
     next.token = token;
   }
   next.by = me.name; next.at = now;

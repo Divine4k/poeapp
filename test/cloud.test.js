@@ -211,7 +211,12 @@ live('roles: an admin lists accounts, makes a moderator, and shares the GitHub s
   assert.match((await player.github()).error, /Only admins and moderators/);
   assert.match((await helper.setGithub({ token: 'x'.repeat(40) })).error, /Only an admin/);
   assert.match((await boss.setGithub({ repo: 'not a repo' })).error, /owner\/name/);
-  assert.match((await boss.setGithub({ token: 'no spaces allowed here' })).error, /GitHub token/);
+  assert.match((await boss.setGithub({ token: 'short' })).error, /5 characters long/);
+  assert.match((await boss.setGithub({ token: `github_pat_${'a'.repeat(30)}-x` })).error, /Character 42 of 43 is "-"/);
+  // Spaces, line breaks and invisible characters picked up while copying are dropped.
+  const pasted = `\u200B github_pat_${'b'.repeat(40)}\n`;
+  assert.strictEqual((await boss.setGithub({ token: pasted })).hasToken, true);
+  assert.strictEqual((await boss.github()).token, `github_pat_${'b'.repeat(40)}`);
   const saved = await boss.setGithub({ repo: 'Divine4k/poeapp-reports', token: `github_pat_${'a'.repeat(40)}` });
   assert.deepStrictEqual([saved.repo, saved.hasToken, 'token' in saved], ['Divine4k/poeapp-reports', true, false]);
   const got = await helper.github();
