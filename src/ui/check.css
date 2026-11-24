@@ -34,31 +34,34 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-art.big.h2 { height: 74px; }
 .pc-art.big.h1 { height: 46px; }
 .pc-art.sm { width: 36px; height: 44px; }
-/* the sockets as in game: a dark metal ring with a glossy coloured stone set in it, joined by
-   bronze links that run under the rings */
-.sk-grid { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; --s: 19px; --g: 6px; grid-template-columns: repeat(var(--cols), var(--s)); grid-auto-rows: var(--s); gap: var(--g); }
+/* the sockets as in game: a glossy coloured ball, a dark hollow in a gold ring at its centre,
+   and gold links that swell to a point between two sockets, laid over the balls */
+.sk-grid { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; --s: 26px; --g: 8px; --rim: 1.5px; --bar: 10px; grid-template-columns: repeat(var(--cols), var(--s)); grid-auto-rows: var(--s); gap: var(--g); }
 .sk-grid.c1 { --cols: 1; } .sk-grid.c2 { --cols: 2; }
-.pc-art.sm .sk-grid { --s: 9px; --g: 3px; }
-.sk-grid i { --hi: #fff; --mid: #ccc; --lo: #555; position: relative; border-radius: 50%;
-  background:
-    radial-gradient(circle at 36% 30%, rgba(255, 255, 255, 0.9) 0 7%, rgba(255, 255, 255, 0) 20%),
-    radial-gradient(circle at 50% 55%, var(--hi) 0, var(--mid) 30%, var(--lo) 52%, #0d0b09 56%, #4a4237 62%, #2a251f 70%, #6b604f 80%, #17130f 90%);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 4px rgba(0, 0, 0, 0.6); }
-.pc-art.sm .sk-grid i { background: radial-gradient(circle at 50% 50%, var(--hi) 0, var(--mid) 32%, var(--lo) 54%, #0d0b09 60%, #5a4f40 74%, #17130f 92%); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7); }
+.pc-art.sm .sk-grid { --s: 11px; --g: 3px; --rim: 1px; --bar: 5px; }
+.sk-grid i { --hi: #fff; --mid: #bbb; --lo: #444; position: relative; border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, var(--hi) 0, var(--mid) 45%, var(--lo) 88%, #0b0a09 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.sk-grid i::before { content: ""; position: absolute; inset: 22%; z-index: 3; border-radius: 50%;
+  background: radial-gradient(circle at 45% 38%, #4d3828, #2b1d13 65%, #1a110b);
+  box-shadow: 0 0 0 var(--rim) #d9b260, 0 0 0 calc(var(--rim) + 1px) rgba(0, 0, 0, 0.55), inset 0 1px 2px rgba(0, 0, 0, 0.8); }
+.pc-art.sm .sk-grid i::before { inset: 31%; box-shadow: 0 0 0 1px color-mix(in srgb, #d9b260 70%, transparent); }
 .sk-grid i.none { visibility: hidden; }
-.sk-grid i.s-r { --hi: #ffb3a6; --mid: #e0402c; --lo: #6e1209; }
-.sk-grid i.s-g { --hi: #c8ffb8; --mid: #3fbf2f; --lo: #12500c; }
-.sk-grid i.s-b { --hi: #bcd4ff; --mid: #3b6fe6; --lo: #0f2466; }
-.sk-grid i.s-w { --hi: #ffffff; --mid: #dcdcdc; --lo: #6c6c6c; }
-.sk-grid i.s-a { --hi: #8a8f99; --mid: #3b3f47; --lo: #121418; }
-.sk-grid i.s-d { --hi: #fff4d0; --mid: #b9a46a; --lo: #4a3c18; }
-/* a link: a bronze bar from the middle of one socket to the middle of the next, under both */
-.sk-grid i.lr::after, .sk-grid i.ll::after, .sk-grid i.ld::after { content: ""; position: absolute; z-index: -1; border-radius: 2px; background: linear-gradient(180deg, #f6dc98, #b08236 55%, #5e4316); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
-.sk-grid i.lr::after { left: 50%; top: 50%; width: calc(var(--s) + var(--g)); height: 6px; margin-top: -3px; }
-.sk-grid i.ll::after { right: 50%; top: 50%; width: calc(var(--s) + var(--g)); height: 6px; margin-top: -3px; }
-.sk-grid i.ld::after { top: 50%; left: 50%; width: 6px; height: calc(var(--s) + var(--g)); margin-left: -3px; background: linear-gradient(90deg, #f6dc98, #b08236 55%, #5e4316); }
-.pc-art.sm .sk-grid i.lr::after, .pc-art.sm .sk-grid i.ll::after { height: 3px; margin-top: -1.5px; }
-.pc-art.sm .sk-grid i.ld::after { width: 3px; margin-left: -1.5px; }
+.sk-grid i.s-r { --hi: #ff9a88; --mid: #c42a1c; --lo: #5c0c06; }
+.sk-grid i.s-g { --hi: #c6f59a; --mid: #4fa52b; --lo: #17450b; }
+.sk-grid i.s-b { --hi: #a9b8ff; --mid: #4357c4; --lo: #141d5c; }
+.sk-grid i.s-w { --hi: #f2f0ea; --mid: #a9a59c; --lo: #45423c; }
+.sk-grid i.s-a { --hi: #7d828c; --mid: #33363d; --lo: #0f1013; }
+.sk-grid i.s-d { --hi: #fff0c4; --mid: #b39a5c; --lo: #43361a; }
+/* a link, from this socket's middle to the next one's; the gold rims cover its ends */
+.sk-grid i.lr::after, .sk-grid i.ll::after, .sk-grid i.ld::after { content: ""; position: absolute; z-index: 2;
+  background: linear-gradient(180deg, #fff0b8, #d8a63e 45%, #7a5216); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.7));
+  clip-path: polygon(0 30%, 38% 30%, 50% 0, 62% 30%, 100% 30%, 100% 70%, 62% 70%, 50% 100%, 38% 70%, 0 70%); }
+.sk-grid i.lr::after { left: 50%; top: 50%; width: calc(var(--s) + var(--g)); height: var(--bar); margin-top: calc(var(--bar) / -2); }
+.sk-grid i.ll::after { right: 50%; top: 50%; width: calc(var(--s) + var(--g)); height: var(--bar); margin-top: calc(var(--bar) / -2); }
+.sk-grid i.ld::after { top: 50%; left: 50%; width: var(--bar); height: calc(var(--s) + var(--g)); margin-left: calc(var(--bar) / -2);
+  background: linear-gradient(90deg, #fff0b8, #d8a63e 45%, #7a5216);
+  clip-path: polygon(30% 0, 70% 0, 70% 38%, 100% 50%, 70% 62%, 70% 100%, 30% 100%, 30% 62%, 0 50%, 30% 38%); }
 
 /* the two ready-made searches */
 .pc-tabs { flex: none; display: flex; gap: 2px; margin: 10px 16px 0; padding: 3px; align-self: flex-start; border-radius: 10px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
