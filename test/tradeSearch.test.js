@@ -647,6 +647,7 @@ test('listings: pictures, sockets, the number compared, bait prices', () => {
   const { socketText } = require('../src/core/tradeApi');
   assert.equal(socketText([{ group: 0, sColour: 'R' }, { group: 0, sColour: 'G' }, { group: 1, sColour: 'B' }, { group: 1, sColour: 'W' }]), 'R-G B-W');
   assert.equal(socketText(undefined), '');
+  assert.equal(socketText([{ group: 0, attr: 'S' }, { group: 0, attr: 'D' }, { group: 0, attr: 'I' }, { group: 1, sColour: 'DV' }]), 'R-G-B D'); // no colour given: from the attribute
   const raw = {
     id: 'q', listing: { price: { amount: 3, currency: 'chaos' }, account: { name: 'a' } },
     item: {

@@ -109,13 +109,17 @@ class TradeClient {
   }
 }
 
+// A socket's colour as the site gives it, or worked out from its attribute when that is missing
+// (Strength red, Dexterity green, Intelligence blue, General white, Abyss, Delve).
+const SOCKET_COLOUR = { R: 'R', G: 'G', B: 'B', W: 'W', A: 'A', DV: 'D' };
+const ATTR_COLOUR = { S: 'R', D: 'G', I: 'B', G: 'W', A: 'A', DV: 'D' };
 // The sockets of a listed item, written as the game writes them: "R-R-G B".
 function socketText(sockets) {
   if (!Array.isArray(sockets) || !sockets.length) return '';
   let out = '';
   sockets.forEach((x, i) => {
     if (i) out += sockets[i - 1].group === x.group ? '-' : ' ';
-    out += String(x.sColour || x.attr || 'W').slice(0, 1).toUpperCase();
+    out += SOCKET_COLOUR[String(x.sColour || '').toUpperCase()] || ATTR_COLOUR[String(x.attr || '').toUpperCase()] || 'W';
   });
   return out;
 }

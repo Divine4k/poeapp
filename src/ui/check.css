@@ -34,25 +34,31 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-art.big.h2 { height: 74px; }
 .pc-art.big.h1 { height: 46px; }
 .pc-art.sm { width: 36px; height: 44px; }
-.sk-grid { position: absolute; inset: 0; display: grid; place-content: center; --s: 17px; --g: 8px; grid-template-columns: repeat(var(--cols), var(--s)); grid-auto-rows: var(--s); gap: var(--g); }
+/* the sockets as in game: a dark metal ring with a glossy coloured stone set in it, joined by
+   bronze links that run under the rings */
+.sk-grid { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; --s: 19px; --g: 6px; grid-template-columns: repeat(var(--cols), var(--s)); grid-auto-rows: var(--s); gap: var(--g); }
 .sk-grid.c1 { --cols: 1; } .sk-grid.c2 { --cols: 2; }
-.pc-art.sm .sk-grid { --s: 7px; --g: 3px; }
-.sk-grid i { position: relative; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.55); }
-.pc-art.sm .sk-grid i { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.4); }
+.pc-art.sm .sk-grid { --s: 9px; --g: 3px; }
+.sk-grid i { --hi: #fff; --mid: #ccc; --lo: #555; position: relative; border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 30%, rgba(255, 255, 255, 0.9) 0 7%, rgba(255, 255, 255, 0) 20%),
+    radial-gradient(circle at 50% 55%, var(--hi) 0, var(--mid) 30%, var(--lo) 52%, #0d0b09 56%, #4a4237 62%, #2a251f 70%, #6b604f 80%, #17130f 90%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), 0 2px 4px rgba(0, 0, 0, 0.6); }
+.pc-art.sm .sk-grid i { background: radial-gradient(circle at 50% 50%, var(--hi) 0, var(--mid) 32%, var(--lo) 54%, #0d0b09 60%, #5a4f40 74%, #17130f 92%); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7); }
 .sk-grid i.none { visibility: hidden; }
-.sk-grid i.s-r { background: radial-gradient(circle at 35% 35%, #ff8a7a, #b3241a 60%, #4d0a05); }
-.sk-grid i.s-g { background: radial-gradient(circle at 35% 35%, #9df08a, #2e9a28 60%, #0e3a0b); }
-.sk-grid i.s-b { background: radial-gradient(circle at 35% 35%, #8ab4ff, #2a56c9 60%, #0c1f55); }
-.sk-grid i.s-w { background: radial-gradient(circle at 35% 35%, #fff, #c7c7c7 60%, #555); }
-.sk-grid i.s-a { background: radial-gradient(circle at 35% 35%, #9a9a9a, #333 60%, #111); }
-.sk-grid i.s-d { background: radial-gradient(circle at 35% 35%, #f5f5f5, #9c8f6a 60%, #3a321d); }
-/* the links: a short gold bar to the next socket */
-.sk-grid i.lr::after, .sk-grid i.ll::after, .sk-grid i.ld::after { content: ""; position: absolute; border-radius: 2px; background: linear-gradient(180deg, #f2d48a, #9a7530); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
-.sk-grid i.lr::after { left: 100%; top: 50%; width: var(--g); height: 4px; margin-top: -2px; }
-.sk-grid i.ll::after { right: 100%; top: 50%; width: var(--g); height: 4px; margin-top: -2px; }
-.sk-grid i.ld::after { top: 100%; left: 50%; width: 4px; height: var(--g); margin-left: -2px; background: linear-gradient(90deg, #f2d48a, #9a7530); }
-.pc-art.sm .sk-grid i.lr::after, .pc-art.sm .sk-grid i.ll::after { height: 2px; margin-top: -1px; }
-.pc-art.sm .sk-grid i.ld::after { width: 2px; margin-left: -1px; }
+.sk-grid i.s-r { --hi: #ffb3a6; --mid: #e0402c; --lo: #6e1209; }
+.sk-grid i.s-g { --hi: #c8ffb8; --mid: #3fbf2f; --lo: #12500c; }
+.sk-grid i.s-b { --hi: #bcd4ff; --mid: #3b6fe6; --lo: #0f2466; }
+.sk-grid i.s-w { --hi: #ffffff; --mid: #dcdcdc; --lo: #6c6c6c; }
+.sk-grid i.s-a { --hi: #8a8f99; --mid: #3b3f47; --lo: #121418; }
+.sk-grid i.s-d { --hi: #fff4d0; --mid: #b9a46a; --lo: #4a3c18; }
+/* a link: a bronze bar from the middle of one socket to the middle of the next, under both */
+.sk-grid i.lr::after, .sk-grid i.ll::after, .sk-grid i.ld::after { content: ""; position: absolute; z-index: -1; border-radius: 2px; background: linear-gradient(180deg, #f6dc98, #b08236 55%, #5e4316); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
+.sk-grid i.lr::after { left: 50%; top: 50%; width: calc(var(--s) + var(--g)); height: 6px; margin-top: -3px; }
+.sk-grid i.ll::after { right: 50%; top: 50%; width: calc(var(--s) + var(--g)); height: 6px; margin-top: -3px; }
+.sk-grid i.ld::after { top: 50%; left: 50%; width: 6px; height: calc(var(--s) + var(--g)); margin-left: -3px; background: linear-gradient(90deg, #f6dc98, #b08236 55%, #5e4316); }
+.pc-art.sm .sk-grid i.lr::after, .pc-art.sm .sk-grid i.ll::after { height: 3px; margin-top: -1.5px; }
+.pc-art.sm .sk-grid i.ld::after { width: 3px; margin-left: -1.5px; }
 
 /* the two ready-made searches */
 .pc-tabs { flex: none; display: flex; gap: 2px; margin: 10px 16px 0; padding: 3px; align-self: flex-start; border-radius: 10px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
