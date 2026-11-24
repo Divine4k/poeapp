@@ -22,27 +22,44 @@ function focusGame() {
   });
 }
 
-// Types one line into the game's chat: Enter, paste, Enter. The clipboard is put back after.
+// The clipboard as it was before the app borrowed it, put back shortly after the last line.
+// Several lines in a row (thanks, then kick) share one borrow, so nothing waits in between.
+let borrowed = null; // { text } while the clipboard holds one of our lines
+let giveBack = null;
+
+// The keys of one line go out back to back with no wait at all, the way PoE Lurker sends them:
+// the game takes its keys in order, so the chat box opens, fills and sends within a frame or
+// two and is barely seen. The only wait is after a line, before the clipboard may change for
+// the next one: the game must have read the paste by then. In milliseconds, about two frames.
+const LINE_GAP_MS = 35;
+const RESTORE_MS = 400;
+
+// Types one line into the game's chat: Enter, paste, Enter, all at once. The
+// clipboard is put back a moment after the last line.
 // hook: the uiohook-napi module. clipboard: Electron's clipboard.
 // send: false leaves the line in the open chat box instead of sending it.
 async function typeChat(hook, clipboard, text, { send = true } = {}) {
   const line = send ? String(text || '').replace(/[\r\n]+/g, ' ').trim() : String(text || '').replace(/[\r\n]+/g, ' ');
   if (!line) return false;
   const { uIOhook, UiohookKey } = hook;
-  const before = clipboard.readText();
-  clipboard.writeText(line);
+  clearTimeout(giveBack);
+  if (!borrowed) borrowed = { text: clipboard.readText() };
   try {
+    clipboard.writeText(line);
     uIOhook.keyTap(UiohookKey.Enter);
-    await sleep(60);
     uIOhook.keyTap(UiohookKey.A, [UiohookKey.Ctrl]); // replace anything half typed
     uIOhook.keyTap(UiohookKey.V, [UiohookKey.Ctrl]);
-    await sleep(60);
     if (send) uIOhook.keyTap(UiohookKey.Enter);
-    await sleep(120);
+    await sleep(LINE_GAP_MS);
   } finally {
-    clipboard.writeText(before);
+    giveBack = setTimeout(() => {
+      const mine = borrowed;
+      borrowed = null;
+      // Only if the clipboard still holds our line: you may have copied something since.
+      try { if (mine && clipboard.readText() === line) clipboard.writeText(mine.text); } catch (_) { /* nothing to restore to */ }
+    }, RESTORE_MS);
   }
   return true;
 }
 
-module.exports = { focusGame, typeChat };
+module.exports = { focusGame, typeChat, LINE_GAP_MS };

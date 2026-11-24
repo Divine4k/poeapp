@@ -146,7 +146,7 @@ function readRecent(filePath, maxBytes = 256 * 1024) {
 
 // Follows the file by polling its size. fs.watch misses writes from the game on Windows.
 class LogTail extends EventEmitter {
-  constructor(filePath, { intervalMs = 400 } = {}) {
+  constructor(filePath, { intervalMs = 150 } = {}) { // short, so a "Trade accepted" is acted on at once
     super();
     this.filePath = filePath;
     this.intervalMs = intervalMs;
