@@ -85,7 +85,17 @@
         <span>Exact numbers: Prices page</span>${d.url ? '<button type="button" class="link" data-open>Open on the trade site</button>' : ''}</div>
       <div class="pc-result">${resultHtml(d)}</div>`;
     if (panel.querySelector('.pc-body')) panel.querySelector('.pc-body').scrollTop = scroll;
-    api.checkSize(Math.ceil(panel.getBoundingClientRect().height) + 2);
+    api.checkSize(fullHeight());
+  }
+
+  // How tall the panel wants to be. It is never taller than its window (so a long list scrolls
+  // inside it), which means its height on screen says nothing while the window is still small:
+  // the limit is lifted for the moment of measuring.
+  function fullHeight() {
+    panel.style.maxHeight = 'none';
+    const h = Math.ceil(panel.getBoundingClientRect().height) + 2;
+    panel.style.maxHeight = '';
+    return h;
   }
 
   // What is ticked and set, in the shape the app lays over its own copy of the choices.
