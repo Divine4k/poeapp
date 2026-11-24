@@ -125,7 +125,7 @@ Install [Node.js LTS](https://nodejs.org), download this repository as a ZIP, un
 
 The app checks this repository every two minutes. When a newer version has been pushed, the **Check for updates** button at the bottom of the sidebar turns into **Install update**. Clicking it at any other time checks right away; the button always says what it is doing (checking, up to date, downloading, restarting, or what went wrong). An update found while the app starts is also offered on the loading screen. The app closes and opens again by itself, and your settings, named items and session are kept.
 
-The look of the window is chosen in Settings, under Look: Wraeclast makes it look like the game, the others change the colours.
+The look of the window is chosen in Settings, under Look. Premium: Wraeclast, the whole window as in the game (gold-leaf letters, carved frames, embers). Standard: Automatic (follows Windows), Slate, Light, Dim, Midnight, Ember, Verdant, Paper, High contrast, and Custom with your own four colours. Animations can be switched off there too. Wraeclast uses the fonts Cinzel and EB Garamond (SIL Open Font License, `src/ui/fonts/OFL.txt`).
 
 The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so anyone who can push there controls what gets installed.
 

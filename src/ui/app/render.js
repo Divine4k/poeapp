@@ -4,7 +4,7 @@
 
 function render() {
   if (!state) return;
-  applyTheme(state.config.theme);
+  applyTheme();
   renderBoot();
   renderTrade();
   renderStatus(); renderToasts(); renderArrival(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderSettings(); renderRefresh();

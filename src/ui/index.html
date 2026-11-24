@@ -332,8 +332,24 @@
 
       <section class="set-sec" id="set-look" aria-label="Look" hidden>
         <h2>Look</h2>
-        <p class="set-lead">How the app looks. Wraeclast changes the whole window to look like the game; the others only change the colours.</p>
-        <div class="themes" id="theme-pick" role="radiogroup" aria-label="Theme"></div>
+        <p class="set-lead">How the app looks. A change shows at once.</p>
+        <h3>Premium</h3>
+        <div class="themes premium" id="theme-premium" role="radiogroup" aria-label="Premium themes"></div>
+        <h3>Standard</h3>
+        <div class="themes" id="theme-pick" role="radiogroup" aria-label="Themes"></div>
+        <div class="custom-theme" id="custom-theme" hidden>
+          <h3>Your own colours</h3>
+          <div class="custom-grid" id="custom-grid"></div>
+          <label class="custom-base">Start from the colours of <select id="custom-base"></select></label>
+          <p class="warn" id="custom-warn" hidden></p>
+        </div>
+        <h3>Animations</h3>
+        <div class="set-list">
+          <label class="set-row">
+            <span class="set-what"><b>Show animations</b><small>Short movements for messages, the loading screen and the embers of Wraeclast. Off: everything appears at once.</small></span>
+            <input type="checkbox" data-cfg="motion">
+          </label>
+        </div>
       </section>
 
       <section class="set-sec" id="set-keys" aria-label="Keys" hidden>

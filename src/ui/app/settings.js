@@ -9,7 +9,7 @@ const setPage = $('tab-settings');
 const getPath = (o, path) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
 const patchOf = (path, value) => path.split('.').reduceRight((v, k) => ({ [k]: v }), value);
 // Switches that are on unless they were switched off: settings saved before they existed hold nothing for them.
-const ON_UNLESS_OFF = new Set(['checkToast', 'inventory.alerts', 'priceSearch.auto', 'priceSearch.overlay']);
+const ON_UNLESS_OFF = new Set(['motion', 'checkToast', 'inventory.alerts', 'priceSearch.auto', 'priceSearch.overlay']);
 // Fields shown in another unit than they are kept in, or kept within limits.
 const FIELDS = {
   'inventory.intervalMs': { show: (v) => (Number(v) || 1000) / 1000, read: (el) => Math.max(500, Math.min(30000, Math.round((Number(el.value) || 1) * 1000))) },
@@ -48,7 +48,7 @@ const keyText = (v) => (v ? Keys.pretty(v) : 'no key set');
 function renderSettings() {
   if (!state || setPage.hidden) return;
   const c = state.config, st = state.status;
-  renderThemes(c.theme);
+  renderThemes();
   // The lists to choose from come first, so that the choice can be shown in them.
   const leagues = state.leagues.length ? state.leagues : (c.league ? [{ id: c.league, name: c.league }] : []);
   setHtml(setPage.querySelector('[data-cfg="league"]'), leagues.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join(''));
@@ -203,16 +203,68 @@ document.addEventListener('click', (e) => { if (listening && !e.target.closest(`
 window.addEventListener('blur', stopListening);
 
 // ---- Look: the theme picker ------------------------------------------------------------
-// Each theme is a card with its colours (drawn by themes.css: the page allows no inline styles); the chosen one is ticked. A click changes the look at once.
-function renderThemes(current) {
-  const cur = THEMES.some((t) => t.id === current) ? current : 'slate';
-  setHtml($('theme-pick'), THEMES.map((t) => `<button type="button" class="theme-card" role="radio" aria-checked="${t.id === cur}" data-theme-pick="${t.id}">
-      <span class="theme-prev sw-${t.id}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-      <b>${esc(t.name)}</b><small>${esc(t.note)}</small></button>`).join(''));
+// One card per theme with a small picture of the window in its colours (drawn by themes.css:
+// the page allows no inline styles, so only Custom's colours are set from here, on the element).
+const COLOR_KEYS = [['bg', 'Background'], ['surface', 'Panels'], ['ink', 'Text'], ['accent', 'Accent (buttons, values)']];
+const themeNow = () => ({ id: state.config.theme, custom: state.config.themeCustom || null });
+function themeCard(id, cur) {
+  const [name, note] = Theme.NAMES[id], premium = Theme.PREMIUM.includes(id);
+  return `<button type="button" class="theme-card${premium ? ' premium' : ''}" role="radio" aria-checked="${id === cur}" data-theme-pick="${id}">
+      <span class="tprev pv-${id}" aria-hidden="true"><i class="pv-side"></i><i class="pv-main"><u></u><u class="m"></u><u class="s"></u><b></b></i>${premium ? '<em class="pv-orn"></em>' : ''}</span>
+      <span class="tname"><b>${esc(name)}</b>${premium ? '<span class="badge">Premium</span>' : ''}</span><small>${esc(note)}</small></button>`;
 }
-$('theme-pick').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-theme-pick]');
-  if (!b) return;
-  applyTheme(b.dataset.themePick); // at once, before the app has saved it
-  saveSetting('theme', b.dataset.themePick);
+function renderThemes() {
+  const t = themeNow(), cur = Theme.PREMIUM.concat(Theme.STANDARD).includes(t.id) ? t.id : 'slate';
+  setHtml($('theme-premium'), Theme.PREMIUM.map((id) => themeCard(id, cur)).join(''));
+  setHtml($('theme-pick'), Theme.STANDARD.map((id) => themeCard(id, cur)).join(''));
+  // The Custom card shows your colours.
+  const c = t.custom || Theme.BASES.slate, pv = $('theme-pick').querySelector('.pv-custom');
+  if (pv) { pv.style.setProperty('--p-bg', c.bg); pv.style.setProperty('--p-surface', c.surface); pv.style.setProperty('--p-ink', c.ink); pv.style.setProperty('--p-accent', c.accent); }
+  const box = $('custom-theme');
+  box.hidden = cur !== 'custom';
+  if (box.hidden) return;
+  if (!$('custom-grid').children.length) {
+    $('custom-grid').innerHTML = COLOR_KEYS.map(([k, label]) => `<label class="cf"><span>${label}</span><span class="cin"><input type="color" data-ck="${k}" aria-label="${label}"><input type="text" data-ckx="${k}" maxlength="7" spellcheck="false" autocomplete="off" aria-label="${label}, colour code"></span></label>`).join('');
+    $('custom-base').innerHTML = `<option value="">Choose a theme…</option>${Object.keys(Theme.BASES).map((id) => `<option value="${id}">${esc(Theme.NAMES[id][0])}</option>`).join('')}`;
+  }
+  for (const [k] of COLOR_KEYS) {
+    const col = $('custom-grid').querySelector(`[data-ck="${k}"]`), hx = $('custom-grid').querySelector(`[data-ckx="${k}"]`);
+    if (document.activeElement !== col) col.value = c[k].toLowerCase();
+    if (document.activeElement !== hx) hx.value = c[k];
+  }
+  const w = Theme.info(c), msgs = [w.lowText && 'The text is hard to read on this background.', w.lowAccent && 'The accent almost disappears against the background.'].filter(Boolean);
+  $('custom-warn').hidden = !msgs.length;
+  $('custom-warn').textContent = msgs.join(' ');
+}
+// Changes the theme at once, before the app has saved it.
+function setTheme(id, custom) {
+  Theme.apply({ id, custom });
+  api.setConfig({ theme: id, themeCustom: custom || null });
+}
+for (const box of ['theme-pick', 'theme-premium']) {
+  $(box).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-theme-pick]');
+    if (!b) return;
+    const id = b.dataset.themePick, t = themeNow();
+    // A first own theme starts from the colours you see now.
+    const custom = id === 'custom' && !t.custom ? { ...(Theme.BASES[Theme.current.id === 'auto' ? 'slate' : Theme.current.id] || Theme.BASES.slate) } : t.custom;
+    setTheme(id, custom);
+  });
+}
+let customTimer = null;
+function setCustomColor(k, v) {
+  const c = Theme.hex(v), t = themeNow();
+  if (!c || !t.custom) return;
+  const custom = { ...t.custom, [k]: c };
+  Theme.apply({ id: 'custom', custom });
+  state.config.themeCustom = custom; // dragging the colour picker sends many changes: saved once it settles
+  clearTimeout(customTimer);
+  customTimer = setTimeout(() => api.setConfig({ theme: 'custom', themeCustom: custom }), 250);
+}
+$('custom-grid').addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.dataset.ck) setCustomColor(t.dataset.ck, t.value);
+  else if (t.dataset.ckx && /^#?[0-9a-f]{6}$/i.test(t.value.trim())) setCustomColor(t.dataset.ckx, t.value);
 });
+$('custom-grid').addEventListener('change', (e) => { const k = e.target.dataset.ckx; if (k && state.config.themeCustom) e.target.value = state.config.themeCustom[k]; }); // an unfinished code goes back to the real colour
+$('custom-base').addEventListener('change', (e) => { const id = e.target.value; e.target.value = ''; if (id) setTheme('custom', { ...Theme.BASES[id] }); });

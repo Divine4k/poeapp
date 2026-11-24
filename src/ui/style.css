@@ -12,6 +12,7 @@
   --body: "Segoe UI", system-ui, sans-serif;
   --ink: #1b1f24;   /* dark text on gold, and the darkest panels */
   --deep: #101317;  /* behind inventory pictures */
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -36,13 +37,13 @@ button.primary:hover { filter: brightness(1.08); }
 button.link { border: 0; background: none; padding: 0 4px; color: var(--ash); }
 button.link:hover { color: var(--blood); }
 :focus-visible { outline: 2px solid var(--portal); outline-offset: 2px; }
-input::placeholder { color: #6f7a86; }
+input::placeholder { color: color-mix(in srgb, var(--ash) 75%, transparent); }
 
 /* scrollbars: a thin bar in the app's own colours, no arrows */
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--seam); background-clip: padding-box; border: 3px solid transparent; border-radius: 6px; min-height: 40px; }
-::-webkit-scrollbar-thumb:hover { background-color: #4b5766; }
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--seam) 70%, var(--ash)); }
 ::-webkit-scrollbar-thumb:active { background-color: var(--gold); }
 ::-webkit-scrollbar-button { display: none; }
 
@@ -170,7 +171,7 @@ tr.run.open td { background: var(--slab); }
 .loot-head input[type=number] { width: 62px; }
 .feed { flex: 1; min-height: 0; overflow-y: auto; margin-right: -10px; padding-right: 10px; }
 .feed li { display: grid; grid-template-columns: 40px 26px 1fr auto 22px; gap: 10px; align-items: center; padding: 3px 0 3px 8px; border-radius: 4px; font-size: 15px; }
-.feed li:nth-child(odd) { background: rgba(36, 42, 49, 0.55); }
+.feed li:nth-child(odd) { background: color-mix(in srgb, var(--slab) 55%, transparent); }
 .feed li:hover { background: var(--slab); }
 .feed .qty { color: var(--ash); text-align: right; font-family: var(--display); font-variant-numeric: tabular-nums; }
 .feed img, .feed .noicon { width: 26px; height: 26px; object-fit: contain; }
@@ -264,7 +265,7 @@ tr.detail .snap figcaption { margin-top: 2px; }
 .sales-plot svg { display: block; width: 100%; height: auto; }
 .sales-plot .grid { stroke: var(--slab); stroke-width: 1; }
 .sales-plot .axis { stroke: var(--seam); stroke-width: 1; }
-.sales-plot .bar { fill: #ad8840; }
+.sales-plot .bar { fill: color-mix(in srgb, var(--gold) 80%, var(--stone)); }
 .sales-plot .col:hover .bar, .sales-plot .col:focus .bar { fill: var(--gold); }
 .sales-plot .col { outline: none; }
 .sales-plot .hit { fill: transparent; }
@@ -395,7 +396,7 @@ tr.detail .snap figcaption { margin-top: 2px; }
 
 /* dialogs */
 dialog { background: var(--slab); color: var(--bone); border: 1px solid var(--seam); border-radius: 6px; width: min(760px, 92vw); max-height: 90vh; padding: 22px; }
-dialog::backdrop { background: rgba(10, 12, 15, 0.7); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 dialog h2 { font-size: 20px; color: var(--bone); margin: 0 0 14px; }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
 .settings-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ash); }
@@ -684,10 +685,10 @@ label.set-row { cursor: pointer; }
 .tr-filter button { border-color: var(--seam); font-size: 13px; padding: 3px 10px; border-radius: 999px; }
 .tr-filter button[aria-pressed=true] { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); }
 .tr-events { margin: 6px 0 0; padding: 0; list-style: none; border: 1px solid var(--seam); border-radius: 8px; background: var(--slab); font-size: 13px; }
-.tr-events li[data-t] { display: grid; grid-template-columns: 48px 64px minmax(0, 1fr); gap: 8px; padding: 3px 10px; border-top: 1px solid rgba(53, 62, 73, 0.6); cursor: pointer; }
+.tr-events li[data-t] { display: grid; grid-template-columns: 48px 64px minmax(0, 1fr); gap: 8px; padding: 3px 10px; border-top: 1px solid color-mix(in srgb, var(--seam) 50%, transparent); cursor: pointer; }
 .tr-events li[data-t]:first-child { border-top: 0; }
 .tr-events li[data-t]:hover { background: color-mix(in srgb, var(--bone) 5%, transparent); }
-.tr-events li.now { background: rgba(98, 175, 208, 0.16); }
+.tr-events li.now { background: color-mix(in srgb, var(--portal) 16%, transparent); }
 .tr-events time { color: var(--ash); font-variant-numeric: tabular-nums; }
 .tr-events .kind { color: var(--ash); }
 .tr-events .txt { word-break: break-word; }
@@ -795,11 +796,3 @@ button.refresh[hidden] { display: none; }
 .boot-actions { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
 .boot-actions[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .boot-logo .ring, .spin, button.refresh.busy svg { animation: none; } }
-
-/* ---- Settings, Look: one card per theme ---- */
-.themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
-.theme-card { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 10px; text-align: left; border-radius: 8px; background: var(--slab); }
-.theme-card[aria-checked=true] { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
-.theme-card b { font-size: 15px; margin-top: 6px; }
-.theme-card small { color: var(--ash); font-size: 12px; line-height: 1.35; }
-.theme-prev { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; height: 46px; border-radius: 5px; overflow: hidden; border: 1px solid var(--seam); }

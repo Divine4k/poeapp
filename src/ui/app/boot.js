@@ -2,17 +2,10 @@
 // The loading screen: what the app checks while it starts, and whether there is an update.
 // Part of the main window script: all files in src/ui/app/ share one scope, loaded in the order of index.html.
 
-const THEMES = [
-  { id: 'slate', name: 'Slate', note: 'The default: dark grey with gold.' },
-  { id: 'wraeclast', name: 'Wraeclast', note: 'Looks like the game: carved panels, old gold, serif letters.' },
-  { id: 'midnight', name: 'Midnight', note: 'Deep blue with ice blue.' },
-  { id: 'ember', name: 'Ember', note: 'Charcoal with fire orange.' },
-  { id: 'verdant', name: 'Verdant', note: 'Dark forest with jade.' },
-];
-function applyTheme(id) {
-  const t = THEMES.some((x) => x.id === id) ? id : 'slate';
-  if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
-  try { localStorage.setItem('theme', t); } catch (_) { /* only the first moment of the next start shows the default */ }
+// The theme on the page follows the settings (the engine is theme.js, the looks are themes.css).
+function applyTheme() {
+  Theme.apply({ id: state.config.theme, custom: state.config.themeCustom });
+  Theme.motion(state.config.motion !== false);
 }
 
 // ---- loading screen ----------------------------------------------------------------
