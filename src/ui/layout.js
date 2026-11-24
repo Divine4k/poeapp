@@ -1,5 +1,5 @@
 'use strict';
-// Layout mode: drag each overlay part to where it should sit in game. Done saves, Esc cancels.
+// Layout mode: drag each overlay part to where it should sit in game. Save keeps it, Esc cancels.
 (async () => {
   const api = window.api;
   const stage = document.getElementById('stage');
@@ -18,8 +18,42 @@
   };
   const data = await api.layout();
   const boxes = new Map(); // id -> { el, x, y, width, height, reset }
-  const hint = document.getElementById('lw-hint');
-  hint.textContent = `Drag a box to where you want it in game. Done saves${data.hotkey ? `; ${data.hotkey} or Esc closes without saving` : '; Esc closes without saving'}.`;
+  // The strip with the buttons: small, out of the middle, and it can be dragged anywhere.
+  // Where it was left is remembered for next time.
+  const bar = document.getElementById('bar');
+  bar.title = `Drag each box to where you want it in game. This strip can be dragged too. Save keeps the spots${data.hotkey ? `; ${data.hotkey} or Esc closes without saving` : '; Esc closes without saving'}.`;
+  const barPos = { x: 0, y: 0 };
+  function placeBar() {
+    barPos.x = Math.max(0, Math.min(barPos.x, window.innerWidth - bar.offsetWidth));
+    barPos.y = Math.max(0, Math.min(barPos.y, window.innerHeight - bar.offsetHeight));
+    bar.style.left = `${barPos.x}px`; bar.style.top = `${barPos.y}px`;
+  }
+  {
+    let kept = null;
+    try { kept = JSON.parse(localStorage.getItem('layoutBar')); } catch (_) { /* nothing remembered */ }
+    if (kept && isFinite(kept.x) && isFinite(kept.y)) { barPos.x = kept.x; barPos.y = kept.y; }
+    else { barPos.x = (window.innerWidth - bar.offsetWidth) / 2; barPos.y = 16; } // top centre
+    placeBar();
+    let grab = null;
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      grab = { dx: e.clientX - barPos.x, dy: e.clientY - barPos.y };
+      try { bar.setPointerCapture(e.pointerId); } catch (_) { /* not a real pointer */ }
+      bar.classList.add('drag');
+    });
+    bar.addEventListener('pointermove', (e) => {
+      if (!grab) return;
+      barPos.x = e.clientX - grab.dx; barPos.y = e.clientY - grab.dy;
+      placeBar();
+    });
+    const drop = () => {
+      if (!grab) return;
+      grab = null; bar.classList.remove('drag');
+      try { localStorage.setItem('layoutBar', JSON.stringify(barPos)); } catch (_) { /* not remembered, no harm */ }
+    };
+    bar.addEventListener('pointerup', drop);
+    bar.addEventListener('pointercancel', drop);
+  }
 
   function place(b) {
     b.x = Math.max(0, Math.min(b.x, window.innerWidth - b.width));

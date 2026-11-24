@@ -9,10 +9,10 @@ body.layout { display: block; overflow: hidden; user-select: none; background: r
 .lw.low .lw-name { bottom: auto; top: 100%; margin: 4px 0 0; }
 .lw-sample { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 3px; padding: 2px; overflow: hidden; pointer-events: none; opacity: 0.85; }
 .lw-sample .tt-open { cursor: inherit; }
-.lw-bar { position: absolute; left: 50%; top: 32%; transform: translateX(-50%); display: flex; align-items: center; gap: 28px; padding: 14px 18px; background: var(--slab); border: 1px solid var(--seam); border-radius: 8px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6); }
-.lw-bar b { display: block; font-family: var(--display); font-size: 18px; font-stretch: 85%; }
-.lw-bar div span { font-size: 13px; color: var(--ash); }
-.lw-bar button { white-space: nowrap; }
-.lw-bar div { max-width: 46ch; }
+/* the three buttons: a small strip that can be dragged out of the way by its grip or its edge */
+.lw-bar { position: absolute; z-index: 10; display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 4px; background: var(--slab); border: 1px solid var(--seam); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6); cursor: grab; touch-action: none; }
+.lw-bar.drag { cursor: grabbing; border-color: var(--gold); }
+.lw-grip { width: 14px; height: 24px; background: radial-gradient(circle, var(--ash) 1.2px, transparent 1.6px) 0 0 / 7px 8px; opacity: 0.8; }
+.lw-bar button { white-space: nowrap; font-size: 13px; padding: 4px 10px; cursor: pointer; }
 .lw-sample .toast-box { align-self: center; animation: none; }
 .lw-sample .pc-panel { max-height: 100%; }
