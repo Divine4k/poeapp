@@ -5,6 +5,7 @@
   let state = null;
   let receivedAt = 0;
   let expanded = null;
+  let allItems = false; // the open map row lists every item, not only the most valuable
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -121,8 +122,12 @@
       const which = total > 1 ? `Inventory ${n} of ${total}${compact && n === total ? ' (latest)' : ''}, ` : 'Inventory ';
       // The explanation of the dimmed slots is given once, on the first picture shown.
       const legend = brought && (!compact || i === trips.findIndex((x) => x.t.cells.some((c) => c.carried)));
+      // In a map's details the legend line explains the colours, so the caption stays short.
+      const caption = compact
+        ? `${which}at ${clock(t.at)}.${legend ? ' <span class="xkey">Dimmed slots</span>: taken into the map with you, not loot.' : ''}`
+        : `${total > 1 ? `Inventory ${n} of ${total}, ` : ''}${clock(t.at)}`;
       return `<figure class="snap"><div class="snap-grid"><img src="${esc(t.image)}" alt="Inventory ${n} of ${total}"><div class="snap-cells">${cells}</div></div>
-        <figcaption>${which}at ${clock(t.at)}.${legend ? ' <span class="xkey">Dimmed slots</span>: taken into the map with you, not loot.' : ''}${compact ? '' : ' Hover a slot for its name.'}</figcaption></figure>`;
+        <figcaption>${caption}</figcaption></figure>`;
     }).join('');
   }
 
@@ -217,6 +222,38 @@
       <div>${t.maps ? fmtTime(t.avgMapMs) : 'n/a'}<span>Average map</span></div>
       <div>${t.deaths}<span>Deaths</span></div>`;
 
+  // One line under a map's pictures saying what the slot colours mean, with how many of each.
+  function snapLegend(data) {
+    if (!data || !data.trips.length) return '';
+    const n = { item: 0, remembered: 0, unknown: 0, other: 0, carried: 0 };
+    for (const t of data.trips) for (const c of t.cells) {
+      if (c.carried) n.carried++;
+      else if (c.status === 'item') n.item++;
+      else if (c.status === 'remembered') n.remembered++;
+      else if (c.status === 'unknown') n.unknown++;
+      else n.other++;
+    }
+    const entry = (cls, count, label, tip) => `<li class="${cls}${count ? '' : ' none'}" title="${tip}"><b>${count}</b> ${label}</li>`;
+    return `<ul class="legend row">
+      ${entry('item', n.item, 'recognised', 'Read and priced')}
+      ${entry('remembered', n.remembered, 'covered', 'Hidden by a tooltip in that read, so the last known value was used')}
+      ${entry('unknown', n.unknown, 'not recognised', 'Has a stack number but no known picture. Hover it in game and press the check key to name it')}
+      ${entry('skipped', n.other, 'not counted', 'Single items the app has no picture for, such as gear and gems, or items you ignored')}
+      ${entry('carried', n.carried, 'taken in with you', 'Already in your inventory when the map started, so not loot')}
+    </ul>`;
+  }
+
+  // A map's loot as a tight two-column list, most valuable first. Only the top ones unless asked.
+  const TOP_ITEMS = 10;
+  function itemsHtml(r, divine) {
+    if (!r.items.length) return '<p class="none-yet">No loot recorded.</p>';
+    const shown = allItems ? r.items : r.items.slice(0, TOP_ITEMS);
+    const rest = r.items.slice(shown.length);
+    const restValue = rest.reduce((a, i) => a + i.chaos, 0);
+    return `<ul class="loot-compact">${shown.map((i) => `<li><span class="q">${i.qty}</span><span class="n">${esc(i.name)}</span><span class="v">${i.chaos > 0 ? fmtValue(i.chaos, divine) : 'no price'}</span></li>`).join('')}</ul>
+      ${r.items.length > TOP_ITEMS ? `<button type="button" class="link more" data-allitems="1">${allItems ? 'Show only the top items' : `Show ${rest.length} more ${rest.length === 1 ? 'item' : 'items'}, worth ${fmtValue(restValue, divine)}`}</button>` : ''}`;
+  }
+
   // The rows of a map table, newest first. open: the id of the row showing its details.
   // readonly: no Delete button (saved sessions). redraw: called when a map's picture has loaded.
   function runsHtml(sum, { open, readonly, redraw, divine }) {
@@ -233,10 +270,10 @@
         <td class="num">${r.deaths}</td>
         <td>${readonly ? '' : `<button type="button" class="link" data-act="deleteRun" data-run="${esc(r.id)}" aria-label="Delete ${esc(r.name)}">Delete</button>`}</td></tr>`;
       if (open === r.id) {
-        const items = r.items.length ? r.items.map((i) => `<b>${esc(i.name)}</b> ×${i.qty} (${fmtValue(i.chaos, divine)})`).join(', ') : 'No loot recorded.';
-        const costs = r.costs.length ? r.costs.map((c) => `${esc(c.name)} ×${c.qty} (${fmtValue(c.total, divine)})`).join(', ') : 'none';
-        const snap = snapHtml(snapData(r, redraw), false, divine);
-        html += `<tr class="detail"><td colspan="7">${snap ? `<div class="snaps">${snap}</div>` : ''}${items}<br>Costs: ${costs}${uncountedLine(r, false)}</td></tr>`;
+        const costs = r.costs.length ? `<p class="costline">Costs: ${r.costs.map((c) => `${esc(c.name)} ×${c.qty} (${fmtValue(c.total, divine)})`).join(', ')}</p>` : '';
+        const data = snapData(r, redraw);
+        const snap = snapHtml(data, false, divine);
+        html += `<tr class="detail"><td colspan="7">${snap ? `<div class="snaps">${snap}</div>${snapLegend(data)}` : ''}${itemsHtml(r, divine)}${costs}</td></tr>`;
       }
       return html;
     }).join('');
@@ -770,8 +807,9 @@
     if (e.target.closest('#btn-strategy-edit')) { openStrategy(stratSel); return; }
     const pick = e.target.closest('[data-session]');
     if (pick) { sessionSel = pick.dataset.session; expanded = null; renderSession(); return; }
+    if (e.target.closest('[data-allitems]')) { allItems = !allItems; renderSession(); return; }
     const row = e.target.closest('[data-expand]');
-    if (row) { expanded = expanded === row.dataset.expand ? null : row.dataset.expand; renderSession(); }
+    if (row) { expanded = expanded === row.dataset.expand ? null : row.dataset.expand; allItems = false; renderSession(); }
   });
 
   $('btn-read').addEventListener('click', () => act({ type: 'readInventory' }));

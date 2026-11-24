@@ -220,6 +220,22 @@ tr.run:hover td { background: var(--slab); }
 tr.run.live td:first-child { box-shadow: inset 3px 0 0 var(--gold); padding-left: 10px; }
 tr.detail td { background: var(--slab); padding: 8px 12px; font-size: 14px; color: var(--ash); }
 tr.detail b { color: var(--bone); font-weight: 500; }
+/* a map's details: pictures, one legend line, then a tight loot list */
+.legend.row { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 10px; }
+.legend.row li { margin-top: 0; font-size: 12px; }
+.legend.row li::before { top: 3px; }
+.legend.row li.none { opacity: 0.45; }
+.legend li.carried::before { border-color: var(--seam); background: rgba(16, 19, 23, 0.62); }
+.loot-compact { columns: 2; column-gap: 28px; margin: 0; }
+.loot-compact li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; padding: 2px 0; break-inside: avoid; font-size: 13px; }
+.loot-compact .q { text-align: right; color: var(--ash); font-variant-numeric: tabular-nums; }
+.loot-compact .n { color: var(--bone); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot-compact .v { font-family: var(--display); font-variant-numeric: tabular-nums; color: var(--bone); }
+tr.detail .more { display: inline-block; margin-top: 6px; font-size: 12px; padding: 0; color: var(--portal); }
+tr.detail .more:hover { color: var(--bone); }
+tr.detail .costline, tr.detail .none-yet { margin: 8px 0 0; font-size: 12px; }
+tr.detail .snap figcaption { margin-top: 2px; }
+.snaps { margin-bottom: 6px; }
 
 /* trade page: open offers on the left, totals, settings and history on the right */
 #tab-trade { padding: 0; overflow: hidden; }
