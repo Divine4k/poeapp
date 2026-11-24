@@ -1142,7 +1142,7 @@ async function checkHovered({ count = true } = {}) {
   } else {
     checkText(clipboard.readText(), { count });
     // With copying switched off, an empty hand is most likely the setting, so name it.
-    if (priceCheck && priceCheck.error && priceCheck.at >= started) priceCheck.error = 'Nothing to check: "Copy the hovered item for me" is switched off (Settings, Price check). Switch it on, or press Ctrl+C on the item before the key.';
+    if (priceCheck && priceCheck.error && priceCheck.at >= started) priceCheck.error = 'Nothing to check: "Check the item under my mouse" is switched off (Settings, Price check). Switch it on, or press Ctrl+C on the item before the key.';
   }
   showCheckToast(started);
   changed();
