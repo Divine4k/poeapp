@@ -113,6 +113,10 @@ const KEY_GROUPS = [
   { title: 'Help', keys: [
     { id: 'hotkeys.snapshot', name: 'Send a report', hint: 'Sends what the app sees in your inventory to the Map Companion server, to get a reading problem fixed.', bad: (st) => !st.hotkeys.snapshot },
   ] },
+  // Only listed for admins and moderators, who have the Troubleshooting page.
+  { title: 'Troubleshooting', hide: (s) => !(s.trouble && s.trouble.can), keys: [
+    { id: 'hotkeys.record', name: 'Start or stop a recording', hint: 'Records the game screen, your keys and what the app does, for the Troubleshooting page.', bad: (st) => !st.hotkeys.record },
+  ] },
 ];
 const KEY_LIST = KEY_GROUPS.flatMap((g) => g.keys);
 const takenKey = (st, key) => (st.hotkeys.tradeTaken || []).some((k) => Keys.sameKey(k, key));
@@ -124,7 +128,7 @@ let listenTimer = null;
 
 function renderKeys() {
   const c = state.config, st = state.status;
-  const html = KEY_GROUPS.map((g) => {
+  const html = KEY_GROUPS.filter((g) => !g.hide || !g.hide(state)).map((g) => {
     const off = !!(g.off && g.off(c));
     const rows = g.keys.map((k) => {
       const v = getPath(c, k.id) || '', on = listening === k.id;

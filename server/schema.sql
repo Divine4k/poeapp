@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
   salt TEXT NOT NULL,
   pass TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  admin INTEGER NOT NULL DEFAULT 0 -- 1: may rename or remove anyone's pictures in the item list
+  admin INTEGER NOT NULL DEFAULT 0, -- 1: admin (Developer tools, roles, anyone's pictures in the item list)
+  role TEXT NOT NULL DEFAULT ''     -- 'moderator': may record and send troubleshooting recordings; admins go by `admin`
 );
 CREATE TABLE IF NOT EXISTS tokens (
   hash TEXT PRIMARY KEY,

@@ -23,6 +23,8 @@ function stretch(name, password) {
 }
 
 // What is wrong with a name and password before anything is sent, or '' when they are fine.
+const cleanRole = (r) => (r === 'admin' || r === 'moderator' ? r : '');
+
 function checkEntry(name, password, again) {
   if (!NAME.test(String(name || '').trim())) return 'A name is 3 to 20 characters: letters, numbers, - and _.';
   if (String(password || '').length < MIN_PASSWORD) return `The password needs at least ${MIN_PASSWORD} characters.`;
@@ -41,6 +43,9 @@ class Cloud {
     const s = saved || {};
     this.name = s.token ? String(s.name || '') : '';
     this.token = this.name ? String(s.token || '') : '';
+    // '' (everyone), 'moderator' or 'admin'. Given by the server at login and asked again at
+    // each start (refresh), so a role given or taken away reaches the app without logging in again.
+    this.role = this.token ? cleanRole(s.role) : '';
     this.sent = { ...(s.sent || {}) };             // session id -> 1, once it and its pictures are up
     this.gone = Array.isArray(s.gone) ? s.gone.slice() : []; // [{ session } | { picture }] still to be taken down
     this.busy = false;
@@ -52,9 +57,9 @@ class Cloud {
   get enabled() { return !!this.url; }
   get signedIn() { return this.enabled && !!this.token; }
   get status() {
-    return { enabled: this.enabled, signedIn: this.signedIn, name: this.name, waiting: this.waiting, busy: this.busy, error: this.error, sentAt: this.sentAt };
+    return { enabled: this.enabled, signedIn: this.signedIn, name: this.name, role: this.signedIn ? this.role : '', waiting: this.waiting, busy: this.busy, error: this.error, sentAt: this.sentAt };
   }
-  keep() { this.save({ name: this.name, token: this.token, sent: this.sent, gone: this.gone }); }
+  keep() { this.save({ name: this.name, token: this.token, role: this.role, sent: this.sent, gone: this.gone }); }
 
   async call(method, route, { body, text, auth = true } = {}) {
     const headers = {};
@@ -80,14 +85,48 @@ class Cloud {
     if (!r.ok || !r.data || !r.data.token) return r.error || 'The server gave no answer that makes sense.';
     // Another account on this PC starts with nothing sent: what is here has to go up under it too.
     if (r.data.name !== this.name) { this.sent = {}; this.gone = []; }
-    this.name = r.data.name; this.token = r.data.token; this.error = null;
+    this.name = r.data.name; this.token = r.data.token; this.role = cleanRole(r.data.role); this.error = null;
     this.keep();
     return '';
   }
 
+  // Asks the server who this PC is logged in as, for the role. True when something changed.
+  async refresh() {
+    if (!this.signedIn) return false;
+    let r;
+    try { r = await this.call('GET', 'me'); } catch (_) { return false; } // offline: keep what is known
+    if (r.status === 401) { this.token = ''; this.role = ''; this.keep(); this.error = 'Log in again: this PC is no longer signed in.'; return true; }
+    if (!r.ok || !r.data) return false;
+    const role = cleanRole(r.data.role);
+    if (role === this.role) return false;
+    this.role = role; this.keep();
+    return true;
+  }
+
+  // For admins: every account with its role. { users: [{ name, role, sessions, last, created }] } or { error }.
+  async users() {
+    if (!this.signedIn) return { error: 'You are not logged in.' };
+    try { const r = await this.call('GET', 'users'); return r.ok && r.data ? { users: r.data.users || [] } : { error: r.error }; } catch (e) { return { error: e.message || String(e) }; }
+  }
+  // For admins. '' when it worked.
+  async setRole(name, role) {
+    if (!this.signedIn) return 'You are not logged in.';
+    try { const r = await this.call('PUT', `users/${encodeURIComponent(name)}/role`, { body: { role } }); return r.ok ? '' : r.error; } catch (e) { return e.message || String(e); }
+  }
+  // Where recordings go on GitHub, and the token to put them there. Admins and moderators may
+  // read it; only admins may change it. { repo, token, by, at } or { error }.
+  async github() {
+    if (!this.signedIn) return { error: 'Log in first.' };
+    try { const r = await this.call('GET', 'dev/github'); return r.ok && r.data ? r.data : { error: r.error }; } catch (e) { return { error: e.message || String(e) }; }
+  }
+  async setGithub(patch) {
+    if (!this.signedIn) return { error: 'Log in first.' };
+    try { const r = await this.call('PUT', 'dev/github', { body: patch }); return r.ok && r.data ? r.data : { error: r.error }; } catch (e) { return { error: e.message || String(e) }; }
+  }
+
   async logout() {
     if (this.signedIn) { try { await this.call('POST', 'logout'); } catch (_) { /* the token is dropped here either way */ } }
-    this.token = ''; this.error = null; this.waiting = 0;
+    this.token = ''; this.role = ''; this.error = null; this.waiting = 0;
     this.keep();
   }
 
@@ -98,7 +137,7 @@ class Cloud {
     let r;
     try { r = await this.call('POST', 'account/delete', { body: { key: await this.stretch(this.name, password) } }); } catch (e) { return e.message || String(e); }
     if (!r.ok) return r.error;
-    this.name = ''; this.token = ''; this.sent = {}; this.gone = []; this.waiting = 0; this.error = null;
+    this.name = ''; this.token = ''; this.role = ''; this.sent = {}; this.gone = []; this.waiting = 0; this.error = null;
     this.keep();
     return '';
   }

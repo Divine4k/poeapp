@@ -5,7 +5,7 @@
 function render() {
   if (!state) return;
   renderTrade();
-  renderStatus(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderSettings();
+  renderStatus(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderSettings();
 }
 
 function setState(s) {
@@ -87,9 +87,10 @@ function showTab(name) {
   if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
   for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
   if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
-  for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'settings']) $(`tab-${id}`).hidden = id !== name;
+  for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'trouble', 'settings']) $(`tab-${id}`).hidden = id !== name;
   if (name === 'inventory') renderInventory(true);
   if (name === 'items') { refreshKnown(); renderKnown(); }
   if (name === 'prices') renderPrices(true);
+  if (name === 'trouble') troubleShown();
   if (name === 'settings') renderSettings();
 }

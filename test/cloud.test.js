@@ -179,3 +179,53 @@ live('too many wrong passwords lock the name for a while; oversized uploads are 
   const bad = await a.call('PUT', 'sessions/s9', { text: JSON.stringify({ id: 'other', runs: [], totals: {} }) });
   assert.strictEqual(bad.status, 400);
 });
+
+live('roles: an admin lists accounts, makes a moderator, and shares the GitHub settings with admins and moderators only', async () => {
+  const { account, client: newClient } = await startServer();
+  const boss = await account('Divine4k', { admin: true });
+  const helper = await account('Helper');
+  const player = await account('Player');
+  // The role is read from the server, so one given while logged in arrives without logging in again.
+  assert.strictEqual(boss.role, '');
+  assert.strictEqual(await boss.refresh(), true);
+  assert.strictEqual(boss.role, 'admin');
+  assert.strictEqual(boss.status.role, 'admin');
+
+  const list = await boss.users();
+  assert.deepStrictEqual(list.users.map((u) => [u.name, u.role]).sort(), [['Divine4k', 'admin'], ['Helper', ''], ['Player', '']]);
+  assert.ok(!('role' in (await player.users()).users[0]), 'only an admin sees roles');
+
+  assert.strictEqual(await boss.setRole('helper', 'moderator'), '');
+  assert.match(await boss.setRole('Divine4k', ''), /own role/);
+  assert.match(await boss.setRole('Nobody', 'moderator'), /Nobody has that name/);
+  assert.match(await boss.setRole('Player', 'king'), /A role is/);
+  assert.match(await player.setRole('Helper', ''), /Only an admin/);
+  await helper.refresh();
+  assert.strictEqual(helper.role, 'moderator');
+  // Logging in again brings the role along.
+  const again = newClient();
+  assert.strictEqual(await again.login('Helper', 'correct horse'), '');
+  assert.strictEqual(again.role, 'moderator');
+  assert.strictEqual(again.box.saved.role, 'moderator');
+
+  assert.match((await player.github()).error, /Only admins and moderators/);
+  assert.match((await helper.setGithub({ token: 'x'.repeat(40) })).error, /Only an admin/);
+  assert.match((await boss.setGithub({ repo: 'not a repo' })).error, /owner\/name/);
+  assert.match((await boss.setGithub({ token: 'no spaces allowed here' })).error, /GitHub token/);
+  const saved = await boss.setGithub({ repo: 'Divine4k/poeapp-reports', token: `github_pat_${'a'.repeat(40)}` });
+  assert.deepStrictEqual([saved.repo, saved.hasToken, 'token' in saved], ['Divine4k/poeapp-reports', true, false]);
+  const got = await helper.github();
+  assert.strictEqual(got.repo, 'Divine4k/poeapp-reports');
+  assert.strictEqual(got.token, `github_pat_${'a'.repeat(40)}`);
+  // Changing only the repository keeps the token.
+  await boss.setGithub({ repo: 'Divine4k/other' });
+  assert.strictEqual((await boss.github()).token, got.token);
+
+  // Taking the role away closes the door again.
+  assert.strictEqual(await boss.setRole('Helper', ''), '');
+  assert.strictEqual(await helper.refresh(), true);
+  assert.strictEqual(helper.role, '');
+  assert.match((await helper.github()).error, /Only admins and moderators/);
+  await helper.logout();
+  assert.strictEqual(helper.box.saved.role, '');
+});

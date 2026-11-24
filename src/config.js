@@ -10,7 +10,8 @@ const DEFAULT_CONFIG = {
   characterName: '',
   // clipboard: check the hovered item and, over the inventory, name or count its slot.
   // priceCheck: only check its price; nothing is named or counted. Held only while the game is in front.
-  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D' },
+  // record: starts and stops a troubleshooting recording (admins and moderators only).
+  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9' },
   checkToast: true, // after the check key, say in game for a moment what was read
   // auto: checking an item searches the trade site straight away (two web requests).
   // overlay: show the search on top of the game, beside the inventory or stash.

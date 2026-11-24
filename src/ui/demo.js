@@ -28,17 +28,19 @@
     .map(([id, label, enabled]) => ({ id, label, enabled: !!enabled, pattern: '' }));
   const state = {
     config: {
-      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
+      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
       inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
       loadout: [{ name: 'Ambush Scarab of Containment', qty: 2, chaos: null }, { name: 'Map', qty: 1, chaos: 4 }],
     },
     status: {
       log: { ok: true, path: 'Client.txt' }, prices: { count: 5210, league: 'Demo', updatedAt: now, errors: [], loading: false },
-      inventory: { keyHook: 'ok', open: true, lastReadAt: now, recognised: 23, error: null, art: { known: 1480, done: 0, total: 0, failed: 0 } }, hotkeys: { clipboard: true, snapshot: true, priceCheck: false, priceCheckHeld: false, tradeTaken: [] },
+      inventory: { keyHook: 'ok', open: true, lastReadAt: now, recognised: 23, error: null, art: { known: 1480, done: 0, total: 0, failed: 0 } }, hotkeys: { clipboard: true, snapshot: true, record: true, priceCheck: false, priceCheckHeld: false, tradeTaken: [] },
       shared: { count: 212, loadedAt: now, error: null, uploaded: 0, canUpload: false, waiting: 0 },
       cloud: (() => { const q = new URLSearchParams(location.search); return { enabled: q.has('account'), signedIn: q.get('account') === 'in', name: q.get('account') === 'in' ? 'Divine4k' : '', waiting: 0, busy: false, error: null, sentAt: now - 4 * 60000 }; })(),
       update: { current: { sha: 'abc1234def', message: 'Read loot from the inventory' }, latest: { sha: 'fff9999', message: 'Fix poe.ninja item list parsing' }, available: true, checking: false, applying: false, step: '', error: null, checkedAt: now },
     },
+    // Open index.html?account=in&role=admin (or moderator) to see the Troubleshooting page and Developer tools.
+    trouble: (() => { const q = new URLSearchParams(location.search); const role = q.get('account') === 'in' ? q.get('role') || '' : ''; return { recording: false, busy: '', startedAt: 0, video: false, maxMs: 480000, sending: null, can: !!role, admin: role === 'admin', rev: 1 }; })(),
     leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }, { id: 2, label: 'Screen 2 (1920x1080)' }],
     packaged: false,
     learned: ['Alchemy Shard', 'Chaos Orb', 'Legion Thread', '(ignored items)'], itemsRev: '1', doubts: [{ id: 'inv:3', name: 'Chaos Orb', qty: 8, image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==', options: ['Eldritch Chaos Orb'] }],
@@ -100,7 +102,7 @@
     id, dir, player, item, qty, price, league: 'Demo', tab, left, top, note: '', at: now - id * 47000, lastAt: now, asks: 1,
     state: 'new', here: false, thanked: false, soldAlready: false, value: null, market: null, low: false, next: dir === 'in' ? 'invite' : 'hideout', nextLabel: '', waiting: '', grid: tab ? 12 : 0, ...more,
   });
-  const KEYS = { hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D' }, trade: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' } };
+  const KEYS = { hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9' }, trade: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' } };
   state.config.trade = { enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { ...KEYS.trade }, auto: { thankSold: true, kickSold: true, thankBought: false, leaveBought: false, homeBought: false, joinHideout: false, ignoreSold: false, closeBoughtSec: 0 }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
   state.status.hotkeys.layout = true; state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
   state.trade = {
@@ -132,6 +134,11 @@
     getState: async () => state, onState: (cb) => { listener = cb; },
     setConfig: async (patch) => { merge(state.config, patch); listener(state); return true; },
     action: async (a) => {
+      if (a && a.type === 'troubleToggle') {
+        const t = state.trouble;
+        if (t.recording) { t.recording = false; t.rev++; } else Object.assign(t, { recording: true, startedAt: Date.now(), video: true });
+        listener(state);
+      }
       if (a && a.type === 'resetKeys') { merge(state.config, { hotkeys: { ...KEYS.hotkeys }, trade: { hotkeys: { ...KEYS.trade } }, inventory: { key: 'Tab' } }); listener(state); }
       return true;
     },
@@ -166,6 +173,29 @@
       const labels = { Currency: 'Currency', Thread: 'Threads', Astrolabe: 'Astrolabes', Map: 'Maps', Other: 'Other names' };
       const categories = Object.keys(labels).map((id) => ({ id, label: labels[id], count: rows.filter((r) => r.category === id).length, icon: null }));
       return { me: 'Divine', canUpload: true, named: 3, rows, categories };
+    },
+    troubleList: async () => [
+      { id: '20261124-170509-Divine4k', startedAt: now - 3600000, endedAt: now - 3600000 + 95000, by: 'Divine4k', note: 'Timer kept running after I went to the hideout.\nIt only stopped when I entered the next map.', sent: { at: now - 3000000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-170509-Divine4k' }, events: 412, videoBytes: 9123456 },
+      { id: '20261124-181200-Divine4k', startedAt: now - 600000, endedAt: now - 600000 + 41000, by: 'Divine4k', note: '', sent: null, events: 96, videoBytes: 0, videoProblem: 'The screen could not be recorded.' },
+    ],
+    troubleDetails: async (id) => {
+      const list = await window.api.troubleList();
+      const m = list.find((r) => r.id === id);
+      const ev = [
+        { t: 0, kind: 'start', version: 'abc1234', by: 'Divine4k' }, { t: 310, kind: 'key', dir: 'down', key: 'Tab' }, { t: 420, kind: 'key', dir: 'up', key: 'Tab' },
+        { t: 1800, kind: 'log', line: '2026/11/24 17:05:11 123456 abc [INFO Client 1234] : You have entered Celestial Hideout.' },
+        { t: 1820, kind: 'state', map: { id: 'r4', name: 'Strand', running: true, deaths: 0, loot: 5, lootValue: 260 } },
+        { t: 2400, kind: 'mouse', dir: 'down', button: 'left', x: 1650, y: 820 }, { t: 2900, kind: 'hotkey', job: 'clipboard', key: 'F8' },
+        { t: 3100, kind: 'notice', text: 'Counted 3 Chaos Orb as loot from this map.', bad: false }, { t: 5200, kind: 'notice', text: 'The inventory was not open.', bad: true },
+        { t: 9000, kind: 'stop' },
+      ];
+      return { ...m, video: m.videoBytes ? { bytes: m.videoBytes, width: 1600, height: 900, mime: 'video/webm' } : null, events: ev };
+    },
+    troubleVideo: async () => null,
+    dev: async (q) => {
+      if (q.type === 'github') return { repo: 'Divine4k/poeapp-reports', hasToken: true, tokenEnd: 'x9Qa', by: 'Divine4k', at: now - 86400000 };
+      if (q.type === 'users') return { users: [['Divine4k', 'admin', 31], ['Marek', 'moderator', 12], ['Anna', '', 4], ['newplayer', '', 0]].map(([name, role, sessions], i) => ({ name, role, sessions, last: sessions ? now - i * 86400000 : 0, created: now - (40 - i) * 86400000 })) };
+      return { ok: true };
     },
     runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },

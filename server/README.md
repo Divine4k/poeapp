@@ -22,13 +22,25 @@ The running one is `https://poeapp.divine4k.workers.dev`: Worker `poeapp`, D1 da
 | D1 `sessions` | One row per uploaded session, for listing: times, strategy name, totals. |
 | D1 `hits` | Counters that slow down password guessing, mass registration and flooding the item list. |
 | D1 `items` | The shared item list, one row per picture, with who added it. |
-| D1 `meta` | Notes the server keeps for itself (that the old item list was taken over). |
+| D1 `meta` | Notes the server keeps for itself (that the old item list was taken over), and the GitHub settings for troubleshooting recordings (`github`: repository and token, set by an admin in the app). |
 | R2 `sessions/<user>/<id>.json` | The session as the app saved it: maps, loot, costs. |
 | R2 `pictures/<user>/<map>.json` | The inventory pictures of one map. |
 | R2 `shared/items.json` | The item list as one file, rewritten after every change; this is what the apps download. |
 | R2 `reports/<user>/<file>` | Reports sent with F9. |
 
 Every upload is written under the account that sent it, so nobody can change another person's data. In the item list, a picture can be renamed or removed by the account that added it, or by an owner of the list: an account with `admin` set to 1 in `users` (set it in the D1 console: `UPDATE users SET admin = 1 WHERE name_key = 'thename';`).
+
+## Roles
+
+An account is a user, a moderator (`users.role = 'moderator'`) or an admin (`users.admin = 1`). The first admin is made in the D1 console as above; after that, admins give and take roles in the app (Settings, Developer tools), except their own. The `role` column is added by the Worker itself the first time it runs against an older database.
+
+| Route | Who | What |
+|---|---|---|
+| `GET me` | anyone logged in | name and role |
+| `GET users` | anyone logged in | every account with its sessions; admins also get role and join date |
+| `PUT users/<name>/role` | admin | `{ role: '' \| 'moderator' \| 'admin' }` |
+| `GET dev/github` | admin, moderator | `{ repo, token }` for sending recordings |
+| `PUT dev/github` | admin | `{ repo?, token? }` (an empty token removes it) |
 
 The item list used to live in the `poeappitemdata` repository on GitHub. The first time the server is asked for the list, it copies it from there once. Reading other people's sessions needs an account. Deleting an account removes its rows and files.
 

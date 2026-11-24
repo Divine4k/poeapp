@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https://web.poecdn.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https://web.poecdn.com; media-src 'self' blob:">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map Companion</title>
 <link rel="stylesheet" href="style.css">
@@ -19,6 +19,7 @@
     <button type="button" class="navi" role="tab" data-tab="mapcheck" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/></svg><span class="lbl">Map check</span></button>
     <button type="button" class="navi" role="tab" data-tab="costs" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14.5 9.5a6 6 0 1 1-5 5"/></svg><span class="lbl">Costs</span></button>
     <button type="button" class="navi" role="tab" data-tab="prices" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/></svg><span class="lbl">Prices</span></button>
+    <button type="button" class="navi" role="tab" data-tab="trouble" aria-selected="false" id="nav-trouble" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg><span class="lbl">Troubleshooting</span><span class="navdot rec" id="trouble-dot" hidden></span></button>
   </nav>
   <div class="side-foot">
     <button type="button" class="navi" id="btn-side-update"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span class="lbl" id="side-update-label">Check for updates</span></button>
@@ -213,6 +214,60 @@
   </div>
 </main>
 
+<main class="view" id="tab-trouble" role="tabpanel" hidden>
+  <div class="trouble">
+    <section class="tr-side" aria-label="Record and check">
+      <h2 class="pagetitle">Troubleshooting</h2>
+      <div class="tr-rec" id="tr-rec">
+        <button type="button" class="tr-recbtn" id="tr-recbtn" data-act="troubleToggle"><span class="tr-dot" aria-hidden="true"></span><span id="tr-reclabel">Record</span></button>
+        <div class="tr-recinfo"><b id="tr-rectime"></b><small id="tr-rechint"></small></div>
+      </div>
+      <p class="fine tr-what">A recording keeps the game's screen as a video, every key and click, each line the game writes to its log, and what the app does meanwhile. Afterwards you can watch it here, write what went wrong, and send it to the reports repository.</p>
+      <h3 class="tr-h">Other checks</h3>
+      <div class="set-list">
+        <div class="set-row">
+          <span class="set-what"><b>A map does not start, or the timer does not stop</b><small>Shows whether the game is writing to its log, the areas you entered and what the app did with each.</small></span>
+          <span class="set-ctl"><button type="button" data-logcheck>Check the game log</button></span>
+        </div>
+        <div class="set-row">
+          <span class="set-what"><b>An item is read wrong</b><small>Sends what the app sees in your inventory right now to the Map Companion server. Key in game: <span class="keyname" data-keyname="hotkeys.snapshot"></span>.</small></span>
+          <span class="set-ctl"><button type="button" data-act="saveDiagnostic">Send a report</button></span>
+        </div>
+      </div>
+      <h3 class="tr-h">Recordings</h3>
+      <ul class="tr-list" id="tr-list"></ul>
+    </section>
+    <section class="tr-view" id="tr-view" aria-label="Recording">
+      <p class="dim tr-none" id="tr-none">Pick a recording on the left to watch it.</p>
+      <div id="tr-detail" hidden>
+        <div class="tr-head">
+          <h2 class="tr-title" id="tr-title"></h2>
+          <span class="row"><button type="button" class="link" id="tr-delete">Delete</button></span>
+        </div>
+        <p class="map-meta" id="tr-facts"></p>
+        <video id="tr-video" controls preload="metadata"></video>
+        <p class="warn" id="tr-novideo" hidden></p>
+        <label class="tr-note-label" for="tr-note"><b>What went wrong?</b> <small>What you did, what the app did, and what you expected instead. Times from the video help.</small></label>
+        <textarea id="tr-note" rows="4" maxlength="5000" placeholder="At 0:42 I entered my hideout, but the map timer kept running…"></textarea>
+        <div class="tr-send">
+          <span class="dim" id="tr-sendinfo"></span>
+          <button type="button" class="primary" id="tr-sendbtn">Send</button>
+        </div>
+        <div class="tr-events-head">
+          <h3 class="tr-h">What happened</h3>
+          <span class="chips tr-filter" id="tr-filter">
+            <button type="button" data-kinds="input" aria-pressed="true">Keys and clicks</button>
+            <button type="button" data-kinds="game" aria-pressed="true">Game log</button>
+            <button type="button" data-kinds="app" aria-pressed="true">The app</button>
+          </span>
+        </div>
+        <p class="fine">Click a line to jump the video there.</p>
+        <ol class="tr-events" id="tr-events"></ol>
+      </div>
+    </section>
+  </div>
+</main>
+
 <main class="view" id="tab-settings" role="tabpanel" hidden>
   <div class="set">
     <nav class="set-nav" id="set-nav" aria-label="Settings sections">
@@ -224,6 +279,7 @@
       <button type="button" data-set="overlay" aria-pressed="false">Overlay</button>
       <button type="button" data-set="trade" aria-pressed="false">Trade</button>
       <button type="button" data-set="help" aria-pressed="false">Help</button>
+      <button type="button" data-set="dev" aria-pressed="false" id="set-nav-dev" hidden>Developer tools</button>
       <p class="set-note">Every change is saved straight away. <b id="set-saved" role="status" hidden>Saved.</b></p>
     </nav>
     <div class="set-main" id="set-main">
@@ -384,7 +440,7 @@
         <div class="set-list">
           <div class="set-row">
             <span class="set-what"><b>A map does not start, or the timer does not stop</b><small>Shows whether the game is writing to its log, the areas you entered and what the app did with each.</small></span>
-            <span class="set-ctl"><button type="button" id="btn-logcheck">Check the game log</button></span>
+            <span class="set-ctl"><button type="button" data-logcheck>Check the game log</button></span>
           </div>
           <div class="set-row">
             <span class="set-what"><b>An item is read wrong</b><small>Sends what the app sees in your inventory right now, with the pictures it compared it against, to the Map Companion server. Nothing else from your screen is sent. When you are not logged in, the report is kept on this PC instead. Key in game for a quick one: <span class="keyname" data-keyname="hotkeys.snapshot"></span>.</small></span>
@@ -398,6 +454,36 @@
         <h3>About</h3>
         <p class="fine" id="version-line"></p>
         <p class="fine">This app reads the game log, the clipboard and the screen. It only sends something to the game when you press a key or click a button: one Ctrl+Alt+C on a check key, if copying is switched on, and one chat line for each trade button or trade key. The steps under "Done for me after a trade" are the one exception, and only when you switch them on. It never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
+      </section>
+
+      <section class="set-sec" id="set-dev" aria-label="Developer tools" hidden>
+        <h2>Developer tools</h2>
+        <p class="set-lead">Only admins see this. What is set here is kept on the Map Companion server, for every admin and moderator.</p>
+        <h3>Where recordings are sent</h3>
+        <form class="set-list" id="dev-github" autocomplete="off">
+          <div class="set-row">
+            <span class="set-what"><b>Reports repository</b><small>As owner/name. Keep it private: recordings hold every key pressed, chat included.</small></span>
+            <span class="set-ctl"><input name="repo" placeholder="Divine4k/poeapp-reports" aria-label="Reports repository" spellcheck="false"></span>
+          </div>
+          <div class="set-row">
+            <span class="set-what"><b>GitHub token</b><small id="dev-token-line">Open <a href="https://github.com/settings/personal-access-tokens/new?name=Map+Companion+recordings&amp;description=Lets+Map+Companion+send+troubleshooting+recordings&amp;expires_in=none&amp;contents=write" target="_blank" rel="noreferrer">GitHub's token page</a> (name and permission filled in), choose "Only select repositories", pick the reports repository, generate, paste here.</small></span>
+            <span class="set-ctl"><input name="token" type="password" placeholder="Leave empty to keep the saved one" aria-label="GitHub token" autocomplete="off" spellcheck="false"></span>
+          </div>
+          <div class="set-row">
+            <span class="set-what"><small id="dev-github-status"></small></span>
+            <span class="set-ctl"><button type="button" class="link" id="dev-token-clear">Remove the token</button><button type="submit">Save</button></span>
+          </div>
+        </form>
+        <h3>Users</h3>
+        <p class="set-foot">An admin can do everything here. A moderator gets the Troubleshooting page and can send recordings. You cannot change your own role.</p>
+        <div class="row dev-tools-row"><input id="dev-filter" placeholder="Find a name" aria-label="Find a name" spellcheck="false"><button type="button" id="dev-refresh">Refresh</button></div>
+        <p class="warn" id="dev-error" hidden></p>
+        <div class="set-list">
+          <table class="dev-users">
+            <thead><tr><th>Name</th><th>Role</th><th class="num">Sessions</th><th>Last session</th><th>Joined</th></tr></thead>
+            <tbody id="dev-users"></tbody>
+          </table>
+        </div>
       </section>
 
     </div>
@@ -501,10 +587,12 @@
 <script src="app/render.js"></script>
 <script src="app/events.js"></script>
 <script src="app/logcheck.js"></script>
+<script src="app/trouble.js"></script>
 <script src="app/forms.js"></script>
 <script src="app/prices.js"></script>
 <script src="app/strategy-dialog.js"></script>
 <script src="app/settings.js"></script>
+<script src="app/devtools.js"></script>
 <script src="app/account.js"></script>
 <script src="app/start.js"></script>
 </body>

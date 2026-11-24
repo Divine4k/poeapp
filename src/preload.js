@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld('api', {
   savedSession: (id) => ipcRenderer.invoke('saved-session', id),
   priceCategories: () => ipcRenderer.invoke('price-categories'),
   priceList: (a) => ipcRenderer.invoke('price-list', a),
+  // the Troubleshooting page and the Developer tools
+  troubleList: () => ipcRenderer.invoke('trouble-list'),
+  troubleDetails: (id) => ipcRenderer.invoke('trouble-details', id),
+  troubleVideo: (id) => ipcRenderer.invoke('trouble-video', id),
+  dev: (a) => ipcRenderer.invoke('dev', a),
   // the trade overlay window
   onTrade: (cb) => ipcRenderer.on('trade', (_e, data) => cb(data)),
   layout: () => ipcRenderer.invoke('layout-get'),

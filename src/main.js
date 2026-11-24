@@ -41,6 +41,8 @@ const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tr
 const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
+const { ScreenRecorder } = require('./recorder');
+const { Troubleshoot } = require('./troubleshoot');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -60,6 +62,8 @@ let hook = null;
 let updater = null;
 let shared = null;
 let cloud = null; // the account and the uploading of sessions and pictures
+let trouble = null; // troubleshooting recordings (Troubleshooting page, admins and moderators)
+let troubleRev = 0; // goes up when the list of recordings changes, so the page reads it again
 let snapshots = null; // the inventory as read for each map
 let archive = null;   // sessions closed with "Start new session"
 let flushTimer = null;
@@ -94,7 +98,7 @@ const status = {
   log: { ok: false, path: '', error: 'Not started' },
   prices: { count: 0, updatedAt: 0, league: '', errors: [], loading: false },
   inventory: { keyHook: 'off', open: false, lastReadAt: 0, recognised: 0, error: null, art: { known: 0, done: 0, total: 0, failed: 0 } },
-  hotkeys: { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false, layout: false },
+  hotkeys: { clipboard: false, snapshot: false, record: false, tradeNext: false, tradeDismiss: false, layout: false },
   shared: { count: 0, loadedAt: 0, error: null, uploaded: 0, canUpload: false },
   cloud: { enabled: false, signedIn: false, name: '', waiting: 0, busy: false, error: null, sentAt: 0 },
   update: { current: null, latest: null, available: false, checking: false, applying: false, step: '', error: null, checkedAt: 0 },
@@ -169,6 +173,7 @@ function buildState() {
   if (shared) status.shared = { ...shared.status, canUpload: shared.canUpload, waiting: shared.pending.length, by: shareName() };
   if (cloud) status.cloud = cloud.status;
   return {
+    trouble: trouble ? { ...trouble.status, can: canTrouble(), admin: isAdmin(), rev: troubleRev } : null,
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
     packaged: app.isPackaged, // the installed program already has its shortcuts
     inventoryRev: lastInventory.rev,
@@ -212,7 +217,9 @@ function closeSession() {
 }
 const cleanUrl = (u) => { const v = String(u || '').trim(); return /^https?:\/\/\S+$/i.test(v) ? v : ''; };
 function push() {
-  if (win && !win.isDestroyed()) win.webContents.send('state', buildState());
+  const s = (win && !win.isDestroyed()) || (trouble && trouble.recording) ? buildState() : null;
+  if (win && !win.isDestroyed()) win.webContents.send('state', s);
+  if (trouble && trouble.recording) trouble.state(s);
   syncOverlay();
   if (checkPanel && checkPanel.visible && tradeCheck) checkPanel.update(checkPanelData());
 }
@@ -258,6 +265,7 @@ function startLog() {
   logTail = new LogTail(p);
   logTail.on('status', (s) => { status.log = { ok: s.ok, path: p, error: s.ok ? null : `Cannot read the log (${s.error})` }; push(); });
   logTail.on('raw', (line, ev) => {
+    if (trouble) trouble.event('log', { line, ev: ev || undefined });
     // Shown in the game log check: what the game wrote. What the app did with it is added below.
     logTrace.push({ at: Date.now(), raw: line.replace(/^\S+ \S+ \d+ \S+ /, '').slice(0, 220), type: ev ? ev.type : null, kind: ev ? ev.kind || null : null, code: ev ? ev.code || null : null, did: ev ? '' : 'Nothing: not a line the tracker acts on' });
     if (logTrace.length > 40) logTrace.shift();
@@ -660,9 +668,9 @@ let clickTimer = null;
 const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape', enter: 'Enter', backquote: 'Backquote', '`': 'Backquote' };
 // The helper is also what types chat lines: for trade offers, and for the /hideout and
 // /remaining keys, which work with trade offers switched off too.
-const hookWanted = () => !!(config.inventory.onKey || config.inventory.onClick || config.inventory.autoCopy || config.trade.enabled || config.trade.hotkeys.hideout || config.trade.hotkeys.remaining);
+const hookWanted = () => !!((trouble && trouble.recording) || config.inventory.onKey || config.inventory.onClick || config.inventory.autoCopy || config.trade.enabled || config.trade.hotkeys.hideout || config.trade.hotkeys.remaining);
 // What the helper is set up from. It is only started again when one of these changes.
-const hookSetup = () => JSON.stringify([hookWanted(), !!config.inventory.onKey, config.inventory.key, !!config.inventory.onClick]);
+const hookSetup = () => JSON.stringify([hookWanted(), !!config.inventory.onKey, config.inventory.key, !!config.inventory.onClick, !!(trouble && trouble.recording)]);
 // The helper is started once and then left running: only what it listens for is swapped when
 // a setting changes. Stopping and starting it again (as every change on the Settings page used
 // to do) can leave it unable to start on Windows, and with it gone the app could neither copy
@@ -673,7 +681,7 @@ function syncKeyHook() {
   let lib = hook;
   if (!lib) { try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; } }
   hook = lib;
-  try { lib.uIOhook.removeAllListeners('keydown'); lib.uIOhook.removeAllListeners('mouseup'); } catch (_) { /* none were set */ }
+  try { for (const ev of ['keydown', 'keyup', 'mousedown', 'mouseup', 'wheel']) lib.uIOhook.removeAllListeners(ev); } catch (_) { /* none were set */ }
   status.inventory.keyHook = 'off';
   if (!hookWanted()) return;
   if (config.inventory.onKey) {
@@ -692,6 +700,8 @@ function syncKeyHook() {
       clickTimer = setTimeout(readInventory, 300);
     });
   }
+  // While a troubleshooting recording runs, every key and click is noted too.
+  if (trouble && trouble.recording) trouble.attachHook(lib);
   try {
     if (!hookListening) { lib.uIOhook.start(); hookListening = true; }
     if (status.inventory.keyHook !== 'badkey') status.inventory.keyHook = 'ok';
@@ -699,7 +709,7 @@ function syncKeyHook() {
 }
 
 // ---- naming items ------------------------------------------------------------------
-function say(text, bad = false) { notice = { text, bad, at: Date.now() }; }
+function say(text, bad = false) { notice = { text, bad, at: Date.now() }; if (trouble) trouble.event('notice', { text, bad }); }
 
 // Remembers that this picture is the named item ('' = ignore it) and queues it for sharing.
 function learnPrint(typed, print, image = null) {
@@ -824,43 +834,50 @@ async function loadShared() {
   await offerLocalItems();
 }
 
-// Writes what the app saw and what it compared against to a file on the Desktop, for tuning.
+// What the app sees in the inventory right now and what it compared it against, for tuning.
+// snapshot: without the item pictures (quicker; the F9 key and troubleshooting recordings).
+async function makeDiagnostic(snapshot = false) {
+  const frame = await captureFrame(config.inventory.displayId);
+  const rect = gridRect(frame.width, frame.height);
+  const open = isInventoryOpen(frame, rect);
+  const mouse = cursorInFrame(frame);
+  const b64 = (u8) => Buffer.from(u8).toString('base64');
+  const cells = [];
+  const wanted = new Set();
+  for (let r = 0; r < ROWS && open; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const rgb = extractCell(frame, rect, r, c);
+      if (isEmptyCell(rgb)) continue;
+      const print = fingerprint(rgb);
+      const hit = index.match(print);
+      const top = index.suggest(print, 5);
+      top.forEach((t) => wanted.add(t.name));
+      cells.push({ row: r, col: c, qty: readStack(rgb), match: hit, top, rgb: b64(rgb) });
+    }
+  }
+  const art = [];
+  for (const name of (snapshot ? [] : wanted)) {
+    const entry = prices.get(name);
+    if (!entry || !entry.icon || !artLoader) continue;
+    try { const a = await artLoader.fetchRgb(entry.icon); if (a) art.push({ name, url: entry.icon, size: a.size, rgb: b64(a.rgb) }); } catch (_) { /* skip */ }
+  }
+  const report = {
+    version: updater && updater.current, when: new Date().toISOString(), open, snapshot,
+    mouse, mouseCell: cursorCell(mouse, rect),
+    logStats: logTail ? logTail.stats : null, logTrace,
+    ledger: ledger.toJSON(), lastRead: lastInventory.cells.map((c) => ({ cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source })),
+    location: session.location, inRun: !!session.current,
+    frame: { width: frame.width, height: frame.height }, rect, display: { scaleFactor: frame.display.scaleFactor, size: frame.display.size },
+    counts: { art: index.art.length, learned: index.learned.length, shared: index.shared.length, prices: prices.size },
+    artProgress: status.inventory.art, categories: prices.toJSON().entries.reduce((m, e) => { m[e.category] = (m[e.category] || 0) + 1; return m; }, {}), cells, art,
+  };
+  return report;
+}
+// Keeps that report on this PC, and sends it to the server when logged in.
 async function saveDiagnostic(snapshot = false) {
   try {
-    const frame = await captureFrame(config.inventory.displayId);
-    const rect = gridRect(frame.width, frame.height);
-    const open = isInventoryOpen(frame, rect);
-    const mouse = cursorInFrame(frame);
-    const b64 = (u8) => Buffer.from(u8).toString('base64');
-    const cells = [];
-    const wanted = new Set();
-    for (let r = 0; r < ROWS && open; r++) {
-      for (let c = 0; c < COLS; c++) {
-        const rgb = extractCell(frame, rect, r, c);
-        if (isEmptyCell(rgb)) continue;
-        const print = fingerprint(rgb);
-        const hit = index.match(print);
-        const top = index.suggest(print, 5);
-        top.forEach((t) => wanted.add(t.name));
-        cells.push({ row: r, col: c, qty: readStack(rgb), match: hit, top, rgb: b64(rgb) });
-      }
-    }
-    const art = [];
-    for (const name of (snapshot ? [] : wanted)) {
-      const entry = prices.get(name);
-      if (!entry || !entry.icon || !artLoader) continue;
-      try { const a = await artLoader.fetchRgb(entry.icon); if (a) art.push({ name, url: entry.icon, size: a.size, rgb: b64(a.rgb) }); } catch (_) { /* skip */ }
-    }
-    const report = {
-      version: updater && updater.current, when: new Date().toISOString(), open, snapshot,
-      mouse, mouseCell: cursorCell(mouse, rect),
-      logStats: logTail ? logTail.stats : null, logTrace,
-      ledger: ledger.toJSON(), lastRead: lastInventory.cells.map((c) => ({ cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source })),
-      location: session.location, inRun: !!session.current,
-      frame: { width: frame.width, height: frame.height }, rect, display: { scaleFactor: frame.display.scaleFactor, size: frame.display.size },
-      counts: { art: index.art.length, learned: index.learned.length, shared: index.shared.length, prices: prices.size },
-      artProgress: status.inventory.art, categories: prices.toJSON().entries.reduce((m, e) => { m[e.category] = (m[e.category] || 0) + 1; return m; }, {}), cells, art,
-    };
+    const report = await makeDiagnostic(snapshot);
+    const open = report.open;
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -931,8 +948,59 @@ async function accountAction(a) {
   else if (a.type === 'delete') error = await cloud.deleteAccount(a.password);
   else if (a.type === 'sync') syncCloud();
   if (!error && (a.type === 'register' || a.type === 'login')) { syncCloud(); offerLocalItems().catch((e) => console.error('offer failed', e.message)); }
+  if (a.type !== 'sync') { if (trouble) trouble.event('account', { type: a.type, error: error || undefined }); registerHotkeys(); }
   push();
   return { error };
+}
+
+// ---- troubleshooting and developer tools ------------------------------------------------
+// The Troubleshooting page and its record key are there for admins and moderators; the
+// Developer tools in Settings for admins. The server decides who is which.
+const canTrouble = () => !!(cloud && cloud.signedIn && cloud.role);
+const isAdmin = () => !!(cloud && cloud.signedIn && cloud.role === 'admin');
+function setupTrouble() {
+  trouble = new Troubleshoot({
+    dir: dataFile('recordings'),
+    recorder: new ScreenRecorder({ page: path.join(__dirname, 'ui', 'recorder.html'), preload: path.join(__dirname, 'recorder-preload.js') }),
+    displayId: () => config.inventory.displayId,
+    snapshot: async () => {
+      let inventory = null;
+      try { inventory = await makeDiagnostic(true); } catch (e) { inventory = { problem: e.message || String(e) }; }
+      return { state: { ...buildState(), logTrace, logStats: logTail ? logTail.stats : null }, inventory };
+    },
+    who: () => ({ name: cloud && cloud.signedIn ? cloud.name : '', role: cloud ? cloud.role : '' }),
+    version: require('../package.json').version, // the exact commit is filled in once the updater knows it
+    cloud, fetchImpl: webFetch, say,
+    changed: () => { troubleRev++; push(); },
+  });
+  // What the app writes to its console goes into a recording too.
+  for (const level of ['log', 'warn', 'error']) {
+    const was = console[level].bind(console);
+    console[level] = (...args) => { was(...args); if (trouble) trouble.event('console', { level, text: args.map((x) => (x instanceof Error ? x.stack : typeof x === 'string' ? x : JSON.stringify(x))).join(' ') }); };
+  }
+}
+// The record key and the Record button: starts a recording, or stops the one running.
+async function toggleRecording() {
+  if (!trouble) return;
+  if (!trouble.current && !canTrouble()) { say('Recording is for admins and moderators. Log in with such an account.', true); push(); return; }
+  await trouble.toggle();
+  syncKeyHook();
+  push();
+}
+// What the Developer tools ask for. Only admins get an answer from the server.
+async function devAction(a) {
+  if (!cloud || !isAdmin()) return { error: 'Only admins can use the Developer tools.' };
+  if (a.type === 'users') return cloud.users();
+  if (a.type === 'setRole') { const error = await cloud.setRole(String(a.name || ''), String(a.role || '')); return { error }; }
+  if (a.type === 'github') { const g = await cloud.github(); return g.error ? g : { repo: g.repo, hasToken: !!g.token, tokenEnd: g.token ? g.token.slice(-4) : '', by: g.by, at: g.at }; }
+  if (a.type === 'setGithub') {
+    const patch = {};
+    if (a.repo !== undefined) patch.repo = String(a.repo || '').trim();
+    if (a.token !== undefined) patch.token = String(a.token || '').trim();
+    const r = await cloud.setGithub(patch);
+    return r.error ? r : { ok: true };
+  }
+  return { error: 'Unknown request.' };
 }
 
 
@@ -1155,6 +1223,7 @@ function showCheckToast(started) {
 }
 // always: shown even when the message after the check key is turned off (reading alerts have their own switch).
 function showToast(message, always = false) {
+  if (trouble) trouble.event('toast', { message, always: always || undefined });
   if (!toast || (!always && config.checkToast === false) || !message) return;
   if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
   // Tall enough for a two-line headline and three lines of small print; a problem stays longer.
@@ -1172,17 +1241,20 @@ function registerHotkeys() {
   // Keys that only mean something in the game are held only while the game is in front.
   // Anywhere else they stay with the program you are in (Ctrl+D bookmarks, F5 refreshes).
   gameKeysOn = watch.gameInFront();
+  const noted = (job, accel, fn) => () => { if (trouble) trouble.event('hotkey', { job, key: accel }); return fn(); };
   const reg = (key, accel, fn) => {
     if (!accel) return;
-    try { status.hotkeys[key] = globalShortcut.register(accel, fn); } catch (_) { status.hotkeys[key] = false; }
+    try { status.hotkeys[key] = globalShortcut.register(accel, noted(key, accel, fn)); } catch (_) { status.hotkeys[key] = false; }
   };
   reg('clipboard', config.hotkeys.clipboard, () => { checkHovered(); });
   reg('snapshot', config.hotkeys.snapshot, () => { saveDiagnostic(true).then(changed); });
+  // Held for admins and moderators only (and while a recording runs, so it can always be stopped).
+  if (canTrouble() || (trouble && trouble.current)) reg('record', config.hotkeys.record, () => { toggleRecording(); });
   // The price check key: the same check without naming or counting anything.
   status.hotkeys.priceCheckHeld = gameKeysOn && !!config.hotkeys.priceCheck;
   if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { checkHovered({ count: false }); });
   const hk = config.trade.hotkeys, taken = [];
-  const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, fn)) taken.push(accel); } catch (_) { taken.push(accel); } };
+  const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, noted('chat or trade key', accel, fn))) taken.push(accel); } catch (_) { taken.push(accel); } };
   // Layout mode places every part of the overlay (the price check window and the check message
   // as well as the trade offers), so its key does not wait for trade offers to be switched on.
   reg('layout', hk.layout, () => toggleLayout());
@@ -1306,6 +1378,7 @@ function syncOverlay() {
 // auto: the line is not the result of a click or key press, so the game window is never pulled
 // to the front for it and failures stay quiet. send: false leaves the line unsent in the chat box.
 async function sendChat(text, { auto = false, send = true } = {}) {
+  if (trouble) trouble.event('chat', { text, auto, send, busy: chatBusy || undefined });
   if (chatBusy) return false;
   if (auto && !(hook && watch.gameInFront())) return false;
   if (!hook) { say('Nothing was sent: the keyboard helper is not installed, so the app cannot type in the game. Run npm install in the app folder.', true); return false; }
@@ -1406,6 +1479,7 @@ function createWindow() {
 
 // ---- IPC -----------------------------------------------------------------------
 function applyConfig(patch) {
+  if (trouble) trouble.event('setting', patch);
   const leagueBefore = config.league, logBefore = config.logPath, hookBefore = hookSetup();
   if (patch.trade) patch = { ...patch, trade: mergeTrade(config.trade, patch.trade) };
   config = {
@@ -1521,6 +1595,17 @@ const actions = {
   dismissUnknown: (a) => { if (backlog.remove(a.id)) saveBacklog(); },
   clearUnknown: () => { if (backlog.clear()) saveBacklog(); },
   saveDiagnostic: () => saveDiagnostic(),
+  // Troubleshooting page.
+  troubleToggle: () => toggleRecording(),
+  troubleNote: (a) => { if (trouble && trouble.setNote(a.id, a.note)) troubleRev++; },
+  troubleRemove: (a) => { if (trouble && trouble.remove(a.id)) { troubleRev++; say('Recording deleted.'); } },
+  troubleSend: async (a) => {
+    if (!trouble) return;
+    if (!canTrouble()) { say('Sending recordings is for admins and moderators.', true); return; }
+    const error = await trouble.send(a.id, a.note);
+    troubleRev++;
+    say(error ? `The recording was not sent: ${error}` : 'Recording sent. Thanks, it will be looked at.', !!error);
+  },
   copyText: (a) => { clipboard.writeText(String(a.text || '').slice(0, 20000)); say('Copied. Paste it into a message to whoever is helping you.'); },
   makeShortcut: () => makeShortcut(),
   setCustomPrice: (a) => {
@@ -1728,9 +1813,15 @@ function setupIpc() {
   ipcMain.handle('layout-get', () => layoutData());
   ipcMain.on('check-size', (e, h) => { if (checkPanel && checkPanel.win && e.sender === checkPanel.win.webContents) checkPanel.setHeight(h); });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
+  ipcMain.handle('trouble-list', () => (trouble ? trouble.list() : []));
+  ipcMain.handle('trouble-details', (_e, id) => (trouble ? trouble.details(String(id || '')) : null));
+  ipcMain.handle('trouble-video', (_e, id) => (trouble ? trouble.video(String(id || '')) : null));
+  ipcMain.handle('dev', (_e, a) => devAction(a || {}));
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];
     if (!fn) return false;
+    // Typing a note is not news; everything else pressed in the window is.
+    if (trouble && a.type !== 'troubleNote') trouble.event('action', a);
     await fn(a);
     changed();
     return true;
@@ -1765,6 +1856,7 @@ app.whenReady().then(() => {
   toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
   checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; } });
   watch.on('change', syncOverlay);
+  watch.on('change', () => { if (trouble) trouble.event('front', { game: watch.gameInFront(), own: watch.ownInFront(), name: watch.name || '' }); });
   // Away from the game nothing is drawn over the screen.
   watch.on('change', () => { if (checkPanel.visible && !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; } });
   watch.on('change', () => { if (watch.gameInFront() !== gameKeysOn) { registerHotkeys(); push(); } });
@@ -1797,6 +1889,10 @@ app.whenReady().then(() => {
   }, 5000);
 
   loadCloud();
+  setupTrouble();
+  registerHotkeys(); // the record key goes with the role kept from the last login
+  // The role may have been given or taken since the last start.
+  cloud.refresh().then((moved) => { if (moved) { registerHotkeys(); push(); } }, () => {});
   shared = new SharedItems({ cloud });
   loadShared();
   setInterval(loadShared, SHARED_REFRESH_MS);
@@ -1805,6 +1901,7 @@ app.whenReady().then(() => {
 
   updater = new Updater(app.getAppPath(), webFetch);
   status.update.current = updater.current;
+  if (updater.current && updater.current.sha) trouble.version = updater.current.sha;
   checkUpdate();
   setInterval(checkUpdate, UPDATE_CHECK_MS);
 });

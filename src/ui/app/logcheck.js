@@ -35,7 +35,9 @@ async function renderLogCheck() {
     : '<tr><td colspan="3" class="empty">No area lines yet.</td></tr>';
   logText = `Map Companion game log check\n${verdict}\n${facts.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n${d.trace.map((t) => `${new Date(t.at).toLocaleTimeString()} | ${t.raw} | ${t.did || ''}`).join('\n')}`;
 }
-$('btn-logcheck').addEventListener('click', () => {
+// The button is on the Troubleshooting page and in Settings, under Help.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('[data-logcheck]')) return;
   logDlg.showModal();
   renderLogCheck();
   clearInterval(logTimer);

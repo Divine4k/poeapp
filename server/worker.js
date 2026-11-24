@@ -26,6 +26,15 @@ const FILE_NAME = /^[A-Za-z0-9._-]{1,100}$/;
 // Where the list lived before this server; read once, when the list here is still empty.
 const OLD_ITEMS = 'https://raw.githubusercontent.com/Divine4k/poeappitemdata/main/items.json';
 
+// Who may do what. Everyone with an account is a plain user. A moderator also gets the
+// Troubleshooting page in the app, which records the game and sends the recording to the
+// reports repository on GitHub. An admin can do that too, sees the Developer tools in
+// Settings, gives and takes roles, and may change anyone's pictures in the item list.
+const ROLES = ['', 'moderator', 'admin'];
+const roleOf = (u) => (u.admin ? 'admin' : u.role === 'moderator' ? 'moderator' : '');
+const REPO = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
+const GH_TOKEN = /^[A-Za-z0-9_]{20,255}$/;
+
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const fail = (status, error) => json({ error }, status);
 
@@ -69,7 +78,24 @@ async function newToken(env, userId, now) {
 async function whoIs(request, env) {
   const m = /^Bearer ([0-9a-f]{64})$/.exec(request.headers.get('authorization') || '');
   if (!m) return null;
-  return env.DB.prepare('SELECT u.id, u.name, u.admin FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.hash = ?').bind(await sha256(m[1])).first();
+  const u = await env.DB.prepare('SELECT u.id, u.name, u.admin, u.role FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.hash = ?').bind(await sha256(m[1])).first();
+  if (!u) return null;
+  const role = roleOf(u);
+  return { id: u.id, name: u.name, role, admin: role === 'admin' };
+}
+
+// The role column came after the first accounts. A database made before it gets the column
+// the first time this Worker runs, so nothing has to be run by hand. Admins stay marked by
+// users.admin (as before); users.role only says moderator.
+let schemaReady = false;
+async function ensureSchema(env) {
+  if (schemaReady) return;
+  try {
+    await env.DB.prepare("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT ''").run();
+  } catch (e) {
+    if (!/duplicate column/i.test(String(e && e.message))) throw e;
+  }
+  schemaReady = true;
 }
 
 async function register(request, env, now) {
@@ -88,7 +114,7 @@ async function register(request, env, now) {
     if (/unique/i.test(String(e && e.message))) return fail(409, 'That name is taken. Pick another one.');
     throw e;
   }
-  return json({ name, token: await newToken(env, id, now) }, 201);
+  return json({ name, role: '', token: await newToken(env, id, now) }, 201);
 }
 
 async function login(request, env, now) {
@@ -96,11 +122,11 @@ async function login(request, env, now) {
   const name = body && String(body.name || '').trim();
   if (!body || !NAME.test(name) || !KEY.test(String(body.key || ''))) return fail(400, 'Give your name and password.');
   if (!(await allow(env, `login:${name.toLowerCase()}`, 10, HOUR / 4, now))) return fail(429, 'Too many wrong passwords for this name. Wait 15 minutes and try again.');
-  const user = await env.DB.prepare('SELECT id, name, salt, pass FROM users WHERE name_key = ?').bind(name.toLowerCase()).first();
+  const user = await env.DB.prepare('SELECT id, name, salt, pass, admin, role FROM users WHERE name_key = ?').bind(name.toLowerCase()).first();
   // The same answer whether the name or the password is wrong, so names cannot be probed here.
   if (!user || !same(user.pass, await sha256(user.salt + body.key))) return fail(401, 'Wrong name or password.');
   await env.DB.prepare('DELETE FROM hits WHERE k = ?').bind(`login:${name.toLowerCase()}`).run();
-  return json({ name: user.name, token: await newToken(env, user.id, now) });
+  return json({ name: user.name, role: roleOf(user), token: await newToken(env, user.id, now) });
 }
 
 const sessionKey = (userId, id) => `sessions/${userId}/${id}.json`;
@@ -250,6 +276,44 @@ async function putReport(request, env, me, name) {
   return json({ ok: true });
 }
 
+// ---- roles and the GitHub token (Developer tools in the app) ----------------------------
+// The token lets the app put recordings into the reports repository. It is kept here so every
+// admin and moderator can send without setting it up on their own PC; only an admin can change it.
+async function githubSettings(env) {
+  const row = await env.DB.prepare("SELECT v FROM meta WHERE k = 'github'").first();
+  try { const v = row ? JSON.parse(row.v) : null; return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; }
+}
+async function putGithub(request, env, me, now) {
+  const body = await readJson(request, 2000);
+  if (!body) return fail(400, 'That is not a change to the GitHub settings.');
+  const was = await githubSettings(env);
+  const next = { ...was };
+  if (body.repo !== undefined) {
+    const repo = String(body.repo || '').trim();
+    if (!REPO.test(repo)) return fail(400, 'Give the repository as owner/name, for example Divine4k/poeapp-reports.');
+    next.repo = repo;
+  }
+  if (body.token !== undefined) {
+    const token = String(body.token || '').trim();
+    if (token && !GH_TOKEN.test(token)) return fail(400, 'That does not look like a GitHub token.');
+    next.token = token;
+  }
+  next.by = me.name; next.at = now;
+  await env.DB.prepare("INSERT INTO meta (k, v) VALUES ('github', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(JSON.stringify(next)).run();
+  return json({ repo: next.repo || '', hasToken: !!next.token, by: next.by, at: next.at });
+}
+async function putRole(request, env, me, name) {
+  const body = await readJson(request, 500);
+  const role = body ? String(body.role == null ? '' : body.role) : null;
+  if (role === null || !ROLES.includes(role)) return fail(400, 'A role is admin, moderator or nothing.');
+  const user = await env.DB.prepare('SELECT id, name, admin, role FROM users WHERE name_key = ?').bind(name.toLowerCase()).first();
+  if (!user) return fail(404, 'Nobody has that name.');
+  // So an admin cannot lock themselves out by a slip of the mouse.
+  if (user.id === me.id) return fail(400, 'You cannot change your own role. Ask another admin.');
+  await env.DB.prepare('UPDATE users SET admin = ?, role = ? WHERE id = ?').bind(role === 'admin' ? 1 : 0, role === 'moderator' ? 'moderator' : '', user.id).run();
+  return json({ name: user.name, role });
+}
+
 const brief = (r) => ({ id: r.id, startedAt: r.started_at, endedAt: r.ended_at, divine: r.divine, strategy: r.strategy, totals: JSON.parse(r.totals) });
 
 async function handle(request, env, now) {
@@ -259,6 +323,7 @@ async function handle(request, env, now) {
   if (parts[0] !== 'v1') return parts.length ? fail(404, 'Not found.') : json({ ok: true, service: 'Map Companion' });
   const route = `${method} ${parts.slice(1).map((p, i) => (i % 2 ? ':' : p)).join('/')}`;
 
+  await ensureSchema(env);
   if (route === 'POST register') return register(request, env, now);
   if (route === 'POST login') return login(request, env, now);
   if (route === 'GET items') return getItems(request, env, now);
@@ -267,7 +332,7 @@ async function handle(request, env, now) {
   if (!me) return fail(401, 'Log in again.');
   const arg = (i) => decodeURIComponent(parts[i] || '');
 
-  if (route === 'GET me') return json({ name: me.name });
+  if (route === 'GET me') return json({ name: me.name, role: me.role });
   if (route === 'POST logout') {
     const token = (request.headers.get('authorization') || '').slice(7);
     await env.DB.prepare('DELETE FROM tokens WHERE hash = ?').bind(await sha256(token)).run();
@@ -311,11 +376,19 @@ async function handle(request, env, now) {
   if (route === 'PUT reports/:') return FILE_NAME.test(arg(2)) ? putReport(request, env, me, arg(2)) : fail(400, 'That is not a report.');
 
   // Looking at what people uploaded. Anyone with an account can.
+  // An admin also sees each account's role and when it was made, for the Developer tools.
   if (route === 'GET users') {
-    const rows = await env.DB.prepare(`SELECT u.name, COUNT(s.id) AS sessions, MAX(s.ended_at) AS last FROM users u LEFT JOIN sessions s ON s.user_id = u.id
-      GROUP BY u.id ORDER BY last DESC LIMIT 500`).all();
-    return json({ users: rows.results.map((r) => ({ name: r.name, sessions: r.sessions, last: r.last || 0 })) });
+    const rows = await env.DB.prepare(`SELECT u.name, u.admin, u.role, u.created_at, COUNT(s.id) AS sessions, MAX(s.ended_at) AS last FROM users u LEFT JOIN sessions s ON s.user_id = u.id
+      GROUP BY u.id ORDER BY last DESC, u.created_at DESC LIMIT 500`).all();
+    return json({ users: rows.results.map((r) => ({ name: r.name, sessions: r.sessions, last: r.last || 0, ...(me.admin ? { role: roleOf(r), created: r.created_at } : {}) })) });
   }
+  if (route === 'PUT users/:/role') return me.admin ? putRole(request, env, me, arg(2)) : fail(403, 'Only an admin can change roles.');
+  if (route === 'GET dev/:' && arg(2) === 'github') {
+    if (!me.role) return fail(403, 'Only admins and moderators can send recordings.');
+    const g = await githubSettings(env);
+    return json({ repo: g.repo || '', token: g.token || '', by: g.by || '', at: g.at || 0 });
+  }
+  if (route === 'PUT dev/:' && arg(2) === 'github') return me.admin ? putGithub(request, env, me, now) : fail(403, 'Only an admin can change this.');
   if (method === 'GET' && parts[1] === 'users' && parts.length >= 4) {
     const owner = await env.DB.prepare('SELECT id, name FROM users WHERE name_key = ?').bind(arg(2).toLowerCase()).first();
     if (!owner) return fail(404, 'Nobody has that name.');
