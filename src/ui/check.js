@@ -125,10 +125,17 @@
     return `<div class="pc-price">${priceHtml(s.low, s.median)}<small>${s.low === s.median ? 'cheapest' : 'cheapest – typical'}</small></div><p class="pc-sub">${sub}</p>`;
   }
 
-  // The listings, cheapest first: picture, price, seller, and the one number compared.
+  // The listings, cheapest first: picture, price, seller, and the one number compared. The space
+  // for them is there from the start (empty rows while searching), so the window keeps its size
+  // when the answer comes.
+  const LIST_ROWS = 10;
   function listHtml(d) {
-    if (d.state !== 'done' || !d.listings.length) return '';
-    const cmp = d.compare;
+    const cmp = d.state === 'done' ? d.compare : null;
+    const head = cmp ? `<span title="${esc(cmp.label)}">${esc(shortLabel(cmp.label))}: yours <b>${esc(cmp.mine)}</b></span>` : '';
+    const wrap = (inner) => `<div class="pc-listings"><div class="pc-lh"><span>Cheapest first</span>${head}</div>${inner}</div>`;
+    if (d.state === 'searching') return wrap(`<ul class="pc-list wait">${'<li><i class="sk-art"></i><i class="sk-p"></i><i class="sk-w"></i></li>'.repeat(LIST_ROWS)}</ul>`);
+    if (d.state !== 'done') return wrap(`<p class="pc-empty">${d.state === 'error' ? 'The search did not go through.' : 'Press Search to see what is listed.'}</p>`);
+    if (!d.listings.length) return wrap('<p class="pc-empty">Nothing listed.</p>');
     const first = d.listings.find((l) => !l.bait);
     const rowsHtml = d.listings.map((l) => {
       const amount = l.price ? Math.round(l.price.amount * 100) / 100 : '';
@@ -141,8 +148,7 @@
       return `<li class="${l.bait ? 'bait' : l === first ? 'first' : ''}">${art(l.icon, l.sockets, l.w, l.h, 'sm')}<span class="pc-lp">${price}</span>
         <span class="pc-who"><b>${esc(l.seller)}</b><small>${l.bait ? '<em>price looks like bait</em> · ' : ''}<i class="st ${esc(l.status)}"></i>${STATUS_WORDS[l.status] || ''}${l.listedAt ? ` · ${ago(l.listedAt)}` : ''}</small></span>${vs}</li>`;
     }).join('');
-    const head = cmp ? `<span title="${esc(cmp.label)}">${esc(shortLabel(cmp.label))}: yours <b>${esc(cmp.mine)}</b></span>` : '';
-    return `<div class="pc-listings"><div class="pc-lh"><span>Cheapest first</span>${head}</div><ul class="pc-list${cmp ? ' cmp' : ''}">${rowsHtml}</ul></div>`;
+    return wrap(`<ul class="pc-list${cmp ? ' cmp' : ''}">${rowsHtml}</ul>`);
   }
   const shortLabel = (t) => { const s = String(t).replace(/^[+#%\s]+/, '').replace(/^total /i, ''); return s.length > 26 ? `${s.slice(0, 24)}…` : s; };
 
@@ -157,12 +163,11 @@
     const tabs = f.presets ? `<div class="pc-tabs" role="tablist">
         <button type="button" role="tab" class="pc-tab${mode === 'stats' ? ' on' : ''}" aria-selected="${mode === 'stats'}" data-mode="stats" title="Items with stats like this one">Stats</button>
         <button type="button" role="tab" class="pc-tab${mode === 'base' ? ' on' : ''}" aria-selected="${mode === 'base'}" data-mode="base" title="This base type at this item level, whatever is rolled on it">Base item</button></div>` : '';
-    const scroll = panel.querySelector('.pc-body') ? panel.querySelector('.pc-body').scrollTop : 0;
     const chips = rows.map((r, i) => (r.chip ? chipHtml(r, i) : '')).join('');
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
     const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
     panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, d.iconW || (f.sockets && f.sockets.replace(/[- ]/g, '').length > 4 ? 2 : 1), d.iconH || 3, 'big')}
-        <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${esc(about.join(' · '))}</p>${headlineHtml(d)}</div>
+        <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
         <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
       ${tabs}
       <div class="pc-body"><div class="pc-chips">${chips}</div>
@@ -171,7 +176,6 @@
       <div class="pc-go"><button type="button" class="primary" data-search ${d.state === 'searching' ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search'}</button>
         ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
       ${listHtml(d)}`;
-    if (panel.querySelector('.pc-body')) panel.querySelector('.pc-body').scrollTop = scroll;
     sendSize(fullHeight());
   }
   // The window is only told its height when it changed: each change moves a see-through window,
@@ -179,9 +183,10 @@
   let sentHeight = -1;
   function sendSize(h) { if (h !== sentHeight) { sentHeight = h; api.checkSize(h); } }
 
-  // How tall the panel wants to be. It is never taller than its window (so a long list scrolls
-  // inside it), which means its height on screen says nothing while the window is still small:
-  // the limit is lifted for the moment of measuring.
+  // How tall the panel wants to be: everything, with room for ten listings. It is never taller
+  // than its window (the listings then scroll; the stats never do), which means its height on
+  // screen says nothing while the window is still small: the limit is lifted for the moment of
+  // measuring.
   function fullHeight() {
     panel.style.maxHeight = 'none';
     const h = Math.ceil(panel.getBoundingClientRect().height) + 2;
