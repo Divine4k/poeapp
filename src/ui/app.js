@@ -348,11 +348,123 @@
     const pc = state.priceCheck;
     if (!pc) { $('price-check').innerHTML = ''; return; }
     if (pc.error) { $('price-check').innerHTML = `<p class="notice bad">${esc(pc.error)}</p>`; return; }
+    // Gear has no poe.ninja price; the trade search below answers for it.
+    if (!pc.found && state.tradeCheck) { $('price-check').innerHTML = ''; return; }
     $('price-check').innerHTML = pc.found
       ? `<p class="notice">${esc(pc.name)} ×${pc.qty} is worth ${fmtValue(pc.total)} (${fmtValue(pc.each)} each).
           <button type="button" class="link" data-act="addLoot" data-name="${esc(pc.name)}" data-qty="${pc.qty}">Add to this map's loot</button></p>`
       : `<p class="notice bad">No price found for ${esc(pc.name)}.</p>`;
   }
+
+  // ---- trade site search for the item last checked ---------------------------------------
+  const KIND_WORDS = { pseudo: 'total', implicit: 'implicit', crafted: 'crafted', fractured: 'fractured', enchant: 'enchant', scourge: 'scourge', crucible: 'crucible' };
+  const COIN_WORDS = { chaos: 'c', divine: 'div', exalted: 'ex', mirror: 'mirror' };
+  const STATUS_WORDS = { instant: 'Instant buyout', online: 'Online', afk: 'Away', offline: 'Offline' };
+  const numAttr = (v) => (v === null || v === undefined ? '' : esc(v));
+  function ago(ts) {
+    if (!ts) return '';
+    const m = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+    if (m < 60) return `${m} min`;
+    if (m < 48 * 60) return `${Math.floor(m / 60)} h`;
+    return `${Math.floor(m / 1440)} d`;
+  }
+  let tradeFormFor = 0; // which check the tick boxes on screen belong to
+  let tradeRevShown = -1;
+
+  function tradeFormHtml(f) {
+    const tick = (attrs, label, on) => `<label class="tc-tick"><input type="checkbox" ${attrs} ${on ? 'checked' : ''}> <span>${label}</span></label>`;
+    const rows = [];
+    if (f.category) rows.push(`<li>${tick('data-tc="category"', `Kind: ${esc(f.category.label)}, any base type`, f.category.enabled)}</li>`);
+    if (f.type) rows.push(`<li>${tick('data-tc="type"', `Base type: ${esc(f.type.value)}`, f.type.enabled)}</li>`);
+    for (const x of f.flags) rows.push(`<li>${tick(`data-tc="flag" data-key="${esc(x.key)}"`, esc(x.label), x.enabled)}</li>`);
+    for (const x of f.props) {
+      rows.push(`<li>${tick(`data-tc="prop" data-key="${esc(x.key)}"`, `${esc(x.label)}: ${x.value}`, x.enabled)}
+        <input type="number" step="any" data-tc-min="${esc(x.key)}" value="${numAttr(x.min)}" placeholder="min" aria-label="Lowest ${esc(x.label)}"></li>`);
+    }
+    for (const x of f.stats) {
+      const kind = KIND_WORDS[x.kind] ? `<small>${KIND_WORDS[x.kind]}</small>` : '';
+      const range = x.value === null ? '' : `<input type="number" step="any" data-tc-min="${esc(x.key)}" value="${numAttr(x.min)}" placeholder="min" aria-label="Lowest value for ${esc(x.text)}">
+        <input type="number" step="any" data-tc-max="${esc(x.key)}" value="${numAttr(x.max)}" placeholder="max" aria-label="Highest value for ${esc(x.text)}">`;
+      rows.push(`<li>${tick(`data-tc="stat" data-key="${esc(x.key)}"`, `${esc(x.text)} ${kind}`, x.enabled)}${range}</li>`);
+    }
+    rows.push(`<li>${tick('data-tc="offline"', 'Also sellers who are offline', f.offline)}</li>`);
+    const unknown = f.unknown.length ? `<p class="hint small">Not searchable on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : '';
+    return `<ul class="tc-rows">${rows.join('')}</ul>${unknown}`;
+  }
+
+  function tradeResultHtml(tc) {
+    if (tc.state === 'searching') return '<p class="hint">Searching the trade site…</p>';
+    if (tc.state === 'error') return `<p class="notice bad">${esc(tc.error)}</p>`;
+    if (tc.state !== 'done') return '<p class="hint">Tick what matters about this item, then press Search. Each search is two requests to the trade site, which allows only a few per minute.</p>';
+    const link = tc.url ? `<a href="${esc(tc.url)}" target="_blank" rel="noreferrer">Open this search on the trade site</a>` : '';
+    if (!tc.total) return `<p class="notice">Nothing like it is listed. Untick a stat or lower a number to widen the search.</p>${link}`;
+    const s = tc.summary || {};
+    const head = s.low === null ? `${tc.total.toLocaleString()} listed.`
+      : `${tc.total.toLocaleString()} listed, from <b>${fmtValue(s.low)}</b>. Middle of the cheapest ${tc.listings.length}: <b>${fmtValue(s.median)}</b>.`;
+    const rowsHtml = tc.listings.map((l) => {
+      const price = l.price ? `${l.price.amount} ${esc(COIN_WORDS[l.price.currency] || l.price.currency)}` : 'No price';
+      const inChaos = l.price && l.price.currency !== 'chaos' && l.chaos !== null ? `<small>about ${Math.round(l.chaos).toLocaleString()}c</small>` : '';
+      const whisper = l.whisper && l.status !== 'instant' ? `<button type="button" data-act="tradeWhisper" data-id="${esc(l.id)}">Whisper</button>` : '';
+      return `<tr><td class="num val">${price}${inChaos}</td>
+        <td>${esc(l.name)}${l.itemLevel ? `<small>Item level ${l.itemLevel}${l.corrupted ? ', corrupted' : ''}</small>` : ''}</td>
+        <td>${esc(l.seller)}<small class="st-${esc(l.status)}">${STATUS_WORDS[l.status] || ''}</small></td>
+        <td class="num dim">${ago(l.listedAt)}</td><td>${whisper}</td></tr>`;
+    }).join('');
+    return `<p class="tc-sum">${head} ${link}</p>
+      <div class="table-wrap"><table class="tc-list"><thead><tr><th class="num">Price</th><th>Item</th><th>Seller</th><th class="num">Listed</th><th></th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+  }
+
+  function renderTradeCheck() {
+    const tc = state.tradeCheck, box = $('trade-check');
+    document.querySelector('#tab-prices .prices').hidden = !!tc;
+    $('price-global').hidden = !!tc;
+    box.hidden = !tc;
+    if (!tc) { tradeFormFor = 0; tradeRevShown = -1; box.innerHTML = ''; return; }
+    if (tradeFormFor !== tc.at) {
+      // A new item: draw the tick boxes once. Later updates only touch the results, so what
+      // you ticked and typed stays as it is.
+      tradeFormFor = tc.at; tradeRevShown = -1;
+      const f = tc.filters;
+      box.innerHTML = `<div class="tc-head"><h2 class="pagetitle">${esc(f.ok ? f.title : 'Trade search')}</h2>
+          <button type="button" data-act="tradeClose">Back to the price lists</button></div>
+        ${f.ok ? `<div class="tc-cols"><form id="tc-form" autocomplete="off"><h3>Search for</h3>${tradeFormHtml(f)}
+            <div class="tc-go"><button type="submit" class="primary" id="tc-search">Search</button>
+              <label class="tc-tick"><input type="checkbox" id="tc-auto" ${(state.config.priceSearch || {}).auto !== false ? 'checked' : ''}> <span>Search by itself when I check a rare or magic item</span></label></div>
+          </form><section id="tc-result" aria-live="polite"></section></div>`
+    : `<p class="notice">${esc(f.why)}</p>`}`;
+    }
+    if (tc.filters.ok && tradeRevShown !== tc.rev) {
+      tradeRevShown = tc.rev;
+      $('tc-result').innerHTML = `<h3>Listed on the trade site</h3>${tradeResultHtml(tc)}`;
+      $('tc-search').disabled = tc.state === 'searching';
+    }
+  }
+
+  // What is ticked and typed in the search form, for the main process to lay over its own copy.
+  function tradeEdits(form) {
+    const edits = { flags: {}, props: {}, stats: {} };
+    const val = (sel) => { const i = form.querySelector(sel); return i ? i.value : undefined; };
+    for (const c of form.querySelectorAll('[data-tc]')) {
+      const key = c.dataset.key;
+      if (c.dataset.tc === 'offline' || c.dataset.tc === 'type' || c.dataset.tc === 'category') edits[c.dataset.tc] = c.checked;
+      else if (c.dataset.tc === 'flag') edits.flags[key] = c.checked;
+      else if (c.dataset.tc === 'prop') edits.props[key] = { enabled: c.checked, min: val(`[data-tc-min="${key}"]`) };
+      else if (c.dataset.tc === 'stat') {
+        const e = { enabled: c.checked }, min = val(`[data-tc-min="${key}"]`), max = val(`[data-tc-max="${key}"]`);
+        if (min !== undefined) e.min = min;
+        if (max !== undefined) e.max = max;
+        edits.stats[key] = e;
+      }
+    }
+    return edits;
+  }
+  $('trade-check').addEventListener('submit', (e) => {
+    e.preventDefault();
+    act({ type: 'tradeSearch', edits: tradeEdits(e.target) });
+  });
+  $('trade-check').addEventListener('change', (e) => {
+    if (e.target.id === 'tc-auto') api.setConfig({ priceSearch: { auto: e.target.checked } });
+  });
 
   // ---- inventory tab ------------------------------------------------------------------
   let invRev = -1;
@@ -549,12 +661,13 @@
   function render() {
     if (!state) return;
     renderTrade();
-    renderStatus(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderInventory(false); renderPrices(false);
+    renderStatus(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false);
   }
 
   function setState(s) {
     const hadCheck = state && state.mapCheck ? state.mapCheck.at : 0;
     const hadPrice = state && state.priceCheck ? state.priceCheck.at : 0;
+    const hadTrade = state && state.tradeCheck ? state.tradeCheck.at : 0;
     const first = !state;
     state = s; receivedAt = Date.now();
     applyNavOrder(s.config.navOrder);
@@ -564,6 +677,8 @@
       if (!first && s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
       else if (!first && s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
     }
+    // The listings of a trade search do not fit in the message in game, so their page is shown.
+    if (!first && s.tradeCheck && s.tradeCheck.at !== hadTrade) showTab('prices');
     render();
   }
 

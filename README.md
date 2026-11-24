@@ -1,8 +1,8 @@
 # Map Companion for Path of Exile 1
 
-A second-screen app for mapping: map timer, loot value read from your inventory, map mod check, cost tracking, price lookup, and trade offers with buttons on top of the game.
+A second-screen app for mapping: map timer, loot value read from your inventory, map mod check, cost tracking, price lookup, trade site search for gear, and trade offers with buttons on top of the game.
 
-Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures come from [poe.ninja](https://poe.ninja).
+Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures come from [poe.ninja](https://poe.ninja). The list of trade site stats comes from [Awakened PoE Trade](https://github.com/SnosMe/awakened-poe-trade) (MIT licence, see `src/core/data/NOTICE.md`).
 
 ## What it does
 
@@ -12,6 +12,7 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures
 | Loot value per map | Reads your inventory from the screen whenever it is open |
 | Map mod check | Hover a map in game and press F8 |
 | Price check | Hover any item and press F8, or browse the Prices page |
+| Trade site search for rares, magic items and uniques | Hover the item and press F8: its stats are searched on the official trade site and the cheapest listings are shown on the Prices page |
 | Net profit | A cost loadout (scarabs, map, chisels) charged to every new map |
 | What was counted per map | The inventory picture from each map is kept and shown beside the timer and under the map's row |
 | Trade offers with an overlay on the game | Reads trade whispers from the game log; each button types one chat line |
@@ -63,6 +64,18 @@ The overlay sits on the screen chosen under Settings ("Screen the game runs on")
 
 Limits: the game itself must run in English, because arrivals, "Trade accepted" and the other system lines are only recognised in English.
 
+## Trade site search
+
+Gear has no poe.ninja price, so the app asks the official trade site instead, the way Awakened PoE Trade does. Hover a rare, magic or unique item (armour, weapons, jewellery, jewels, flasks) and press F8.
+
+- **What is searched for.** The Prices page lists everything read from the item with a tick box each. Ticked from the start: the kind of item, corrupted or not, total maximum Life and total Elemental Resistance (the trade site's own totals, so 40 fire and 30 cold counts the same as 70 cold), influences, fractured modifiers, six links, a weapon's higher damage per second, movement speed of 25% or more on boots, and a cluster jewel's size and notables. Everything else is listed unticked.
+- **Numbers.** Each stat starts a tenth below your item's value. Change the lowest and highest value in the boxes beside it.
+- **By itself or on the button.** A rare or magic item with something ticked is searched straight away. A unique shows its poe.ninja price first and is searched when you press **Search**; so is an item with nothing ticked, because that would only find the cheapest item of its kind. Untick "Search by itself" on the panel to always wait for the button.
+- **What comes back.** How many are listed, the cheapest price and the middle price of the cheapest ten, in a short message in game and in full on the Prices page: price, item, seller, how long it has been listed. **Whisper** types the trade site's own whisper for that listing into the game (one click, one chat line). Listings marked "Instant buyout" are in a merchant's tab and have no whisper. A link opens the same search on the trade site.
+- **Limits of the trade site.** Each search is two web requests. The site allows only a few per minute and locks out anyone who goes over, so the app keeps count from the site's own answers, never sends two searches within two seconds, and refuses a search rather than queue it: it says how many seconds to wait. The same search within a minute is answered from memory.
+- **Not read yet:** modifiers the trade site has no entry for are listed as "not searchable". Sockets by colour, quality, gems, maps and currency are not searched; those keep their poe.ninja price.
+- **New league.** New modifiers need a new stat list: `node scripts/build-stats.js path/to/awakened-poe-trade/renderer/public/data/en/stats.ndjson`.
+
 ## Naming items and the shared list
 
 Items the app cannot recognise appear under the loot list with their picture. Three ways to name one, fastest first:
@@ -110,6 +123,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 - The app never touches game memory or files.
 - **F8** sends a single Ctrl+C to the game when you press it, then reads the clipboard once. That is the same pattern price-check tools use. You can switch the Ctrl+C off in Settings and press it yourself.
 - **Reading on your inventory key** is one read per key press. The app listens for that one key without blocking it.
+- **The trade site search** sends nothing to the game. It reads the clipboard once per F8 press, like the price check, and talks to the trade site's public search within the limits the site sets. The Whisper button types one chat line per click.
 - **Trade buttons and trade keys** type one chat line (such as `/invite Name`) per click or key press, the way PoE Lurker and Awakened PoE Trade do. Nothing is typed without a click or key press, and no button sends two lines.
 - **"Done by itself"** (Trade settings, off by default) types thanks, kick, leave and hideout lines after a trade without a key press, as PoE Lurker does. That is outside the one-action-per-key-press rule and is your own risk.
 - **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
@@ -121,6 +135,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 - Tested on two real 1920x1080 captures: finding the grid, telling empty from filled cells, reading every stack number (68 of 68), recognising the same item across captures, and the loot counting.
 - Rescaled copies of those captures (900p, 1440p, 4K) also read correctly, but real captures at those sizes have not been tried.
 - **Trading:** the whisper reading, the steps of a trade and the overlay windows were run on Linux against a made-up log. The helper that tells which window is in front, switching to the game window, and hiding on alt-tab are Windows-only and have not been run by the author.
+- **Trade site search:** reading items, matching their stats, building the search and keeping to the site's limits were run against made-up items and a stand-in for the trade site. No search has been sent to the real trade site by the author, so the first real one may show a problem.
 - **Not tested:** the app running against the live game, matching against downloaded item pictures, the key listener, and poe.ninja's live data. Expect to report problems on first use.
 
 ## Development

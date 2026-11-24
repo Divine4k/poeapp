@@ -41,6 +41,29 @@
     notice: { text: 'Saved: Chaos Orb.', bad: false, at: now },
     unknown: [{ id: 1, qty: 3, guesses: [{ name: 'Vaal Orb', score: 78 }, { name: 'Orb of Fusing', score: 61 }, { name: 'Exalted Orb', score: 55 }], image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
     priceCheck: null,
+    tradeCheck: {
+      at: now, rev: 2, state: 'done', error: '', total: 37, searchedAt: now, url: 'https://www.pathofexile.com/trade/search/Demo/abc123',
+      summary: { total: 37, low: 45, median: 120 },
+      filters: {
+        ok: true, rarity: 'Rare', title: 'Kraken Spark, Two-Toned Boots', name: '', offline: false,
+        type: { value: 'Two-Toned Boots', enabled: false }, category: { id: 'armour.boots', label: 'Boots', enabled: true },
+        flags: [{ key: 'corrupted', label: 'Not corrupted', value: false, enabled: true }, { key: 'ilvl', label: 'Item level 86 or higher', value: 86, enabled: false }],
+        props: [{ key: 'ar', label: 'Armour', group: 'armour_filters', value: 251, min: 226, enabled: false }, { key: 'ev', label: 'Evasion Rating', group: 'armour_filters', value: 251, min: 226, enabled: false }],
+        stats: [
+          { key: 'pseudo:life', text: '+88 total maximum Life', kind: 'pseudo', ids: ['x'], value: 88, min: 79, max: null, enabled: true },
+          { key: 'pseudo:res', text: '+70% total Elemental Resistance', kind: 'pseudo', ids: ['x'], value: 70, min: 63, max: null, enabled: true },
+          { key: 'stat:0', text: '30% increased Movement Speed', kind: 'explicit', ids: ['x'], value: 30, min: 27, max: null, enabled: true },
+          { key: 'stat:1', text: '35% increased Armour and Evasion', kind: 'explicit', ids: ['x'], value: 35, min: 32, max: null, enabled: false },
+          { key: 'stat:2', text: '8% reduced Mana Cost of Skills', kind: 'crafted', ids: ['x'], value: 8, min: 7, max: null, enabled: false },
+        ],
+        unknown: [],
+      },
+      listings: [
+        { id: 'a', price: { amount: 45, currency: 'chaos' }, chaos: 45, seller: 'Zana_Mapper', status: 'instant', listedAt: now - 40 * 60000, itemLevel: 85, corrupted: false, name: 'Dusk Trail, Two-Toned Boots', whisper: '' },
+        { id: 'b', price: { amount: 80, currency: 'chaos' }, chaos: 80, seller: 'KiracsApprentice', status: 'online', listedAt: now - 5 * 3600000, itemLevel: 86, corrupted: false, name: 'Storm Spur, Two-Toned Boots', whisper: '@KiracsApprentice Hi' },
+        { id: 'c', price: { amount: 1, currency: 'divine' }, chaos: 212, seller: 'NikoTheMad', status: 'afk', listedAt: now - 3 * 86400000, itemLevel: 84, corrupted: false, name: 'Gale Stride, Two-Toned Boots', whisper: '@NikoTheMad Hi' },
+      ],
+    },
     mapCheck: {
       at: now, name: 'Strand Map', tier: 16, quantity: 92, packSize: 33, corrupted: false, unidentified: false, dangerCount: 1,
       mods: [

@@ -25,12 +25,15 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
-const { checkMessage, noteMessage } = require('./core/checkMessage');
+const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
 const { Overlay, Toast } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, restartCommand } = require('./leftovers');
+const { StatIndex } = require('./core/tradeStats');
+const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize } = require('./core/tradeQuery');
+const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tradeApi');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -42,6 +45,8 @@ const DEFAULT_CONFIG = {
   characterName: '',
   hotkeys: { clipboard: 'F8', snapshot: 'F9' },
   checkToast: true, // after the check key, say in game for a moment what was read
+  // auto: checking a magic or rare item searches the trade site straight away (two web requests).
+  priceSearch: { auto: true },
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
   // autoCopy: the check hotkey presses Ctrl+C in the game for you (one copy per key press).
@@ -118,6 +123,11 @@ const status = {
 };
 let mapCheck = null;
 let priceCheck = null;
+// The trade search for the item last checked: { at, rev, filters, state, error, total, listings, url, summary }.
+let tradeCheck = null;
+let tradeRev = 0;
+let statIndex = null; // modifier wording -> trade site id, read from disk on first use
+const tradeClient = new TradeClient({ fetchImpl: webFetch });
 
 // ---- files ----------------------------------------------------------------
 const dataFile = (name) => path.join(app.getPath('userData'), name);
@@ -171,7 +181,7 @@ function buildState() {
   status.inventory.noBaseline = !ledger.baseline;
   if (shared) status.shared = { ...shared.status, canUpload: !!shared.token, waiting: shared.pending.length };
   return {
-    config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, notice,
+    config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
     inventoryRev: lastInventory.rev,
     unknown: unknown.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses })),
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
@@ -688,11 +698,56 @@ function checkText(text) {
   }
   const name = priceName(item);
   const entry = prices.get(name);
+  startTradeCheck(item);
   priceCheck = {
     at: Date.now(), name, qty: item.stackSize, found: !!entry,
     each: entry ? entry.chaos : 0, total: entry ? entry.chaos * item.stackSize : 0,
   };
   nameUnderCursor(item, entry ? entry.name : name, entry);
+}
+
+// ---- trade site search for gear (rares, magic items, rolled uniques) -------------------
+// A listing's price in chaos, or null when the app has no rate for its currency.
+function chaosOfPrice(amount, currency) {
+  if (currency === 'chaos') return amount;
+  const each = prices.chaosOf(currencyName(currency));
+  return each > 0 ? amount * each : null;
+}
+function startTradeCheck(item) {
+  tradeCheck = null;
+  if (!searchable(item)) return;
+  let filters;
+  try {
+    statIndex = statIndex || StatIndex.load();
+    filters = buildFilters(item, statIndex);
+  } catch (e) {
+    filters = { ok: false, why: `The list of trade stats could not be read: ${e.message || e}` };
+  }
+  tradeCheck = { at: Date.now(), rev: ++tradeRev, filters, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0 };
+  // A unique has a poe.ninja price already, and an item with nothing ticked would only find the
+  // cheapest of its kind: those searches wait for the button.
+  if (filters.ok && item.rarity !== 'Unique' && isNarrow(filters) && (config.priceSearch || {}).auto !== false) runTradeSearch(true);
+}
+// announce: say the outcome in game, as the check key's own message does.
+async function runTradeSearch(announce) {
+  const tc = tradeCheck;
+  if (!tc || !tc.filters.ok || tc.state === 'searching') return;
+  tc.state = 'searching'; tc.error = ''; tc.rev = ++tradeRev;
+  push();
+  try {
+    const r = await tradeClient.check(config.league, buildQuery(tc.filters));
+    tc.listings = r.listings.map((l) => readListing(l, chaosOfPrice));
+    tc.total = r.total;
+    tc.url = r.queryId ? searchUrl(config.league, r.queryId) : '';
+    tc.summary = summarize(r.total, tc.listings);
+    tc.state = 'done'; tc.searchedAt = Date.now();
+  } catch (e) {
+    tc.state = 'error'; tc.error = e.message || String(e);
+  }
+  tc.rev = ++tradeRev;
+  if (tradeCheck !== tc) return; // another item was checked meanwhile
+  if (announce) showToast(tradeMessage(tc, prices.divine));
+  push();
 }
 
 // One press of the check hotkey: copy the hovered item (a single Ctrl+C sent to the game, the
@@ -722,7 +777,7 @@ async function checkHovered() {
 
 // What the check key just did, in a line or two, shown in game for a moment.
 function showCheckToast(started) {
-  showToast(checkMessage({ mapCheck, priceCheck, notice, divine: prices.divine }, started));
+  showToast(checkMessage({ mapCheck, priceCheck, tradeCheck, notice, divine: prices.divine }, started));
 }
 function showToast(message) {
   if (!toast || config.checkToast === false || !message) return;
@@ -1068,6 +1123,20 @@ const actions = {
   tradeDismissAll: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeClear: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeForget: (a) => { book.removeHistory(String(a.id || '')); saveTradesSoon(); },
+  // The Search button: what was ticked and typed replaces the choices, then one search is sent.
+  tradeSearch: async (a) => {
+    if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching') return;
+    tradeCheck.filters = applyEdits(tradeCheck.filters, a.edits);
+    await runTradeSearch(false);
+  },
+  tradeClose: () => { tradeCheck = null; },
+  // One click, one chat line: the whisper the trade site wrote for this listing.
+  tradeWhisper: async (a) => {
+    const l = tradeCheck && tradeCheck.listings.find((x) => x.id === a.id);
+    // Only ever a whisper: a line that starts with anything but @name is not typed.
+    if (!l || !/^@\S+ /.test(l.whisper)) return;
+    if (await sendChat(l.whisper)) say(`Whispered ${l.seller}.`);
+  },
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),
   refreshPrices: () => { refreshPrices(); },

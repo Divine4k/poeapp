@@ -297,6 +297,7 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 #tab-prices[hidden] { display: none; }
 .bigsearch { width: 100%; font-size: 17px; padding: 11px 14px; margin-bottom: 14px; background: var(--slab); }
 .prices { flex: 1; min-height: 0; display: grid; grid-template-columns: 230px 1fr; gap: 26px; }
+.prices[hidden], .bigsearch[hidden] { display: none; }
 .price-cats { overflow-y: auto; padding-right: 6px; }
 .price-cats h3 { margin: 16px 0 6px 10px; font: 600 12px/1.3 var(--body); color: var(--ash); }
 .price-cats h3:first-child { margin-top: 0; }
@@ -323,6 +324,36 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .spark.down { color: var(--blood); }
 .dim { color: var(--ash); }
 .price-table .link { font-size: 13px; }
+
+/* trade site search for the item last checked */
+#trade-check { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#trade-check[hidden] { display: none; }
+.tc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.tc-head .pagetitle { font-size: 26px; color: var(--gold); min-width: 0; overflow-wrap: anywhere; }
+.tc-head button { flex: 0 0 auto; }
+.tc-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 5fr) minmax(0, 7fr); gap: 30px; }
+.tc-cols h3 { margin: 0 0 8px; font: 600 13px/1.3 var(--body); color: var(--ash); }
+#tc-form, #tc-result { min-height: 0; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; }
+.tc-rows li { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--slab); }
+.tc-tick { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
+.tc-tick input { flex: 0 0 auto; accent-color: var(--gold); }
+.tc-tick small { margin-left: 6px; padding: 1px 6px; border: 1px solid var(--seam); border-radius: 3px; font-size: 11px; color: var(--ash); white-space: nowrap; }
+.tc-tick:has(input:not(:checked)) span { color: var(--ash); }
+.tc-rows input[type=number] { width: 74px; padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums; }
+.tc-go { position: sticky; bottom: 0; display: flex; align-items: center; gap: 16px; padding: 12px 0 2px; margin-top: auto; background: var(--stone); }
+.tc-go .primary { padding: 8px 26px; font-size: 16px; }
+.tc-go .tc-tick { font-size: 13px; color: var(--ash); }
+.tc-sum { margin: 0 0 10px; font-size: 16px; }
+.tc-sum b { color: var(--gold); font-family: var(--display); font-size: 19px; }
+.tc-sum a, #tc-result > a { color: var(--portal); margin-left: 8px; white-space: nowrap; }
+.tc-list td { font-size: 15px; vertical-align: top; }
+.tc-list td small { display: block; font: 12px var(--body); color: var(--ash); }
+.tc-list .num { white-space: nowrap; }
+.tc-list .val { white-space: nowrap; font-size: 17px; color: var(--bone); }
+.tc-list .st-instant, .tc-list .st-online { color: var(--moss); }
+.tc-list .st-afk { color: var(--gold); }
+.tc-list button { padding: 3px 10px; font-size: 13px; }
+@media (max-width: 900px) { .tc-cols { grid-template-columns: 1fr; } }
 
 /* settings */
 dialog { background: var(--slab); color: var(--bone); border: 1px solid var(--seam); border-radius: 6px; width: min(760px, 92vw); max-height: 90vh; padding: 22px; }
