@@ -98,6 +98,7 @@ let archive = null;   // sessions closed with "Start new session"
 let flushTimer = null;
 let notice = null; // { text, bad, at }
 let lastInventory = { rev: 0, at: 0, cells: [] };
+const logTrace = []; // the last area lines from the game log and what the tracker did with each
 let singlesBaseline = 0;  // single (unnumbered) items in the inventory when the map was entered
 let carriedIn = null; // { runId, trip, cells } the inventory as it was when this trip into the map began
 let lastSingles = 0; // what the last clean read saw, for the Inventory tab
@@ -254,9 +255,23 @@ function startLog() {
   if (config.trade.enabled && book.catchUp(readRecent(p))) saveTradesSoon();
   logTail = new LogTail(p);
   logTail.on('status', (s) => { status.log = { ok: s.ok, path: p, error: s.ok ? null : `Cannot read the log (${s.error})` }; push(); });
+  logTail.on('raw', (line, ev) => {
+    // Shown in the game log check: what the game wrote. What the app did with it is added below.
+    logTrace.push({ at: Date.now(), raw: line.replace(/^\S+ \S+ \d+ \S+ /, '').slice(0, 220), type: ev ? ev.type : null, kind: ev ? ev.kind || null : null, code: ev ? ev.code || null : null, did: ev ? '' : 'Nothing: not a line the tracker acts on' });
+    if (logTrace.length > 40) logTrace.shift();
+  });
   logTail.on('event', (ev) => {
     const before = session.currentId;
+    const wasActive = !!(session.current && session.current.segmentStart !== null);
     session.handleLogEvent(ev, { characterName: config.characterName, loadout: config.loadout });
+    if (ev.type === 'area') {
+      const cur = session.current;
+      const did = session.currentId !== before ? 'Started a new map'
+        : ev.kind === 'hideout' || ev.kind === 'town' ? (wasActive ? 'Paused the map: hideout or town' : 'Nothing: hideout or town, no map running')
+          : cur && cur.segmentStart !== null ? (wasActive ? 'Counted as part of the map already running (a side area, or the map was never left for a hideout the app recognises)' : 'Resumed the map: same instance as before')
+            : ev.kind !== 'map' ? `Nothing: the area name "${ev.code}" does not begin with "Map", so it is not treated as a map` : 'Nothing';
+      for (let i = logTrace.length - 1; i >= 0; i--) if (logTrace[i].type === 'area' && logTrace[i].code === ev.code && !logTrace[i].did) { logTrace[i].did = did; break; }
+    }
     if (ev.type === 'area') syncLedger();
     if (config.trade.enabled && ev.type === 'party' && config.trade.auto.joinHideout) {
       const buy = book.pendingPurchase();
@@ -563,6 +578,7 @@ async function saveDiagnostic(snapshot = false) {
     const report = {
       version: updater && updater.current, when: new Date().toISOString(), open, snapshot,
       mouse, mouseCell: cursorCell(mouse, rect),
+      logStats: logTail ? logTail.stats : null, logTrace,
       ledger: ledger.toJSON(), lastRead: lastInventory.cells.map((c) => ({ cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source })),
       location: session.location, inRun: !!session.current,
       frame: { width: frame.width, height: frame.height }, rect, display: { scaleFactor: frame.display.scaleFactor, size: frame.display.size },
@@ -1128,6 +1144,7 @@ const actions = {
     if (u) learnPrint('', u.print);
   },
   saveDiagnostic: () => saveDiagnostic(),
+  copyText: (a) => { clipboard.writeText(String(a.text || '').slice(0, 20000)); say('Copied. Paste it into a message to whoever is helping you.'); },
   makeShortcut: () => makeShortcut(),
   setCustomPrice: (a) => {
     const name = String(a.name || '').trim(), chaos = Number(a.chaos);
@@ -1186,6 +1203,13 @@ const actions = {
 function setupIpc() {
   ipcMain.handle('get-state', () => buildState());
   ipcMain.handle('set-config', (_e, patch) => { applyConfig(patch || {}); return true; });
+  // The game log check: is the file being written to, what arrived, and what the tracker did.
+  ipcMain.handle('log-check', () => ({
+    path: status.log.path, ok: status.log.ok, error: status.log.error, now: Date.now(),
+    stats: logTail ? { ...logTail.stats } : null,
+    inMap: !!(session.current && session.current.segmentStart !== null), mapName: session.current ? session.current.name || session.current.code : null,
+    location: session.location, trace: logTrace.slice().reverse(),
+  }));
   ipcMain.handle('inventory', () => {
     const cells = lastInventory.cells.map((c) => {
       const each = c.name ? prices.chaosOf(c.name) : 0;

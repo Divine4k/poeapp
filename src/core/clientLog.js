@@ -22,6 +22,12 @@ function parseTimestamp(line) {
   return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
 }
 
+// A line the game wrote about loading or entering an area (never a chat line).
+function isAreaTalk(line) {
+  if (/\] Generating level /.test(line)) return true;
+  return /\] : /.test(line) && /entered|area/i.test(line.split('] : ')[1] || '');
+}
+
 // kind: 'map' | 'hideout' | 'town' | 'other'
 function classifyArea(code) {
   if (/hideout/i.test(code)) return 'hideout';
@@ -148,6 +154,8 @@ class LogTail extends EventEmitter {
     this.rest = '';
     this.timer = null;
     this.busy = false;
+    // For the game log check: how much has arrived since the app started, and when.
+    this.stats = { startedAt: Date.now(), size: 0, modifiedAt: 0, bytes: 0, lines: 0, lastGrowthAt: 0 };
   }
 
   start() {
@@ -166,6 +174,7 @@ class LogTail extends EventEmitter {
     this.busy = true;
     fs.stat(this.filePath, (err, st) => {
       if (err) { this.busy = false; this.emit('status', { ok: false, error: err.code || String(err) }); return; }
+      this.stats.size = st.size; this.stats.modifiedAt = st.mtimeMs;
       if (this.offset === null) { this.offset = st.size; this.busy = false; this.emit('status', { ok: true }); return; }
       if (st.size < this.offset) { this.offset = 0; this.rest = ''; } // log was truncated
       if (st.size === this.offset) { this.busy = false; return; }
@@ -180,8 +189,11 @@ class LogTail extends EventEmitter {
         const text = this.rest + chunk;
         const lines = text.split(/\r?\n/);
         this.rest = lines.pop();
+        this.stats.bytes += end - start; this.stats.lines += lines.length; this.stats.lastGrowthAt = Date.now();
         for (const line of lines) {
           const ev = parseLine(line);
+          // Lines about areas are also passed on as written, for the game log check. Chat is never passed on.
+          if (isAreaTalk(line)) this.emit('raw', line, ev);
           if (ev) this.emit('event', ev);
         }
       });
@@ -189,4 +201,4 @@ class LogTail extends EventEmitter {
   }
 }
 
-module.exports = { readRecent, parseLine, parseTimestamp, classifyArea, findLogPath, LogTail, DEFAULT_LOG_PATHS, candidateLogPaths, steamLibraries };
+module.exports = { readRecent, parseLine, parseTimestamp, classifyArea, findLogPath, LogTail, DEFAULT_LOG_PATHS, candidateLogPaths, steamLibraries, isAreaTalk };

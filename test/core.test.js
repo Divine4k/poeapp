@@ -239,3 +239,13 @@ test('game log: looked for on every drive and in every Steam library, newest win
   assert.equal(findLogPath([path.join(dir, 'missing.txt')]), null);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('game log check: area lines are passed on, chat never is', () => {
+  const { isAreaTalk } = require('../src/core/clientLog');
+  assert.equal(isAreaTalk('2026/11/24 11:00:00 1 a [DEBUG Client 1] Generating level 83 area "MapWorldsJungleValley" with seed 5'), true);
+  assert.equal(isAreaTalk('2026/11/24 11:00:01 1 a [INFO Client 1] : You have entered Jungle Valley.'), true);
+  assert.equal(isAreaTalk('2026/11/24 11:00:01 1 a [INFO Client 1] : Bob has joined the area.'), true);
+  assert.equal(isAreaTalk('2026/11/24 11:00:02 1 a [INFO Client 1] #Bob: I entered the area "MapX"'), false);
+  assert.equal(isAreaTalk('2026/11/24 11:00:02 1 a [INFO Client 1] @From Bob: Generating level 83 area'), false);
+  assert.equal(isAreaTalk('2026/11/24 11:00:03 1 a [INFO Client 1] : Trade accepted.'), false);
+});

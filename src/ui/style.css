@@ -376,6 +376,17 @@ tr.detail .snap figcaption { margin-top: 2px; }
 .tc-list button { padding: 3px 10px; font-size: 13px; }
 @media (max-width: 900px) { .tc-cols { grid-template-columns: 1fr; } }
 
+/* game log check */
+#logcheck { width: min(1100px, 94vw); }
+#logcheck .verdict { font-size: 18px; margin: 0 0 12px; }
+#logcheck .sub { font: 600 13px var(--body); color: var(--ash); margin: 14px 0 6px; }
+#logcheck .rows li { grid-template-columns: 240px 0 1fr; font-size: 14px; }
+#logcheck .rows .val { font-family: var(--body); word-break: break-all; }
+.logcheck-table { max-height: 320px; overflow: auto; border: 1px solid var(--seam); }
+.logcheck-table td { font-size: 13px; vertical-align: top; padding-left: 8px; }
+.logcheck-table th { padding-left: 8px; }
+.mono { font-family: Consolas, "Courier New", monospace; word-break: break-word; }
+
 /* settings */
 dialog { background: var(--slab); color: var(--bone); border: 1px solid var(--seam); border-radius: 6px; width: min(760px, 92vw); max-height: 90vh; padding: 22px; }
 dialog::backdrop { background: rgba(10, 12, 15, 0.7); }
