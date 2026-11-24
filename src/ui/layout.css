@@ -15,3 +15,4 @@ body.layout { display: block; overflow: hidden; user-select: none; background: r
 .lw-bar button { white-space: nowrap; }
 .lw-bar div { max-width: 46ch; }
 .lw-sample .toast-box { align-self: center; animation: none; }
+.lw-sample .pc-panel { max-height: 100%; }

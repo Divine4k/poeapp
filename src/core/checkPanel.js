@@ -11,10 +11,17 @@ const LEFT_MS = 400;   // used, then the mouse moved off it: gone after this lon
 // bounds: the game's screen { x, y, width, height }. cursorX: where the mouse was when the
 // item was checked. The window goes beside the panel the item is in, as in Awakened PoE Trade:
 // left of the inventory for an item in the inventory, right of the stash for one in the stash.
-function checkPanelBounds(bounds, cursorX, height) {
+// custom: a spot picked by dragging in layout mode, { x, y, grow }, as for the other overlay
+// parts (see overlayBounds). It wins: the window then always opens there.
+function checkPanelBounds(bounds, cursorX, height, custom = null) {
   const b = bounds;
   const w = Math.min(PANEL_WIDTH, b.width);
   const h = Math.max(1, Math.min(Math.round(height), Math.round(b.height * 0.86)));
+  if (custom && isFinite(custom.x) && isFinite(custom.y)) {
+    const cx = b.x + custom.x * b.width;
+    const cy = b.y + custom.y * b.height - (custom.grow === 'up' ? h : 0);
+    return { x: Math.round(Math.max(b.x, Math.min(cx, b.x + b.width - w))), y: Math.round(Math.max(b.y, Math.min(cy, b.y + b.height - h))), width: w, height: h };
+  }
   const gamePanel = Math.min(b.height * GAME_PANEL, (b.width - w) / 2);
   const right = cursorX >= b.x + b.width / 2;
   const x = right ? b.x + b.width - gamePanel - w : b.x + gamePanel;

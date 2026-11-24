@@ -1,7 +1,7 @@
 /* The price check window on top of the game: see-through around the panel, nothing else. */
 html, body.check { height: auto; background: transparent; }
 body.check { display: block; overflow: hidden; user-select: none; font-size: 13px; line-height: 1.3; }
-#panel { max-height: 100vh; display: flex; flex-direction: column; background: rgba(27, 31, 36, 0.96); border: 1px solid var(--seam); border-top: 3px solid var(--gold); border-radius: 5px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); overflow: hidden; }
+#panel, .pc-panel { max-height: 100vh; display: flex; flex-direction: column; background: rgba(27, 31, 36, 0.96); border: 1px solid var(--seam); border-top: 3px solid var(--gold); border-radius: 5px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); overflow: hidden; }
 #panel:empty { display: none; }
 .pc-head { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px 6px 11px; }
 .pc-head h1 { flex: 1; min-width: 0; font-size: 17px; line-height: 1.2; color: var(--gold); overflow-wrap: anywhere; }

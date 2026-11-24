@@ -405,6 +405,15 @@ test('price check window in game: beside the panel the item is in, and gone when
   const narrow = checkPanelBounds({ x: 0, y: 0, width: 1280, height: 1024 }, 1000, 400);
   assert.ok(narrow.x >= 0 && narrow.x + narrow.width <= 1280);
 
+  // Dragged somewhere in layout mode: it opens there whichever side the item is on, and a
+  // spot in the lower half of the screen keeps its bottom edge as the window gets taller.
+  const high = { x: 0.1, y: 0.2, grow: 'down' }, low = { x: 0.5, y: 0.9, grow: 'up' };
+  assert.deepEqual(checkPanelBounds(screen, 1600, 500, high), { x: 192, y: 216, width: PANEL_WIDTH, height: 500 });
+  assert.deepEqual(checkPanelBounds(screen, 300, 500, high), checkPanelBounds(screen, 1600, 500, high));
+  assert.deepEqual([checkPanelBounds(screen, 300, 300, low).y, checkPanelBounds(screen, 300, 500, low).y], [672, 472]);
+  assert.deepEqual(checkPanelBounds(screen, 300, 500, { x: 0.99, y: 0.99, grow: 'down' }), { x: 1920 - PANEL_WIDTH, y: 580, width: PANEL_WIDTH, height: 500 }); // kept on the screen
+  assert.deepEqual(checkPanelBounds(screen, 1600, 500, {}), inv); // nothing saved: the usual spot
+
   const rect = { x: 100, y: 100, width: 460, height: 300 };
   assert.deepEqual([inside(rect, { x: 100, y: 100 }), inside(rect, { x: 560, y: 200 }), inside(rect, { x: 565, y: 200 }, 12), inside(null, { x: 1, y: 1 })], [true, false, true, false]);
 

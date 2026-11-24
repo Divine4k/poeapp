@@ -166,7 +166,9 @@ class CheckPanel {
   }
 
   // A newly checked item. bounds: the game's screen. cursor: the mouse, in screen points.
-  show(data, { bounds, cursor }) {
+  // custom: the spot picked in layout mode, if any.
+  show(data, { bounds, cursor, custom = null }) {
+    this.custom = custom;
     this.bounds = bounds;
     this.cursorX = cursor ? cursor.x : bounds.x + bounds.width;
     this.wanted = true;
@@ -195,7 +197,7 @@ class CheckPanel {
   place() {
     if (!this.win || this.win.isDestroyed() || !this.wanted || !this.bounds) return;
     if (this.height < 2) return;
-    this.rect = checkPanelBounds(this.bounds, this.cursorX, this.height);
+    this.rect = checkPanelBounds(this.bounds, this.cursorX, this.height, this.custom);
     this.win.setBounds(this.rect);
     if (!this.win.isVisible()) { this.win.showInactive(); this.win.setAlwaysOnTop(true, 'screen-saver'); }
   }

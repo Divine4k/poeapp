@@ -31,6 +31,7 @@ const { focusGame, typeChat } = require('./chat');
 const { Overlay, Toast, CheckPanel } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, restartCommand } = require('./leftovers');
+const { checkPanelBounds } = require('./core/checkPanel');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize } = require('./core/tradeQuery');
 const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tradeApi');
@@ -767,7 +768,7 @@ function showCheckPanel() {
   if (!checkPanel || !overlay || config.priceSearch.overlay === false || layoutWin) return;
   if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
   tradeCheck.inGame = true;
-  checkPanel.show(checkPanelData(), { bounds: overlay.display().bounds, cursor: screen.getCursorScreenPoint() });
+  checkPanel.show(checkPanelData(), { bounds: overlay.display().bounds, cursor: screen.getCursorScreenPoint(), custom: checkPlacement() });
 }
 
 // One press of the check hotkey: copy the hovered item (a single Ctrl+C sent to the game, the
@@ -865,9 +866,14 @@ const tradePlacement = () => ({ position: config.trade.position, offsetX: config
 // The check key's message: top centre, a little below the trade offers' default "top" spot.
 const toastPlacement = () => ({ position: 'top', offsetY: 9, custom: (config.overlayLayout || {}).toast || null });
 
+// The price check window: beside the inventory or stash unless it has been dragged somewhere.
+const checkPlacement = () => (config.overlayLayout || {}).check || null;
+
 const WIDGETS = [
   { id: 'trade', label: 'Trade offers', sample: 84, placement: tradePlacement },
   { id: 'toast', label: 'Check key message', sample: 112, placement: toastPlacement },
+  // Its default spot is shown as for an item in the inventory.
+  { id: 'check', label: 'Price check', bounds: (d) => checkPanelBounds(d.bounds, d.bounds.x + d.bounds.width, 300, checkPlacement()) },
 ];
 
 // Layout mode: a see-through window over the whole game screen with a stand-in for each
@@ -877,7 +883,7 @@ function layoutData() {
   return {
     hotkey: config.trade.hotkeys.layout,
     widgets: WIDGETS.map((w) => {
-      const r = overlayBounds(d, w.sample, w.placement());
+      const r = w.bounds ? w.bounds(d) : overlayBounds(d, w.sample, w.placement());
       return { id: w.id, label: w.label, x: r.x - d.bounds.x, y: r.y - d.bounds.y, width: r.width, height: r.height, moved: !!(config.overlayLayout || {})[w.id] };
     }),
   };
