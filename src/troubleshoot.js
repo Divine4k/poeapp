@@ -14,7 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { Trace, keyNames, keyLabel, buttonName, stateBrief, briefChanges, readme, recordingId, ID } = require('./core/recording');
-const { uploadFolder, listFolder, readFile } = require('./github');
+const { uploadFolder, readFile, latestTree, readBlob } = require('./github');
 
 const MAX_MS = 8 * 60 * 1000; // a longer video would be too large to send in one piece
 const SYNC_MAX = 20;          // recordings fetched in one go; the rest come with the next look
@@ -39,7 +39,11 @@ class Troubleshoot {
     this.names = {};
     this.ownUntil = 0; // keys and clicks seen before this time were sent by the app itself
     this.syncing = false;
-    this.fixed = {};   // what is fixed, from status.json in the reports repository: { id: { by, at } }
+    this.fixed = {};   // what is fixed, from fixed/<id>.json in the reports repository: { id: { by, at, sha } }
+    this.marksLoaded = false;
+    this.marking = new Set();          // ids whose mark is being changed right now
+    this.markChain = Promise.resolve(); // marks are made one after another
+    this.marksRev = 0;
     this.unseen = 0;   // other people's recordings fetched and not opened yet
     this.remoteError = '';
   }
@@ -54,7 +58,7 @@ class Troubleshoot {
     return {
       recording: !!this.current, busy: this.busy, startedAt: this.current ? this.current.startedAt : 0,
       video: this.current ? !!this.current.video : false, maxMs: MAX_MS, sending: this.sending,
-      unseen: this.unseen, remoteError: this.remoteError,
+      unseen: this.unseen, remoteError: this.remoteError, marking: [...this.marking],
     };
   }
 
@@ -179,21 +183,26 @@ class Troubleshoot {
   countUnseen() { this.unseen = this.list().filter((r) => r.remote && !r.seen).length; }
 
   // Looks in the reports repository for recordings this PC does not have yet, and fetches their
-  // facts and events (the video only when one is opened). Answers how many came in.
+  // facts and events (the video only when one is opened). Also reads who marked what fixed.
+  // Answers how many came in.
   async syncRemote() {
     if (this.syncing) return 0;
     this.syncing = true;
     let added = 0;
+    const marksAt = this.marksRev; // a mark made while this runs wins over what this reads
     try {
       const gh = await this.cloud.github();
       if (gh.error) throw new Error(gh.error);
       if (!gh.token || !gh.repo) throw new Error('No reports repository or token is saved in Developer tools.');
       const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
-      await this.readFixed(where);
+      // The whole repository as it is right now, in one answer: recordings and fixed marks.
+      const tree = await latestTree(where);
+      const fixed = await this.marksFrom(where, tree);
+      if (marksAt === this.marksRev) this.keepMarks(fixed);
       const hidden = this.hidden();
-      const ids = (await listFolder({ ...where, path: 'recordings' }))
-        .filter((e) => e.type === 'dir' && ID.test(e.name) && !hidden.has(e.name) && !this.meta(e.name))
-        .map((e) => e.name).sort().reverse().slice(0, SYNC_MAX); // newest first
+      const ids = tree.filter((e) => e.type === 'tree' && /^recordings\/[^/]+$/.test(e.path)).map((e) => e.path.slice('recordings/'.length))
+        .filter((id) => ID.test(id) && !hidden.has(id) && !this.meta(id))
+        .sort().reverse().slice(0, SYNC_MAX); // newest first
       for (const id of ids) {
         const raw = await readFile({ ...where, path: `recordings/${id}/meta.json` });
         if (!raw) continue;
@@ -221,40 +230,90 @@ class Troubleshoot {
     return added;
   }
 
-  // ---- fixed or not, shared through status.json at the top of the reports repository ----
+  // ---- fixed or not: one small file per mark, fixed/<id>.json in the reports repository ----
+  // One file each, so two people marking at once (or one person clicking quickly) can never
+  // undo each other's marks, as one shared list could.
   fixedOf(id) {
-    if (!Object.keys(this.fixed).length) { try { this.fixed = JSON.parse(fs.readFileSync(path.join(this.dir, 'status.json'), 'utf8')) || {}; } catch (_) { /* none yet */ } }
+    if (!this.marksLoaded) {
+      this.marksLoaded = true;
+      try { this.fixed = JSON.parse(fs.readFileSync(path.join(this.dir, 'fixed.json'), 'utf8')) || {}; } catch (_) { /* none yet */ }
+    }
     const f = this.fixed[id];
-    return f && f.fixed ? { by: f.by || '', at: f.at || 0, commit: f.commit || '' } : null;
+    return f ? { by: f.by || '', at: f.at || 0 } : null;
   }
-  async readFixed(where) {
-    const raw = await readFile({ ...where, path: 'status.json' });
-    let all = {};
-    try { all = raw ? JSON.parse(raw.toString('utf8')) || {} : {}; } catch (_) { all = {}; }
-    this.fixed = all;
+  keepMarks(all) {
+    this.fixed = all; this.marksLoaded = true;
     fs.mkdirSync(this.dir, { recursive: true });
-    fs.writeFileSync(path.join(this.dir, 'status.json'), JSON.stringify(all));
+    fs.writeFileSync(path.join(this.dir, 'fixed.json'), JSON.stringify(all));
+  }
+  // The marks in a tree from latestTree. Each mark's file is read once and then known by its
+  // content id. The single status.json of version 0.28.1 still counts until the next mark.
+  async marksFrom(where, tree) {
+    const known = {};
+    for (const [id, f] of Object.entries(this.fixed || {})) if (f && f.sha) known[f.sha] = { id, f };
+    const all = {};
+    const old = tree.find((e) => e.path === 'status.json' && e.type === 'blob');
+    if (old) {
+      try {
+        for (const [id, f] of Object.entries(JSON.parse((await readBlob({ ...where, sha: old.sha })).toString('utf8')) || {})) {
+          if (f && f.fixed && ID.test(id)) all[id] = { by: f.by || '', at: f.at || 0, old: true };
+        }
+      } catch (_) { /* a broken old list is ignored */ }
+    }
+    for (const e of tree) {
+      const m = e.type === 'blob' && /^fixed\/(.+)\.json$/.exec(e.path);
+      if (!m || !ID.test(m[1])) continue;
+      if (known[e.sha] && known[e.sha].id === m[1]) { all[m[1]] = known[e.sha].f; continue; }
+      let f = {};
+      try { f = JSON.parse((await readBlob({ ...where, sha: e.sha })).toString('utf8')) || {}; } catch (_) { /* still fixed */ }
+      all[m[1]] = { by: f.by || '', at: f.at || 0, sha: e.sha };
+    }
     return all;
   }
-  // Marks a sent recording or report fixed (or not fixed after all), for everyone. '' when it worked.
-  async setFixed(id, fixed) {
+  // Marks a sent recording or report fixed (or not fixed after all), for everyone. '' when it
+  // worked. Clicks wait for each other, so they are done one at a time, in order.
+  setFixed(id, fixed) {
+    this.marking.add(id);
+    this.changed();
+    const run = this.markChain.then(() => this.markNow(id, fixed));
+    this.markChain = run.catch(() => {});
+    return run;
+  }
+  async markNow(id, fixed) {
     const m = ID.test(String(id)) ? this.meta(id) : null;
-    if (!m) return 'That recording is no longer here.';
-    if (!m.remote && !m.sent) return 'Send it first: only what is on GitHub can be marked fixed.';
     try {
+      if (!m) return 'That recording is no longer here.';
+      if (!m.remote && !m.sent) return 'Send it first: only what is on GitHub can be marked fixed.';
       const gh = await this.cloud.github();
       if (gh.error) throw new Error(gh.error);
       const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
-      const all = await this.readFixed(where); // the newest, so nobody else's mark is lost
-      if (fixed) all[id] = { fixed: true, by: this.who().name || '', at: Date.now() };
-      else delete all[id];
-      await uploadFolder({ ...where, folder: '', files: [{ path: 'status.json', data: Buffer.from(`${JSON.stringify(all, null, 1)}\n`) }], message: `${fixed ? 'Fixed' : 'Not fixed'}: ${id}` });
-      this.fixed = all;
-      fs.writeFileSync(path.join(this.dir, 'status.json'), JSON.stringify(all));
+      const tree = await latestTree(where);
+      const all = await this.marksFrom(where, tree);
+      const files = [];
+      const has = (p) => tree.some((e) => e.path === p);
+      const mark = (mid, f) => files.push({ path: `fixed/${mid}.json`, data: Buffer.from(`${JSON.stringify({ fixed: true, by: f.by, at: f.at })}\n`) });
+      // The old single list becomes one file per mark, in the same commit.
+      if (has('status.json')) {
+        files.push({ path: 'status.json', remove: true });
+        for (const [mid, f] of Object.entries(all)) if (f.old && mid !== id) mark(mid, f);
+      }
+      if (fixed) {
+        const f = { by: this.who().name || '', at: Date.now() };
+        mark(id, f);
+        all[id] = f;
+      } else {
+        if (has(`fixed/${id}.json`)) files.push({ path: `fixed/${id}.json`, remove: true });
+        delete all[id];
+      }
+      if (files.length) await uploadFolder({ ...where, folder: '', files, message: `${fixed ? 'Fixed' : 'Not fixed'}: ${id}` });
+      for (const f of Object.values(all)) delete f.old;
+      this.marksRev++;
+      this.keepMarks(all);
       return '';
     } catch (e) {
       return e.message || String(e);
     } finally {
+      this.marking.delete(id);
       this.changed();
     }
   }

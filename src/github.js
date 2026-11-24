@@ -7,10 +7,16 @@
 const API = 'https://api.github.com';
 const MAX_FILE = 95 * 1024 * 1024; // GitHub refuses single files from 100 MB
 
+// GitHub lets its answers be kept for up to a minute, and the app's web requests (Chromium's)
+// do keep them. A minute-old branch or file made marks and commits clash with newer ones, so
+// every request asks GitHub itself.
+const FRESH = { 'Cache-Control': 'no-cache', Pragma: 'no-cache' };
+
 async function call(fetchImpl, token, method, route, body) {
   const res = await fetchImpl(`${API}${route}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'poeapp', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'poeapp', ...FRESH, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = null;
@@ -32,7 +38,7 @@ function explain(r, repo) {
 async function uploadFolder({ fetchImpl, token, repo, branch = 'main', folder, files, message, onStep = () => {} }) {
   if (!token) throw new Error('No GitHub token is saved. An admin sets it in Settings, Developer tools.');
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(String(repo || ''))) throw new Error('No reports repository is set. An admin sets it in Settings, Developer tools.');
-  for (const f of files) if (f.data.length > MAX_FILE) throw new Error(`${f.path} is ${(f.data.length / 1048576).toFixed(0)} MB, more than GitHub takes in one file. Make a shorter recording.`);
+  for (const f of files) if (!f.remove && f.data.length > MAX_FILE) throw new Error(`${f.path} is ${(f.data.length / 1048576).toFixed(0)} MB, more than GitHub takes in one file. Make a shorter recording.`);
   const get = (method, route, body) => call(fetchImpl, token, method, `/repos/${repo}${route}`, body);
 
   // A repository without any commit yet has no branch to build on: it gets a first file.
@@ -47,6 +53,8 @@ async function uploadFolder({ fetchImpl, token, repo, branch = 'main', folder, f
   const tree = [];
   let n = 0;
   for (const f of files) {
+    // { path, remove: true } takes a file away in the same commit.
+    if (f.remove) { tree.push({ path: folder ? `${folder}/${f.path}` : f.path, mode: '100644', type: 'blob', sha: null }); continue; }
     onStep(`Sending ${f.path} (${++n} of ${files.length})`);
     const blob = await get('POST', '/git/blobs', { content: f.data.toString('base64'), encoding: 'base64' });
     if (!blob.ok) throw new Error(explain(blob, repo));
@@ -82,7 +90,8 @@ async function listFolder({ fetchImpl, token, repo, path, branch = 'main' }) {
 async function readFile({ fetchImpl, token, repo, path, branch = 'main' }) {
   const res = await fetchImpl(`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'poeapp' },
+    cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'poeapp', ...FRESH },
   });
   if (res.status === 404) return null;
   if (!res.ok) {
@@ -93,4 +102,24 @@ async function readFile({ fetchImpl, token, repo, path, branch = 'main' }) {
   return Buffer.from(await res.arrayBuffer());
 }
 
-module.exports = { uploadFolder, listFolder, readFile, MAX_FILE };
+// Everything in the repository as it is right now: [{ path, type: 'blob' | 'tree', sha }].
+// Asked by the commit the branch points at, so it can never be an old copy. [] when empty.
+async function latestTree({ fetchImpl, token, repo, branch = 'main' }) {
+  const get = (route) => call(fetchImpl, token, 'GET', `/repos/${repo}${route}`);
+  const ref = await get(`/git/ref/heads/${branch}`);
+  if (ref.status === 404 || ref.status === 409) return [];
+  if (!ref.ok) throw new Error(explain(ref, repo));
+  const c = await get(`/git/commits/${ref.data.object.sha}`);
+  if (!c.ok) throw new Error(explain(c, repo));
+  const t = await get(`/git/trees/${c.data.tree.sha}?recursive=1`);
+  if (!t.ok) throw new Error(explain(t, repo));
+  return (t.data.tree || []).map((e) => ({ path: e.path, type: e.type, sha: e.sha }));
+}
+// One file by its content id (from latestTree); never an old copy either.
+async function readBlob({ fetchImpl, token, repo, sha }) {
+  const r = await call(fetchImpl, token, 'GET', `/repos/${repo}/git/blobs/${sha}`);
+  if (!r.ok) throw new Error(explain(r, repo));
+  return Buffer.from(r.data.content || '', r.data.encoding === 'base64' ? 'base64' : 'utf8');
+}
+
+module.exports = { uploadFolder, listFolder, readFile, latestTree, readBlob, MAX_FILE };

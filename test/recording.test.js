@@ -80,6 +80,7 @@ function fakeGithub({ empty = false, racing = 0, token = 'good' } = {}) {
     const route = url.replace('https://api.github.com/repos/Divine4k/reports', '');
     const body = o.body ? JSON.parse(o.body) : null;
     gh.calls.push(`${o.method} ${route}`);
+    if (o.cache !== 'no-store' || o.headers['Cache-Control'] !== 'no-cache') return answer(400, { message: 'asked without no-cache' });
     if (o.headers.Authorization !== `Bearer ${token}`) return answer(401, { message: 'Bad credentials' });
     if (o.method === 'GET' && route === '/git/ref/heads/main') return gh.ref ? answer(200, { object: { sha: gh.ref } }) : answer(409, { message: 'Git Repository is empty.' });
     if (o.method === 'PUT' && route === '/contents/README.md') { gh.commits.c1 = { tree: 't1', parents: [] }; gh.trees.t1 = { 'README.md': 'first' }; gh.ref = 'c1'; return answer(201, {}); }
@@ -94,7 +95,19 @@ function fakeGithub({ empty = false, racing = 0, token = 'good' } = {}) {
     }
     if (o.method === 'POST' && route === '/git/blobs') { const sha = `b${++n}`; gh.blobs[sha] = Buffer.from(body.content, 'base64'); return answer(201, { sha }); }
     if (o.method === 'GET' && route.startsWith('/git/commits/')) return answer(200, { tree: { sha: gh.commits[route.split('/').pop()].tree } });
-    if (o.method === 'POST' && route === '/git/trees') { const sha = `t${++n}`; gh.trees[sha] = { ...gh.trees[body.base_tree] }; for (const e of body.tree) gh.trees[sha][e.path] = e.sha; return answer(201, { sha }); }
+    if (o.method === 'POST' && route === '/git/trees') {
+      const sha = `t${++n}`; gh.trees[sha] = { ...gh.trees[body.base_tree] };
+      for (const e of body.tree) { if (e.sha === null) { if (!(e.path in gh.trees[sha])) return answer(422, { message: 'path not found' }); delete gh.trees[sha][e.path]; } else gh.trees[sha][e.path] = e.sha; }
+      return answer(201, { sha });
+    }
+    if (o.method === 'GET' && route.startsWith('/git/trees/')) {
+      // The whole tree, folders included, as GitHub gives it with recursive=1.
+      const flat = gh.trees[route.slice('/git/trees/'.length).split('?')[0]];
+      const dirs = new Set();
+      for (const p of Object.keys(flat)) { const parts = p.split('/'); for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/')); }
+      return answer(200, { tree: [...[...dirs].map((d) => ({ path: d, type: 'tree', sha: `d-${d}` })), ...Object.entries(flat).map(([p, b]) => ({ path: p, type: 'blob', sha: b }))] });
+    }
+    if (o.method === 'GET' && route.startsWith('/git/blobs/')) { const b = gh.blobs[route.slice('/git/blobs/'.length)]; return b ? answer(200, { content: b.toString('base64'), encoding: 'base64' }) : answer(404, {}); }
     if (o.method === 'POST' && route === '/git/commits') { const sha = `c${++n}`; gh.commits[sha] = { tree: body.tree, parents: body.parents, message: body.message }; return answer(201, { sha }); }
     if (o.method === 'PATCH' && route === '/git/refs/heads/main') {
       // Someone else's commit lands first this many times.
@@ -297,7 +310,7 @@ test('a written report goes up with its pictures, and fixed marks are shared thr
   assert.ok(b.image(id, 'image-1.png').equals(png));
   assert.match(b.addImage(id, png, 'image/png'), /written report/); // not to someone else's
   assert.strictEqual(await b.setFixed(id, true), '');
-  assert.deepStrictEqual(JSON.parse(gh.blobs[gh.tree()['status.json']].toString())[id].by, 'Divine');
+  assert.deepStrictEqual(JSON.parse(gh.blobs[gh.tree()[`fixed/${id}.json`]].toString()).by, 'Divine');
   await a.syncRemote();
   assert.strictEqual(a.list()[0].fixed.by, 'Divine');
   assert.strictEqual(a.details(id).fixed.by, 'Divine');
@@ -306,4 +319,37 @@ test('a written report goes up with its pictures, and fixed marks are shared thr
   await b.syncRemote();
   assert.strictEqual(b.list()[0].fixed, null);
   for (const t of [a, b]) fs.rmSync(t.dir, { recursive: true, force: true });
+});
+
+test('quick marks one after another all stick, the old single list is taken over, and a look meanwhile undoes nothing', async () => {
+  const gh = fakeGithub();
+  const cloud = { github: async () => ({ repo: 'Divine4k/reports', token: 'good' }) };
+  const t = new Troubleshoot({
+    dir: fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-f-')), recorder: {}, displayId: () => null, version: 'x', cloud, fetchImpl: gh.fetch,
+    snapshot: async () => ({ state: {} }), who: () => ({ name: 'Divine', role: 'admin' }),
+  });
+  // Three reports on GitHub, and the list of marks as version 0.28.1 kept it.
+  const ids = [];
+  for (let i = 0; i < 3; i++) { const id = await t.newReport(); ids.push(id); await t.send(id, `report ${i}`); await new Promise((r) => setTimeout(r, 1100)); }
+  await uploadFolder({ fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/reports', folder: '', files: [{ path: 'status.json', data: Buffer.from(JSON.stringify({ [ids[0]]: { fixed: true, by: 'Old', at: 1 } })) }], message: 'old list' });
+  await t.syncRemote();
+  assert.strictEqual(t.fixedOf(ids[0]).by, 'Old');
+
+  // Clicked quickly: the second and third start before the first is done.
+  const looking = t.syncRemote();
+  const done = await Promise.all([t.setFixed(ids[1], true), t.setFixed(ids[2], true), t.setFixed(ids[1], false)]);
+  await looking;
+  assert.deepStrictEqual(done, ['', '', '']);
+  assert.deepStrictEqual(t.marking.size, 0);
+  const tree = gh.tree();
+  assert.ok(!('status.json' in tree), 'the old list is gone');
+  assert.ok(`fixed/${ids[0]}.json` in tree, 'its mark lives on as a file');
+  assert.ok(!(`fixed/${ids[1]}.json` in tree));
+  assert.ok(`fixed/${ids[2]}.json` in tree);
+  assert.deepStrictEqual(ids.map((id) => !!t.fixedOf(id)), [true, false, true]);
+  // A later look agrees.
+  await t.syncRemote();
+  assert.deepStrictEqual(ids.map((id) => !!t.fixedOf(id)), [true, false, true]);
+  assert.strictEqual(t.fixedOf(ids[0]).by, 'Old');
+  fs.rmSync(t.dir, { recursive: true, force: true });
 });

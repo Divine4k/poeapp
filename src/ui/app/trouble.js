@@ -164,7 +164,10 @@ function trSendLine() {
   $('tr-fixed').hidden = !f;
   $('tr-fixed').textContent = f ? `Fixed${f.by ? ` (marked by ${f.by}${f.at ? `, ${trWhen(f.at)}` : ''})` : ''}.` : '';
   $('tr-fixbtn').hidden = !(trDetail.remote || trDetail.sent);
-  $('tr-fixbtn').textContent = f ? 'Not fixed after all' : 'Mark as fixed';
+  // While GitHub takes the change the button waits; a second click would only queue up.
+  const busy = (state.trouble.marking || []).includes(trSel);
+  $('tr-fixbtn').disabled = busy;
+  $('tr-fixbtn').textContent = busy ? 'Marking…' : f ? 'Not fixed after all' : 'Mark as fixed';
   // Someone else's recording: read only, already on GitHub.
   const remote = !!trDetail.remote;
   $('tr-sendbtn').hidden = remote;
