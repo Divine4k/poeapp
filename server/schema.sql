@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
   name_key TEXT NOT NULL UNIQUE,
   salt TEXT NOT NULL,
   pass TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  admin INTEGER NOT NULL DEFAULT 0 -- 1: may rename or remove anyone's pictures in the item list
 );
 CREATE TABLE IF NOT EXISTS tokens (
   hash TEXT PRIMARY KEY,
@@ -28,4 +29,17 @@ CREATE TABLE IF NOT EXISTS hits (
   k TEXT PRIMARY KEY,
   n INTEGER NOT NULL,
   until INTEGER NOT NULL
+);
+-- The shared item list, one row per picture; json is the entry as the apps download it.
+CREATE TABLE IF NOT EXISTS items (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  by_name TEXT NOT NULL,
+  json TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS items_name ON items (name);
+CREATE TABLE IF NOT EXISTS meta (
+  k TEXT PRIMARY KEY,
+  v TEXT NOT NULL
 );

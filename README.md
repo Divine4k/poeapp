@@ -93,14 +93,15 @@ Items the app cannot recognise are kept on the Items page with their picture, al
 2. Click one of the suggested names next to its picture.
 3. Type the name, or press **Ignore** to never be asked about it again.
 
-Named items are kept on your PC. They can also be uploaded to the shared list, which lives on the `data` branch of this repository (`items.json`) and is downloaded by every copy of the app. Uploading needs a fine-grained GitHub token limited to this repository with "Contents: read and write", pasted under Settings. The shared list holds only item names and small picture fingerprints.
+Named items are kept on your PC. When you are logged in (see Accounts below) they also go to the shared list on the Map Companion server, signed with your account name; every copy of the app downloads that list, logged in or not. You can rename or remove the pictures you added yourself, and the owner of the list can change any. The shared list holds only item names and small picture fingerprints.
 
 ## Accounts and uploaded sessions
 
 The app asks you to register when it starts: a name and a password. The server it talks to is described in `server/README.md`. "Not now" skips it until the next start.
 
 - **What goes up:** each finished session (when you press **Start new session**) with its maps, loot and costs, and the inventory picture kept for each map. Sessions already saved on the PC go up after you register.
-- **What stays on the PC:** settings, trades, whispers and named items.
+- **What stays on the PC:** settings, trades and whispers.
+- **Item names:** what you name is added to the shared item list under your account name.
 - **Who can see it:** anyone with an account. This is what a later version will use to show other people's map runs.
 - **Offline:** nothing is lost. What could not be sent waits and is tried again every ten minutes.
 - **Deleting:** a session deleted in the app comes off the server too. The account window (your name at the bottom of the sidebar) can log out, and delete the account with everything uploaded under it.
@@ -134,7 +135,7 @@ Only one copy of the app runs at a time. When it starts, it closes any copy of i
 - Ctrl+F is taken from the game for the price check while the app runs (see Trade site search).
 - F8 and F9 must not be bound to anything in game, and neither must the trade keys F2, F3 and Shift+F2. Change them in Settings (trade keys: Trade, Trade settings) if they are.
 - After F8, a short message shows in game for about two seconds: the item and its value, a map's verdict, or why nothing was read. It can be moved in layout mode (Shift+F2) and switched off in Settings.
-- F9 sends a report of what the app sees (the inventory slots, how each was read) to the `data` branch of this repository under `reports/`, for troubleshooting. That needs the GitHub token from Settings; without one the report is kept in the app's own folder.
+- F9 sends a report of what the app sees (the inventory slots, how each was read) to the Map Companion server, for troubleshooting. That needs you to be logged in; otherwise the report is kept in the app's own folder.
 - If your inventory key is not Tab, set it in Settings.
 
 ## Rules and risk

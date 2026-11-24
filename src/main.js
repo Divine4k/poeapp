@@ -1,7 +1,6 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const zlib = require('zlib');
 const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage, safeStorage } = require('electron');
 
@@ -68,8 +67,6 @@ const DEFAULT_CONFIG = {
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
   ignoredItems: [], // names of items never to count, whatever the picture
   navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
-  shareToken: '', // GitHub token for uploading named items, stored encrypted
-  shareName: '',  // the name your additions to the item database are signed with (empty: this PC's user name)
   // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
   // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat
   // line per press); hotkeys.dismiss removes the oldest offer.
@@ -198,7 +195,7 @@ function buildState() {
   status.inventory.art.known = index.art.length;
   status.inventory.awaitingArrival = ledger.pendingArrival && !!session.current;
   status.inventory.noBaseline = !ledger.baseline;
-  if (shared) status.shared = { ...shared.status, canUpload: !!shared.token, waiting: shared.pending.length, by: shareName() };
+  if (shared) status.shared = { ...shared.status, canUpload: shared.canUpload, waiting: shared.pending.length, by: shareName() };
   if (cloud) status.cloud = cloud.status;
   return {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
@@ -461,16 +458,15 @@ function teach(typed, print, image = null) {
     }
   }
   if (shared) {
-    shared.by = shareName();
     const sync = async () => {
-      if (shared.token) await shared.correct(print, name);
+      if (shared.canUpload) await shared.correct(print, name);
       shared.queue(name, print);
       await shared.flush();
       index.setShared(shared.items); itemsRev++; push();
     };
     sync().then(() => {
       // The name is kept on this PC either way; say so when it could not be shared.
-      if (shared.token && shared.status.error) { say(`Saved on this PC, but the item database did not take it: ${shared.status.error}`, true); push(); }
+      if (shared.canUpload && shared.status.error) { say(`Saved on this PC, but the item database did not take it: ${shared.status.error}`, true); push(); }
     }).catch((e) => console.error('shared update failed', e.message));
   }
   return { name, entry, was };
@@ -527,12 +523,9 @@ function looksLikeAnother(name, print) {
   return { name: a.best.name, icon: (other && other.icon) || null };
 }
 
-// The name this PC's additions to the item database are signed with.
-function shareName() {
-  let user = '';
-  try { user = os.userInfo().username; } catch (_) { /* no user name on this system */ }
-  return (String(config.shareName || '').trim() || user || 'someone').slice(0, 40);
-}
+// The name your additions to the item database are signed with: your account's. Empty when
+// not logged in, as nothing is added then.
+function shareName() { return shared ? shared.by : ''; }
 
 // When and how each item was last read from the inventory: name -> { at, source, score }.
 // This is what shows that the app reads an item, whether or not anyone ever named it.
@@ -599,7 +592,7 @@ function itemDatabase() {
   const icons = prices.categoryIcons();
   const categories = [...labels].filter(([id]) => counts.has(id)).map(([id, label]) => ({ id, label, count: counts.get(id), icon: icons[id] || null }));
   for (const [id, n] of counts) if (!labels.has(id)) categories.push({ id, label: id, count: n, icon: icons[id] || null });
-  return { me: shareName(), canUpload: !!(shared && shared.token), named: learned.filter((l) => l.name && !l.auto).length, rows: list, categories };
+  return { me: shareName(), canUpload: !!(shared && shared.canUpload), named: learned.filter((l) => l.name && !l.auto).length, rows: list, categories };
 }
 
 // The closest names as kept with a slot: [{ name, score (percent), source }].
@@ -617,13 +610,13 @@ function autoLearn(cells) {
     learned.push({ name: c.name, print: encodePrint(c.print), image: thumbnail(c.rgb), auto: true });
     index.addLearned(c.name, c.print, { sharp: sharpPrint(c.rgb), auto: true });
     // Offered to the shared list too, for items it has no picture of yet (needs the token).
-    if (shared && shared.token) { shared.by = shareName(); shared.queue(c.name, c.print, { auto: true }); }
+    if (shared && shared.canUpload) shared.queue(c.name, c.print, { auto: true });
     added++;
   }
   if (added) {
     itemsRev++; writeJson('learned.json', learned);
     // Uploads are gathered for a minute, so a full inventory becomes one change to the list.
-    if (shared && shared.token && shared.pending.length && !autoFlush) {
+    if (shared && shared.canUpload && shared.pending.length && !autoFlush) {
       autoFlush = setTimeout(async () => { autoFlush = null; await shared.flush(); index.setShared(shared.items); itemsRev++; push(); }, 60000);
     }
   }
@@ -842,10 +835,10 @@ function applyName(k, item, name, entry, print) {
       for (const l of wrong) { l.name = name; delete l.auto; }
       relearn();
       say(`Corrected: this picture was saved as ${was} and now counts as ${name}.`);
-      if (shared && shared.token) shared.correct(print, name).then((n) => { if (n) { index.setShared(shared.items); itemsRev++; push(); } });
+      if (shared && shared.canUpload) shared.correct(print, name).then((n) => { if (n) { index.setShared(shared.items); itemsRev++; push(); } });
       return;
     }
-    if (hit && hit.source === 'shared' && shared && shared.token) shared.correct(print, name).then((n) => { if (n) { index.setShared(shared.items); itemsRev++; push(); } });
+    if (hit && hit.source === 'shared' && shared && shared.canUpload) shared.correct(print, name).then((n) => { if (n) { index.setShared(shared.items); itemsRev++; push(); } });
     const seen = lastInventory.cells.find((c) => c.cell === k);
     learnPrint(name, print, seen && seen.print && similarity(seen.print, print) > 0.98 ? seen.image : null);
     return;
@@ -855,13 +848,12 @@ function applyName(k, item, name, entry, print) {
   say(`Counting ${entry.name}${item.stackSize > 1 ? ` ×${item.stackSize}` : ''} in that slot: ${Math.round(entry.chaos * (item.stackSize || 1) * 10) / 10}c. It shows up in the loot at the next inventory read.`);
 }
 
-// With an upload token, the pictures kept on this PC that the shared database lacks are sent
+// When logged in, the pictures kept on this PC that the shared database lacks are sent
 // to it: one database for everyone. The database's own limits decide what is taken.
 async function offerLocalItems({ announce = false, retry = false } = {}) {
   if (!shared) return;
-  if (!shared.token) { if (announce) say('No upload token is saved, so nothing can be sent. Add one in Settings, under Item database.', true); return; }
+  if (!shared.canUpload) { if (announce) say('You are not logged in, so nothing can be sent. Log in at the bottom of the sidebar.', true); return; }
   if (shared.status.error && !retry) return;
-  shared.by = shareName();
   if (retry) { shared.status.error = null; await shared.load(); }
   for (const l of learned) {
     if (!l.name) continue;
@@ -929,21 +921,21 @@ async function saveDiagnostic(snapshot = false) {
     const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     const name = `${snapshot ? 'snapshot' : 'diagnostic'}-${stamp}.json.gz`;
     const data = zlib.gzipSync(JSON.stringify(report));
-    // Kept on this PC in the app's own folder, and sent to the repository when a token is saved.
+    // Kept on this PC in the app's own folder, and sent to the server when you are logged in.
     const dir = dataFile('reports');
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, name);
     fs.writeFileSync(file, data);
     const closed = open ? '' : ' The inventory was not open in game, so it holds no items.';
-    if (shared && shared.token) {
+    if (shared && shared.canUpload) {
       try {
-        await shared.uploadFile(`reports/${name}`, data, `Report ${name}`);
+        await shared.uploadFile(name, data);
         say(`Report sent: ${name}.${closed}`, !open);
       } catch (e) {
         say(`The report could not be sent (${e.message || e}). It is saved on this PC as ${file}.${closed}`, true);
       }
     } else {
-      say(`Report saved on this PC as ${file}. To have reports sent by themselves, add a GitHub token under Settings, Shared item list.${closed}`, true);
+      say(`Report saved on this PC as ${file}. To have reports sent by themselves, log in at the bottom of the sidebar.${closed}`, true);
     }
   } catch (e) {
     say(`Could not make the report: ${e.message || e}`, true);
@@ -993,15 +985,11 @@ async function accountAction(a) {
   else if (a.type === 'logout') await cloud.logout();
   else if (a.type === 'delete') error = await cloud.deleteAccount(a.password);
   else if (a.type === 'sync') syncCloud();
-  if (!error && (a.type === 'register' || a.type === 'login')) syncCloud();
+  if (!error && (a.type === 'register' || a.type === 'login')) { syncCloud(); offerLocalItems().catch((e) => console.error('offer failed', e.message)); }
   push();
   return { error };
 }
 
-function readToken() {
-  if (!config.shareToken) return '';
-  try { return safeStorage.decryptString(Buffer.from(config.shareToken, 'base64')); } catch (_) { return ''; }
-}
 
 function loadLearned() {
   backlog.load(readJson('unrecognised.json', []), decodePrint);
@@ -1449,15 +1437,6 @@ function createWindow() {
 function applyConfig(patch) {
   const leagueBefore = config.league, logBefore = config.logPath;
   if (patch.trade) patch = { ...patch, trade: mergeTrade(config.trade, patch.trade) };
-  if (typeof patch.token === 'string') {
-    const token = patch.token.trim();
-    patch.shareToken = token && safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(token).toString('base64') : '';
-    if (shared) {
-      shared.token = token && patch.shareToken ? token : ''; shared.status.error = token && !patch.shareToken ? 'This PC cannot store the token safely, so it was not saved.' : null;
-      if (shared.token) setTimeout(() => offerLocalItems({ announce: true, retry: true }).catch((e) => console.error('offer failed', e.message)), 500);
-    }
-    delete patch.token;
-  }
   config = {
     ...config, ...patch,
     hotkeys: { ...config.hotkeys, ...(patch.hotkeys || {}) },
@@ -1573,7 +1552,7 @@ const actions = {
     const t = teach(typed, print, image);
     const fixed = recheckMaps(true);
     const also = fixed.slots ? ` Corrected ${fixed.slots} ${fixed.slots === 1 ? 'slot' : 'slots'} in ${fixed.maps} ${fixed.maps === 1 ? 'map' : 'maps'} of this session.` : '';
-    const where = shared && shared.token ? ', here and for everyone' : ' on this PC';
+    const where = shared && shared.canUpload ? ', here and for everyone' : ' on this PC';
     say(t.entry ? `That picture now counts as ${t.name}${where}.${also}` : `Saved as "${t.name}", but no price is known under that name, so it counts as 0c.`, !t.entry);
   },
   // Whether an item is counted at all. qty 0: never count it, 1: count it again.
@@ -1585,7 +1564,7 @@ const actions = {
     applyConfig({ ignoredItems: [...set] });
     say(Number(a.qty) ? `${name} is counted again.` : `${name} is never counted from now on. Loot of it already listed stays; remove it there if you want.`);
   },
-  // A clean slate: every name given by hand on this PC goes, here and (with a token) in the
+  // A clean slate: every name given by hand on this PC goes, here and (when logged in) in the
   // shared database. What the app learned by itself and the pictures you chose to ignore stay.
   removeNamed: async () => {
     const mine = learned.filter((l) => l.name && !l.auto);
@@ -1595,7 +1574,7 @@ const actions = {
     learned = learned.filter((l) => !l.name || l.auto);
     relearn();
     let gone = 0;
-    if (shared && shared.token) { gone = await shared.removeMany(prints); index.setShared(shared.items); itemsRev++; }
+    if (shared && shared.canUpload) { gone = await shared.removeMany(prints); index.setShared(shared.items); itemsRev++; }
     say(`Removed ${mine.length} ${mine.length === 1 ? 'name' : 'names'} given by hand on this PC${gone ? `, and ${gone} of them from the shared database` : ''}. The app reads those items by itself where it can and asks you about the rest.`);
   },
   forgetItem: async (a) => {
@@ -1606,12 +1585,14 @@ const actions = {
       else if (list === 'shared' && index.shared[n]) print = index.shared[n].print;
     } catch (_) { /* a broken entry */ }
     if (!print) return;
-    if (shared && shared.token) {
+    if (shared && shared.canUpload) {
       const gone = await shared.remove(print);
       index.setShared(shared.items); itemsRev++;
-      say(gone ? 'That picture is removed from the database for everyone.' : 'That picture is removed from this PC.');
+      if (gone) say('That picture is removed from the database for everyone.');
+      else if (shared.refused && list === 'shared') say('Someone else added that picture, so only they or the owner of the item list can remove it for everyone. You can still rename it, which applies on this PC.', true);
+      else say('That picture is removed from this PC.');
     } else if (list === 'shared') {
-      say('Removing a picture for everyone needs an upload token (Settings). You can still rename it, which applies on this PC.', true);
+      say('Removing a picture for everyone needs an account: log in at the bottom of the sidebar. You can still rename it, which applies on this PC.', true);
     } else say('That picture is removed from this PC.');
   },
   // A slot was read wrong, or not at all, and you say what it is. id: "inv:<slot>" for the
@@ -1805,12 +1786,10 @@ app.whenReady().then(() => {
     push();
   }, 5000);
 
-  shared = new SharedItems({ fetchImpl: webFetch, token: readToken() });
-  shared.by = shareName();
+  loadCloud();
+  shared = new SharedItems({ cloud });
   loadShared();
   setInterval(loadShared, SHARED_REFRESH_MS);
-
-  loadCloud();
   setTimeout(syncCloud, 5000);
   setInterval(syncCloud, CLOUD_RETRY_MS);
 

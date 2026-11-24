@@ -3,53 +3,13 @@
 // it (src/cloud.js) talking to that server without a network in between.
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
 const { Cloud, checkEntry, stretch } = require('../src/cloud');
 
-let DatabaseSync = null;
-try { ({ DatabaseSync } = require('node:sqlite')); } catch (_) { /* older Node: the server tests are skipped */ }
+const { server: startServer, quick, hasSql } = require('./server');
 
-// Stand-ins for the two Cloudflare bindings, with the calls the server uses.
-function fakeEnv() {
-  const db = new DatabaseSync(':memory:');
-  db.exec(fs.readFileSync(path.join(__dirname, '..', 'server', 'schema.sql'), 'utf8'));
-  const stmt = (sql, args = []) => ({
-    bind: (...a) => stmt(sql, a),
-    first: async () => db.prepare(sql).get(...args) || null,
-    all: async () => ({ results: db.prepare(sql).all(...args) }),
-    run: async () => { try { db.prepare(sql).run(...args); } catch (e) { throw new Error(`D1_ERROR: ${e.message}`); } return { success: true }; },
-  });
-  const files = new Map();
-  return {
-    files,
-    DB: { prepare: (sql) => stmt(sql), batch: async (list) => { for (const s of list) await s.run(); } },
-    BUCKET: {
-      put: async (key, value) => { files.set(key, typeof value === 'string' ? value : await new Response(value).text()); },
-      get: async (key) => (files.has(key) ? { body: files.get(key) } : null),
-      delete: async (keys) => { for (const k of [].concat(keys)) files.delete(k); },
-      list: async ({ prefix }) => ({ objects: [...files.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })), truncated: false }),
-    },
-  };
-}
-
-async function server() {
-  const worker = (await import('../server/worker.js')).default;
-  const env = fakeEnv();
-  const fetchImpl = (url, o = {}) => {
-    const headers = { 'cf-connecting-ip': '10.0.0.1', ...(o.headers || {}) };
-    if (o.body !== undefined) headers['content-length'] = String(Buffer.byteLength(o.body));
-    return worker.fetch(new Request(url, { method: o.method, headers, body: o.body }), env);
-  };
-  return { env, fetchImpl };
-}
-const quick = async (name, password) => require('crypto').createHash('sha256').update(`${name.toLowerCase()}:${password}`).digest('hex');
-const client = (fetchImpl, saved = null) => {
-  const box = { saved };
-  const c = new Cloud({ url: 'https://server.test/', fetchImpl, saved, save: (s) => { box.saved = JSON.parse(JSON.stringify(s)); }, stretchImpl: quick });
-  c.box = box;
-  return c;
-};
+async function server() { const x = await startServer(); return { env: x.env, fetchImpl: x.fetchImpl, make: x.client }; }
+let current = null;
+const client = (fetchImpl, saved = null) => current.make(saved);
 const aSession = (id, runIds) => ({ id, startedAt: 1000, endedAt: 2000, divine: 200, strategy: { name: 'Legion', atlasUrl: '' }, totals: { maps: runIds.length, deaths: 1, lootValue: 50, costValue: 10, net: 40, mapMs: 900 }, runs: runIds.map((r) => ({ id: r, name: 'Strand', loot: [{ name: 'Chaos Orb', qty: 3 }] })) });
 const source = (sessions, pictures = {}) => ({ ids: () => Object.keys(sessions), session: (id) => sessions[id] || null, pictures: (id) => pictures[id] || null });
 
@@ -75,10 +35,10 @@ test('without a server address there are no accounts', async () => {
   await c.sync(source({ a: aSession('a', []) }));
 });
 
-const live = DatabaseSync ? test : test.skip;
+const live = hasSql ? test : test.skip;
 
 live('register, then log in from another PC; a taken name and a wrong password are refused', async () => {
-  const { env, fetchImpl } = await server();
+  current = await server(); const { env, fetchImpl } = current;
   const a = client(fetchImpl);
   assert.strictEqual(await a.register('Divine4k', 'correct horse', 'correct horse'), '');
   assert.ok(a.signedIn);
@@ -93,14 +53,13 @@ live('register, then log in from another PC; a taken name and a wrong password a
   assert.strictEqual(b.name, 'Divine4k');
 
   // Neither the password nor what was sent in its place is kept as it arrived.
-  const row = env.DB.prepare('SELECT * FROM users').first();
-  const user = await row;
+  const user = await env.DB.prepare('SELECT * FROM users').first();
   assert.ok(!JSON.stringify(user).includes('correct horse'));
   assert.ok(!JSON.stringify(user).includes(await quick('Divine4k', 'correct horse')));
 });
 
 live('sessions and pictures go up once, land under the right person, and can be read by others', async () => {
-  const { env, fetchImpl } = await server();
+  current = await server(); const { env, fetchImpl } = current;
   const a = client(fetchImpl);
   await a.register('Divine4k', 'correct horse', 'correct horse');
   const sessions = { s1: aSession('s1', ['r1', 'r2']), s2: aSession('s2', ['r3']) };
@@ -138,7 +97,7 @@ live('sessions and pictures go up once, land under the right person, and can be 
 });
 
 live('nothing is accepted or shown without logging in', async () => {
-  const { env, fetchImpl } = await server();
+  current = await server(); const { env, fetchImpl } = current;
   for (const [method, route] of [['GET', 'users'], ['GET', 'me'], ['PUT', 'sessions/s1'], ['PUT', 'pictures/r1'], ['GET', 'users/x/sessions']]) {
     const res = await fetchImpl(`https://server.test/v1/${route}`, { method, body: method === 'PUT' ? '{}' : undefined });
     assert.strictEqual(res.status, 401, route);
@@ -147,7 +106,7 @@ live('nothing is accepted or shown without logging in', async () => {
 });
 
 live('a deleted session comes off the server with its pictures', async () => {
-  const { env, fetchImpl } = await server();
+  current = await server(); const { env, fetchImpl } = current;
   const a = client(fetchImpl);
   await a.register('Divine4k', 'correct horse', 'correct horse');
   const sessions = { s1: aSession('s1', ['r1']) };
@@ -161,7 +120,7 @@ live('a deleted session comes off the server with its pictures', async () => {
 });
 
 live('when the server cannot be reached the rest waits, and goes up on the next try', async () => {
-  const { env, fetchImpl } = await server();
+  current = await server(); const { env, fetchImpl } = current;
   const a = client(fetchImpl);
   await a.register('Divine4k', 'correct horse', 'correct horse');
   const sessions = { s1: aSession('s1', []), s2: aSession('s2', []) };
@@ -179,7 +138,7 @@ live('when the server cannot be reached the rest waits, and goes up on the next 
 });
 
 live('logging out ends the token; deleting the account removes everything', async () => {
-  const { env, fetchImpl } = await server();
+  current = await server(); const { env, fetchImpl } = current;
   const a = client(fetchImpl);
   await a.register('Divine4k', 'correct horse', 'correct horse');
   const token = a.token;
@@ -198,7 +157,7 @@ live('logging out ends the token; deleting the account removes everything', asyn
 });
 
 live('a token that stopped working signs this PC out instead of failing forever', async () => {
-  const { fetchImpl } = await server();
+  current = await server(); const { fetchImpl } = current;
   const a = client(fetchImpl);
   await a.register('Divine4k', 'correct horse', 'correct horse');
   a.token = 'f'.repeat(64);
@@ -208,7 +167,7 @@ live('a token that stopped working signs this PC out instead of failing forever'
 });
 
 live('too many wrong passwords lock the name for a while; oversized uploads are refused', async () => {
-  const { fetchImpl } = await server();
+  current = await server(); const { fetchImpl } = current;
   const a = client(fetchImpl);
   await a.register('Divine4k', 'correct horse', 'correct horse');
   let last = '';

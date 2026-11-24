@@ -2,8 +2,8 @@
 // One file with no dependencies, so it can be pasted into the Cloudflare dashboard as it is.
 //
 // It needs two bindings (see server/README.md):
-//   DB      a D1 database with server/schema.sql run on it (accounts and the list of sessions)
-//   BUCKET  an R2 bucket (the sessions themselves and the pictures)
+//   DB      a D1 database with server/schema.sql run on it (accounts, the list of sessions, the item list)
+//   BUCKET  an R2 bucket (the sessions themselves, the pictures, reports, and the item list as one file)
 //
 // Passwords never reach this server. The app stretches the password with scrypt on the PC and
 // sends the result (64 hex characters); what is stored here is a salted hash of that.
@@ -14,6 +14,17 @@ const NAME = /^[A-Za-z0-9_-]{3,20}$/;
 const KEY = /^[0-9a-f]{64}$/;
 const ID = /^[A-Za-z0-9_-]{1,80}$/;
 const HOUR = 3600 * 1000;
+
+// The item list everyone shares: pictures of items with their names. Kept as rows, and as one
+// ready-made file that every copy of the app downloads.
+const ITEMS_FILE = 'shared/items.json';
+const MAX_ITEMS = 4000;      // entries in all
+const MAX_PER_NAME = 3;      // pictures of one item
+const MAX_AT_ONCE = 50;      // entries one request may add, rename or remove
+const PRINT = /^[A-Za-z0-9+/=]{20,4000}$/;
+const FILE_NAME = /^[A-Za-z0-9._-]{1,100}$/;
+// Where the list lived before this server; read once, when the list here is still empty.
+const OLD_ITEMS = 'https://raw.githubusercontent.com/Divine4k/poeappitemdata/main/items.json';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const fail = (status, error) => json({ error }, status);
@@ -58,7 +69,7 @@ async function newToken(env, userId, now) {
 async function whoIs(request, env) {
   const m = /^Bearer ([0-9a-f]{64})$/.exec(request.headers.get('authorization') || '');
   if (!m) return null;
-  return env.DB.prepare('SELECT u.id, u.name FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.hash = ?').bind(await sha256(m[1])).first();
+  return env.DB.prepare('SELECT u.id, u.name, u.admin FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.hash = ?').bind(await sha256(m[1])).first();
 }
 
 async function register(request, env, now) {
@@ -137,6 +148,108 @@ async function stored(env, key) {
   return new Response(obj.body, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 }
 
+// ---- the shared item list ---------------------------------------------------------
+const itemId = async (print) => (await sha256(print)).slice(0, 32);
+const itemJson = (e) => JSON.stringify({ id: e.id, name: e.name, print: e.print, by: e.by || undefined, auto: e.auto ? 1 : undefined, at: e.at });
+const insertItem = (env, e) => env.DB.prepare('INSERT OR IGNORE INTO items (id, name, by_name, json, at) VALUES (?, ?, ?, ?, ?)').bind(e.id, e.name, e.by || '', itemJson(e), e.at);
+const validItem = (r) => r && typeof r.name === 'string' && r.name.trim() && r.name.length <= 120 && typeof r.print === 'string' && PRINT.test(r.print);
+
+// Writes the list as the one file the apps download. Each row holds its entry ready-made, so
+// this is joining text, however long the list gets.
+async function publishItems(env) {
+  const rows = await env.DB.prepare('SELECT json FROM items ORDER BY at, id').all();
+  const text = `[${rows.results.map((r) => r.json).join(',')}]`;
+  await env.BUCKET.put(ITEMS_FILE, text, { httpMetadata: { contentType: 'application/json' } });
+  return text;
+}
+
+// The first time, the list is taken over from where it used to live. Returns false when that
+// could not be read, so it is tried again later instead of starting empty for good.
+async function takeOverItems(env, now) {
+  if (await env.DB.prepare("SELECT v FROM meta WHERE k = 'items'").first()) return true;
+  let old;
+  try {
+    const res = await fetch(OLD_ITEMS);
+    if (res.status === 404) old = [];
+    else if (res.ok) old = await res.json();
+  } catch (_) { /* answered below */ }
+  if (!Array.isArray(old)) return false;
+  const rows = [];
+  for (const r of old.filter(validItem).slice(0, MAX_ITEMS)) {
+    rows.push(insertItem(env, { id: await itemId(r.print), name: r.name, print: r.print, by: typeof r.by === 'string' ? r.by.slice(0, 40) : '', auto: !!r.auto, at: num(r.at) || now }));
+  }
+  rows.push(env.DB.prepare("INSERT OR IGNORE INTO meta (k, v) VALUES ('items', ?)").bind(String(now)));
+  await env.DB.batch(rows);
+  return true;
+}
+
+// Anyone may read the list, logged in or not, as before.
+async function getItems(request, env, now) {
+  const headers = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-cache' };
+  const file = await env.BUCKET.get(ITEMS_FILE);
+  if (!file) {
+    if (!(await takeOverItems(env, now))) return new Response('[]', { headers });
+    return new Response(await publishItems(env), { headers });
+  }
+  // The network in between may mark the tag as weak (W/) on its way out.
+  if ((request.headers.get('if-none-match') || '').replace(/^W\//, '') === file.httpEtag) return new Response(null, { status: 304, headers: { etag: file.httpEtag } });
+  return new Response(file.body, { headers: { ...headers, etag: file.httpEtag } });
+}
+
+async function addItems(request, env, me, now) {
+  const body = await readJson(request, 400 * 1024);
+  const list = body && Array.isArray(body.add) ? body.add.filter(validItem) : null;
+  if (!list || !list.length || list.length > MAX_AT_ONCE) return fail(400, `Send 1 to ${MAX_AT_ONCE} items at a time.`);
+  if (!(await allow(env, `items:${me.id}`, 300, 24 * HOUR, now))) return fail(429, 'You have added a lot to the item list today. The rest is kept on this PC and can go up tomorrow.');
+  if (!(await takeOverItems(env, now))) return fail(503, 'The item list is not ready yet. Try again in a moment.');
+  const names = [...new Set(list.map((e) => e.name.trim()))];
+  const counted = await env.DB.prepare(`SELECT name, COUNT(*) AS n FROM items WHERE name IN (${names.map(() => '?').join(',')}) GROUP BY name`).bind(...names).all();
+  const have = new Map(counted.results.map((r) => [r.name, r.n]));
+  const before = (await env.DB.prepare('SELECT COUNT(*) AS n FROM items').first()).n;
+  const rows = [];
+  for (const e of list) {
+    const name = e.name.trim(), n = have.get(name) || 0;
+    // What an app learned by itself is only wanted for items the list has no picture of.
+    if (n >= (e.auto ? 1 : MAX_PER_NAME) || before + rows.length >= MAX_ITEMS) continue;
+    have.set(name, n + 1);
+    rows.push(insertItem(env, { id: await itemId(e.print), name, print: e.print, by: me.name, auto: !!e.auto, at: now }));
+  }
+  if (!rows.length) return json({ added: 0 });
+  await env.DB.batch(rows);
+  const after = (await env.DB.prepare('SELECT COUNT(*) AS n FROM items').first()).n;
+  if (after !== before) await publishItems(env);
+  return json({ added: after - before });
+}
+
+// Renaming or removing a picture for everyone: the person who added it may, and so may an
+// owner of the list (users.admin). Answers how many were changed and how many were refused.
+async function changeItems(request, env, me, now, what) {
+  const body = await readJson(request, 20000);
+  const ids = body && Array.isArray(body.ids) ? [...new Set(body.ids.filter((x) => typeof x === 'string' && /^[0-9a-f]{32}$/.test(x)))] : [];
+  const name = what === 'rename' ? String((body && body.name) || '').trim() : '';
+  if (!ids.length || ids.length > MAX_AT_ONCE || (what === 'rename' && (!name || name.length > 120))) return fail(400, 'That is not a change to the item list.');
+  const found = await env.DB.prepare(`SELECT id, by_name, json FROM items WHERE id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all();
+  const mine = found.results.filter((r) => me.admin || r.by_name.toLowerCase() === me.name.toLowerCase());
+  const refused = found.results.length - mine.length;
+  if (mine.length) {
+    await env.DB.batch(mine.map((r) => {
+      if (what === 'remove') return env.DB.prepare('DELETE FROM items WHERE id = ?').bind(r.id);
+      const e = JSON.parse(r.json);
+      return env.DB.prepare('UPDATE items SET name = ?, by_name = ?, json = ? WHERE id = ?').bind(name, me.name, itemJson({ ...e, name, by: me.name, auto: false, at: now }), r.id);
+    }));
+    await publishItems(env);
+  }
+  return json({ changed: mine.length, refused });
+}
+
+async function putReport(request, env, me, name) {
+  const length = Number(request.headers.get('content-length') || 0);
+  if (!length) return fail(411, 'The upload has to say how large it is.');
+  if (length > MAX_PICTURES) return fail(413, 'This report is too large to upload.');
+  await env.BUCKET.put(`reports/${me.id}/${name}`, request.body);
+  return json({ ok: true });
+}
+
 const brief = (r) => ({ id: r.id, startedAt: r.started_at, endedAt: r.ended_at, divine: r.divine, strategy: r.strategy, totals: JSON.parse(r.totals) });
 
 async function handle(request, env, now) {
@@ -148,6 +261,7 @@ async function handle(request, env, now) {
 
   if (route === 'POST register') return register(request, env, now);
   if (route === 'POST login') return login(request, env, now);
+  if (route === 'GET items') return getItems(request, env, now);
 
   const me = await whoIs(request, env);
   if (!me) return fail(401, 'Log in again.');
@@ -166,6 +280,7 @@ async function handle(request, env, now) {
     if (!body || !KEY.test(String(body.key || '')) || !user || !same(user.pass, await sha256(user.salt + body.key))) return fail(401, 'Wrong password.');
     await removeAll(env, `sessions/${me.id}/`);
     await removeAll(env, `pictures/${me.id}/`);
+    await removeAll(env, `reports/${me.id}/`);
     await env.DB.batch([
       env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(me.id),
       env.DB.prepare('DELETE FROM tokens WHERE user_id = ?').bind(me.id),
@@ -190,6 +305,10 @@ async function handle(request, env, now) {
     if (method === 'PUT') return putPictures(request, env, me, runId);
     if (method === 'DELETE') { await env.BUCKET.delete(pictureKey(me.id, runId)); return json({ ok: true }); }
   }
+
+  if (route === 'POST items') return addItems(request, env, me, now);
+  if (route === 'POST items/:' && (arg(2) === 'rename' || arg(2) === 'remove')) return changeItems(request, env, me, now, arg(2));
+  if (route === 'PUT reports/:') return FILE_NAME.test(arg(2)) ? putReport(request, env, me, arg(2)) : fail(400, 'That is not a report.');
 
   // Looking at what people uploaded. Anyone with an account can.
   if (route === 'GET users') {

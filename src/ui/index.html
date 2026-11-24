@@ -278,15 +278,7 @@
     <fieldset>
       <legend>Item database</legend>
       <p class="fine" id="shared-line"></p>
-      <label>Your name in the item database, shown next to the items you name <input name="shareName" maxlength="40"></label>
-      <label>Upload token, so what you name is shared with everyone <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
-      <ol class="fine steps">
-        <li>Open <a href="https://github.com/settings/personal-access-tokens/new?name=Map+Companion+item+database&amp;description=Lets+Map+Companion+add+item+names+to+poeappitemdata&amp;expires_in=none&amp;contents=write" target="_blank" rel="noreferrer">GitHub's token page</a>. The name and the permission (Contents: read and write) are filled in for you.</li>
-        <li>Under "Repository access" choose "Only select repositories" and pick <b>poeappitemdata</b>.</li>
-        <li>Press "Generate token", copy it, paste it above and save. Everything named on this PC is sent right away.</li>
-      </ol>
-      <p class="fine">Everyone gets the database without a token; adding to it needs one. The repository holds only item data, so the token cannot change the app. It is stored encrypted on this PC and only ever sent to GitHub. Reports go to the same public repository; they hold the inventory slots as the app saw them, nothing else from your screen.</p>
-      <label class="check"><input type="checkbox" name="clearToken"> Remove the saved token</label>
+      <p class="fine">Everyone gets the item database, logged in or not. What you name is added to it under your account name when you are logged in. Reports (F9) go to the same server; they hold the inventory slots as the app saw them, nothing else from your screen. You can rename or remove the pictures you added yourself; the owner of the list can change any.</p>
     </fieldset>
 
     <fieldset>

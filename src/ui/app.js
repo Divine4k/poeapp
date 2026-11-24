@@ -378,12 +378,12 @@
     let shareHtml, shareCls;
     if (!sh.canUpload) {
       shareCls = 'off';
-      shareHtml = `<span><b>Sharing is off.</b> ${unsent ? `The ${unsent === 1 ? 'name' : `${unsent} names`} you gave ${unsent === 1 ? 'is' : 'are'}` : 'Names you give are'} kept on this PC only, because the app has no upload token for the item database. Save one and everything is sent at once, for everyone.</span>
-        <button type="button" class="primary" data-open-settings="token">Turn on sharing</button>`;
+      shareHtml = `<span><b>Sharing is off.</b> ${unsent ? `The ${unsent === 1 ? 'name' : `${unsent} names`} you gave ${unsent === 1 ? 'is' : 'are'}` : 'Names you give are'} kept on this PC only, because you are not logged in. Log in and everything is sent at once, for everyone.</span>
+        <button type="button" class="primary" data-open-account>Log in to share</button>`;
     } else if (sh.error) {
       shareCls = 'bad';
       shareHtml = `<span><b>The item database did not take the last upload.</b> ${esc(sh.error)}${unsent ? ` ${unsent} ${unsent === 1 ? 'name is' : 'names are'} waiting on this PC.` : ''}</span>
-        <span class="row"><button type="button" data-act="uploadShared">Try again</button><button type="button" class="link" data-open-settings="token">Settings</button></span>`;
+        <span class="row"><button type="button" data-act="uploadShared">Try again</button></span>`;
     } else {
       shareCls = 'on';
       shareHtml = `<span>Sharing is on. What you name is sent to the item database as <b>${esc(sh.by || known.me)}</b> and every app has it at its next start. ${sh.count} ${sh.count === 1 ? 'picture' : 'pictures'} in the database.${unsent ? ` ${unsent} on this PC not sent yet.` : ''}</span>
@@ -1093,6 +1093,7 @@
   document.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-trade]');
     if (tb) { act(tb.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
+    if (e.target.closest('[data-open-account]')) { $('btn-account').click(); return; }
     const os = e.target.closest('[data-open-settings]');
     if (os) { $('btn-settings').click(); const f = $('settings-form').elements[os.dataset.openSettings]; if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); } return; }
     const fx = e.target.closest('[data-fix]');
@@ -1369,10 +1370,8 @@
     $('rules').innerHTML = c.mapRules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled ? 'checked' : ''}> ${esc(r.label)}</label>`).join('');
     const sh = state.status.shared;
     $('shared-line').textContent = `${sh.count} pictures in the shared database.`
-      + (sh.canUpload ? ` Uploading is on${sh.uploaded ? `: ${sh.uploaded} sent this session` : ''}${sh.waiting ? `, ${sh.waiting} waiting` : ''}.` : ' Uploading is off (no token saved).')
+      + (sh.canUpload ? ` What you name is shared as ${sh.by}${sh.uploaded ? `: ${sh.uploaded} sent this session` : ''}${sh.waiting ? `, ${sh.waiting} waiting` : ''}.` : ' Log in (bottom of the sidebar) to share what you name with everyone.')
       + (sh.error ? ` Problem: ${sh.error}` : '');
-    el.token.value = ''; el.clearToken.checked = false;
-    el.shareName.value = c.shareName || ''; el.shareName.placeholder = sh.by || '';
     dlg.showModal();
   });
   $('btn-browse').addEventListener('click', async () => { await act({ type: 'browseLog' }); form.elements.logPath.value = state.config.logPath || ''; });
@@ -1380,12 +1379,9 @@
   form.addEventListener('submit', () => {
     const el = form.elements, c = state.config;
     const enabled = new Set([...document.querySelectorAll('[data-rule]')].filter((x) => x.checked).map((x) => x.dataset.rule));
-    const tokenPatch = el.clearToken.checked ? { token: '' } : (el.token.value.trim() ? { token: el.token.value.trim() } : {});
     api.setConfig({
-      ...tokenPatch,
       league: el.league.value || c.league,
       characterName: el.characterName.value.trim(),
-      shareName: el.shareName.value.trim(),
       checkToast: el.checkToast.checked,
       logPath: el.logPath.value.trim(),
       hotkeys: { clipboard: el.hkClip.value.trim() || 'F8', snapshot: el.hkSnap.value.trim(), priceCheck: el.hkPrice.value.trim() },

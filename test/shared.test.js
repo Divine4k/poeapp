@@ -6,6 +6,9 @@ const { fingerprint, similarity, IconIndex, packPrint, unpackPrint } = require('
 const { InventoryReader } = require('../src/core/inventory/reader');
 const { SharedItems, mergeItems, parse, serialise } = require('../src/shared');
 const { loadFrame } = require('./helpers');
+const { server, hasSql } = require('./server');
+const live = hasSql ? test : test.skip; // these run the real server, which needs a SQL engine
+const shared = (cloud) => new SharedItems({ cloud });
 
 const map = extractGrid(loadFrame('inv_map'));
 const hide = extractGrid(loadFrame('inv_hideout'));
@@ -50,55 +53,46 @@ test('merging never duplicates a picture and bad shared data is dropped', () => 
   assert.equal(parse(JSON.stringify([{ name: 5, print: 'x' }, { name: 'ok', print: packPrint(at(map, 0, 0)) }])).length, 1);
 });
 
-test('upload: reads the newest list, adds to it, retries on a conflict, needs a token', async () => {
-  let remote = serialise([{ name: 'Theirs', print: at(map, 3, 2) }]);
-  let sha = 1, conflictOnce = true;
-  const puts = [];
-  const fetchImpl = async (url, opts = {}) => {
-    if (opts.method === 'PUT') {
-      const body = JSON.parse(opts.body);
-      assert.equal(opts.headers.Authorization, 'Bearer tok');
-      assert.equal(body.branch, undefined); // the item data repository's own default branch
-      if (conflictOnce) { conflictOnce = false; return { ok: false, status: 409 }; }
-      assert.equal(body.sha, `s${sha}`);
-      remote = Buffer.from(body.content, 'base64').toString(); sha++; puts.push(body.message);
-      return { ok: true, status: 200 };
-    }
-    assert.ok(String(url).includes('/poeappitemdata/contents/items.json'));
-    return opts.headers.Accept.includes('raw')
-      ? { ok: true, status: 200, text: async () => remote }
-      : { ok: true, status: 200, json: async () => ({ sha: `s${sha}` }) };
-  };
-  const none = new SharedItems({ fetchImpl });
+live('upload: reads the newest list, adds only what it lacks, needs an account', async () => {
+  const srv = await server({ old: serialise([{ name: 'Theirs', print: at(map, 3, 2), by: 'Anna' }]) });
+  const none = shared(srv.client());
+  await none.load();
+  assert.equal(none.items.length, 1); // reading needs no account
   none.queue('Mine', at(map, 0, 0));
-  assert.equal(await none.flush(), 0); // no token: stays queued
+  assert.equal(await none.flush(), 0); // not logged in: stays queued
+  assert.equal(none.pending.length, 1);
 
-  const s = new SharedItems({ fetchImpl, token: 'tok' });
+  const s = shared(await srv.account('Divine4k'));
   await s.load();
   assert.equal(s.items.length, 1);
   s.queue('Mine', at(map, 0, 0));
   assert.equal(await s.flush(), 1);
-  assert.deepEqual(parse(remote).map((e) => e.name), ['Theirs', 'Mine']);
-  assert.equal(puts.length, 1);
+  assert.deepEqual(parse(srv.itemsFile()).map((e) => [e.name, e.by]), [['Theirs', 'Anna'], ['Mine', 'Divine4k']]);
   assert.equal(s.status.uploaded, 1);
+  assert.equal(s.items.length, 2);
   s.queue('Mine again', at(hide, 0, 0)); // same picture: nothing to upload
   await s.flush();
-  assert.equal(puts.length, 1);
+  assert.equal(parse(srv.itemsFile()).length, 2);
+  assert.equal(s.status.uploaded, 1);
+
+  // An unchanged list is not downloaded again.
+  let bodies = 0;
+  const before = s.cloud.fetch;
+  s.cloud.fetch = async (...x) => { const r = await before(...x); if (r.status === 200) bodies++; return r; };
+  await s.load(); await s.load();
+  assert.equal(bodies, 0);
+  assert.equal(s.items.length, 2);
 });
 
-test('reports: uploaded to the item data repository under reports/, only with a token', async () => {
-  const calls = [];
-  const fetchImpl = async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 201 }; };
-  await assert.rejects(() => new SharedItems({ fetchImpl }).uploadFile('reports/x.json.gz', Buffer.from('hi'), 'm'), /no token/);
-  const s = new SharedItems({ fetchImpl, token: 'tok' });
-  assert.equal(await s.uploadFile('reports/snapshot-1.json.gz', Buffer.from('hi'), 'Report'), 'reports/snapshot-1.json.gz');
-  assert.equal(calls.length, 1);
-  assert.ok(calls[0].url.endsWith('/contents/reports/snapshot-1.json.gz'));
-  assert.ok(calls[0].url.includes('/poeappitemdata/'));
-  const body = JSON.parse(calls[0].opts.body);
-  assert.equal(Buffer.from(body.content, 'base64').toString(), 'hi');
-  const refused = new SharedItems({ fetchImpl: async () => ({ ok: false, status: 403 }), token: 'tok' });
-  await assert.rejects(() => refused.uploadFile('reports/y', Buffer.from('a'), 'm'), /refused/);
+live('reports: sent to the server under your account, only when logged in', async () => {
+  const srv = await server();
+  await assert.rejects(() => shared(srv.client()).uploadFile('x.json.gz', Buffer.from('hi')), /not logged in/);
+  const s = shared(await srv.account('Divine4k'));
+  assert.equal(await s.uploadFile('snapshot-1.json.gz', Buffer.from('hi')), 'snapshot-1.json.gz');
+  const key = [...srv.env.files.keys()].find((k) => k.startsWith('reports/'));
+  assert.match(key, /^reports\/[0-9a-f]{16}\/snapshot-1\.json\.gz$/);
+  assert.equal(srv.env.files.get(key).text, 'hi');
+  await assert.rejects(() => s.uploadFile('../escape', Buffer.from('a')), /answered 4/);
 });
 
 test('look-alikes: a shared picture of a similar item does not beat the real item', () => {
@@ -208,22 +202,27 @@ test('a fingerprint can be shown as a small picture', () => {
   assert.ok(zero.every((v) => v === 18 || v === 120));
 });
 
-test('shared list: a wrongly named picture is renamed for everyone, with a token', async () => {
+live('shared list: a wrongly named picture is renamed for everyone, by whoever added it', async () => {
   const chaos = at(map, 0, 4);
-  let remote = serialise([{ name: 'Eldritch Chaos Orb', print: chaos }, { name: 'Other', print: at(map, 3, 2) }]);
-  const puts = [];
-  const fetchImpl = async (url, opts = {}) => {
-    if (opts.method === 'PUT') { const body = JSON.parse(opts.body); remote = Buffer.from(body.content, 'base64').toString(); puts.push(body); return { ok: true, status: 200 }; }
-    return opts.headers.Accept.includes('raw') ? { ok: true, status: 200, text: async () => remote } : { ok: true, status: 200, json: async () => ({ sha: 's1' }) };
-  };
-  assert.equal(await new SharedItems({ fetchImpl }).correct(chaos, 'Chaos Orb'), 0); // no token
-  const s = new SharedItems({ fetchImpl, token: 'tok' });
+  const srv = await server();
+  const s = shared(await srv.account('Divine4k'));
+  s.queue('Eldritch Chaos Orb', chaos); s.queue('Other', at(map, 3, 2));
+  await s.flush();
+  assert.equal(await shared(srv.client()).correct(chaos, 'Chaos Orb'), 0); // not logged in
   assert.equal(await s.correct(at(hide, 0, 4), 'Chaos Orb'), 1); // the same item from another capture
-  assert.deepEqual(parse(remote).map((e) => e.name), ['Chaos Orb', 'Other']);
-  assert.equal(puts[0].sha, 's1');
-  assert.match(puts[0].message, /Eldritch Chaos Orb -> Chaos Orb/);
-  assert.equal(await s.correct(chaos, 'Chaos Orb'), 0); // already right: nothing uploaded
-  assert.equal(puts.length, 1);
+  assert.deepEqual(parse(srv.itemsFile()).map((e) => e.name).sort(), ['Chaos Orb', 'Other']);
+  assert.equal(await s.correct(chaos, 'Chaos Orb'), 0); // already right: nothing changed
+
+  // Someone else cannot rename or remove it; the owner of the list can.
+  const other = shared(await srv.account('Stranger'));
+  assert.equal(await other.correct(chaos, 'Mirror of Kalandra'), 0);
+  assert.equal(other.refused, 1);
+  assert.match(other.status.error, /Only the person who added/);
+  assert.equal(await other.remove(chaos), 0);
+  assert.deepEqual(parse(srv.itemsFile()).map((e) => e.name).sort(), ['Chaos Orb', 'Other']);
+  const owner = shared(await srv.account('Owner', { admin: true }));
+  assert.equal(await owner.remove(chaos), 1);
+  assert.deepEqual(parse(srv.itemsFile()).map((e) => e.name), ['Other']);
 });
 
 test('sharp second look: look-alikes are told apart on sharp pictures of the same kind', () => {
@@ -301,7 +300,7 @@ test('shared list stays bounded: one picture per item from apps, a few from peop
   assert.equal(mergeItems(list, [{ name: 'A', print: prints[1], auto: true }]), 0); // an app adds nothing once the item is there
   assert.equal(mergeItems(list, [{ name: 'A', print: prints[1] }, { name: 'A', print: prints[2] }, { name: 'A', print: prints[3] }]), MAX_PER_NAME - 1);
   assert.equal(mergeItems(list, [{ name: 'B', print: prints[0] }]), 0); // the same picture is never added twice
-  const s = new SharedItems({ fetchImpl: async () => ({ ok: false, status: 500 }), token: 't' });
+  const s = new SharedItems({ cloud: null });
   s.items = list;
   s.queue('A', prints[5], { auto: true });
   s.queue('C', prints[6], { auto: true });
@@ -325,31 +324,43 @@ test('ledger: a corrected name moves what was counted, so nothing is counted twi
   assert.deepEqual(read({ 'Portal Scroll': 10, 'Chaos Orb': 13, 'Ritual Thread': 6 }), [{ name: 'Ritual Thread', qty: 2 }]);
 });
 
-test('item database: every picture says who named it, and can be renamed or removed', async () => {
+live('item database: every picture says who named it, and can be renamed or removed', async () => {
   const p1 = at(map, 0, 4), p2 = at(map, 3, 2);
-  let remote = serialise([{ name: 'Old Name', print: p1, by: 'Anna', at: 5 }]);
-  const fetchImpl = async (url, opts = {}) => {
-    if (opts.method === 'PUT') { remote = Buffer.from(JSON.parse(opts.body).content, 'base64').toString(); return { ok: true, status: 200 }; }
-    return opts.headers.Accept.includes('raw') ? { ok: true, status: 200, text: async () => remote } : { ok: true, status: 200, json: async () => ({ sha: 's' }) };
-  };
-  const s = new SharedItems({ fetchImpl, token: 'tok' });
-  s.by = 'Divine';
+  const srv = await server({ old: serialise([{ name: 'Old Name', print: p1, by: 'Anna', at: 5 }]) });
+  const s = shared(await srv.account('Divine', { admin: true }));
   await s.load();
   assert.deepEqual(s.items.map((e) => [e.name, e.by, e.auto]), [['Old Name', 'Anna', false]]);
   // A name typed by a person, and one an app learned by itself.
   s.queue('Hand Named', p2);
   s.queue('App Learned', at(map, 4, 2), { auto: true });
   await s.flush();
-  assert.deepEqual(parse(remote).map((e) => [e.name, e.by, e.auto]), [['Old Name', 'Anna', false], ['Hand Named', 'Divine', false], ['App Learned', 'Divine', true]]);
+  const now = () => parse(srv.itemsFile());
+  assert.deepEqual(now().map((e) => [e.name, e.by, e.auto]).sort(), [['App Learned', 'Divine', true], ['Hand Named', 'Divine', false], ['Old Name', 'Anna', false]]);
   // Renaming signs the picture with the one who corrected it.
   assert.equal(await s.correct(p1, 'Right Name'), 1);
-  assert.deepEqual(parse(remote)[0].name + ' by ' + parse(remote)[0].by, 'Right Name by Divine');
-  // Removing takes it out for everyone; without a token nothing happens.
-  assert.equal(await new SharedItems({ fetchImpl }).remove(p2), 0);
+  const renamed = now().find((e) => e.name === 'Right Name');
+  assert.equal(renamed.by, 'Divine');
+  // Removing takes it out for everyone; without an account nothing happens.
+  assert.equal(await shared(srv.client()).remove(p2), 0);
   assert.equal(await s.remove(p2), 1);
-  assert.deepEqual(parse(remote).map((e) => e.name), ['Right Name', 'App Learned']);
+  assert.deepEqual(now().map((e) => e.name).sort(), ['App Learned', 'Right Name']);
   // Lists written before names were recorded still load.
   assert.equal(parse(JSON.stringify([{ name: 'Plain', print: packPrint(p1) }]))[0].by, '');
+});
+
+live('item database: the server keeps the limits whatever an app sends', async () => {
+  const { isEmptyCell } = require('../src/core/inventory/grid');
+  const prints = map.filter((rgb) => !isEmptyCell(rgb)).map((rgb) => packPrint(fingerprint(rgb)));
+  const srv = await server();
+  const c = await srv.account('Divine4k');
+  const add = (list) => c.call('POST', 'items', { body: { add: list } });
+  assert.equal((await add(prints.slice(0, 5).map((print) => ({ name: 'A', print })))).data.added, 3); // a few pictures per item
+  assert.equal((await add([{ name: 'A', print: prints[6], auto: 1 }, { name: 'B', print: prints[7], auto: 1 }, { name: 'B', print: prints[8], auto: 1 }])).data.added, 1); // an app adds one, and only for an item the list lacks
+  assert.equal((await add([{ name: 'C', print: prints[0] }])).data.added, 0); // the same picture is never there twice
+  assert.equal((await add([{ name: 'x', print: 'not a picture' }])).status, 400);
+  assert.equal((await add(prints.slice(0, 20).concat(prints, prints).slice(0, 51).map((print) => ({ name: 'D', print })))).status, 400); // too many at once
+  assert.equal((await srv.client().call('POST', 'items', { body: { add: [{ name: 'E', print: prints[9] }] } })).status, 401);
+  assert.equal(parse(srv.itemsFile()).length, 4);
 });
 
 test('a family of look-alike downloaded pictures counts as its cheapest member, flagged', () => {
@@ -389,17 +400,14 @@ test('an item you chose never to count is recognised and left out', () => {
   assert.ok(after.cells.some((c) => c.status === 'ignored' && c.off === name));
 });
 
-test('item database: several pictures can be removed in one go', async () => {
+live('item database: several pictures can be removed in one go', async () => {
   const p1 = at(map, 0, 4), p2 = at(map, 3, 2), p3 = at(map, 4, 2);
-  let remote = serialise([{ name: 'A', print: p1, by: 'me' }, { name: 'B', print: p2, by: 'me' }, { name: 'C', print: p3, by: 'app', auto: true }]);
-  let puts = 0;
-  const fetchImpl = async (url, opts = {}) => {
-    if (opts.method === 'PUT') { puts++; remote = Buffer.from(JSON.parse(opts.body).content, 'base64').toString(); return { ok: true, status: 200 }; }
-    return opts.headers.Accept.includes('raw') ? { ok: true, status: 200, text: async () => remote } : { ok: true, status: 200, json: async () => ({ sha: 's' }) };
-  };
-  const s = new SharedItems({ fetchImpl, token: 'tok' });
+  const srv = await server();
+  const s = shared(await srv.account('Divine4k'));
+  s.queue('A', p1); s.queue('B', p2); s.queue('C', p3, { auto: true });
+  await s.flush();
+  assert.equal(parse(srv.itemsFile()).length, 3);
   assert.equal(await s.removeMany([p1, p2]), 2);
-  assert.equal(puts, 1);
-  assert.deepEqual(parse(remote).map((e) => e.name), ['C']);
+  assert.deepEqual(parse(srv.itemsFile()).map((e) => e.name), ['C']);
   assert.equal(await s.removeMany([]), 0);
 });
