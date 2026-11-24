@@ -79,16 +79,27 @@ function keyStat(category, m) {
   return false;
 }
 
+// The lowest value still counted as "like mine" on a unique, whose every copy has the same
+// modifiers and differs only in how they rolled: a tenth of the possible range below it.
+// span: how far apart the roll could have been; 0 when it is always the same.
+function uniqueFloor(value, span) {
+  const v = Math.abs(value) - span * 0.1;
+  return Number.isInteger(value) || Number.isInteger(value * 2) ? Math.round(v) : round1(v);
+}
+
 // tiers: the tier of each modifier the stat comes from, best first (1 is the best there is).
-function statFilter(key, text, kind, found, enabled, tiers = []) {
+// span: given for a unique whose rolls are known (see uniqueFloor); otherwise the lowest value
+// is a tenth below the item's own.
+function statFilter(key, text, kind, found, enabled, tiers = [], span = null) {
   const f = { key, text, kind, ids: found.ids, value: found.value, min: null, max: null, enabled, inverted: !!found.inverted, negated: !!found.negated, tiers: [...new Set(tiers.filter(Boolean))].sort((a, b) => a - b) };
   if (found.value !== null) {
     // "4% reduced Fire Damage taken" is searched as written: at least about that much reduced,
     // which on the trade site is "at most -4% increased".
-    if (found.negated && found.better !== 0) f.max = -floorFor(Math.abs(found.value));
+    const low = (v) => (span === null ? floorFor(v) : uniqueFloor(v, span));
+    if (found.negated && found.better !== 0) f.max = -low(Math.abs(found.value));
     else if (found.better === -1) f.max = found.value;
     else if (found.better === 0) { f.min = found.value; f.max = found.value; }
-    else f.min = floorFor(found.value);
+    else f.min = found.value >= 0 ? low(found.value) : floorFor(found.value);
   }
   return f;
 }
@@ -134,30 +145,55 @@ function buildFilters(item, index) {
       const run = lines.slice(i, i + n);
       if (run.some((l) => l.section !== run[0].section || l.type !== run[0].type || l.group !== run[0].group)) continue;
       const found = index.match(run.map((l) => l.text).join('\n'), run[0].type, kind.category);
-      if (found) hit = { found, n, text: run.map((l) => l.text).join(' '), type: found.pseudo ? 'pseudo' : run[0].type, corruption: !!run[0].corruption, tier: run[0].tier || null };
+      if (found) {
+        hit = { found, n, text: run.map((l) => l.text).join(' '), type: found.pseudo ? 'pseudo' : run[0].type, corruption: !!run[0].corruption, tier: run[0].tier || null };
+        // span: how far the roll could vary, known from the fuller item text only.
+        hit.span = run.every((l) => l.span !== undefined) ? run.reduce((sum, l) => sum + l.span, 0) / run.length : null;
+        hit.unscalable = run.some((l) => l.unscalable);
+      }
     }
     if (hit) { matched.push(hit); i += hit.n - 1; } else if (!unique) out.unknown.push(lines[i].text);
   }
 
-  // Rares are compared by totals: 40 fire and 30 cold resistance is worth what 70 cold is.
+  // A unique's rolls are known when the fuller item text gave them. Every copy of a unique has
+  // the same modifiers, so what tells one from another is how the modifiers that can vary
+  // rolled: those are ticked, as in Awakened PoE Trade. On a corrupted one the modifiers that
+  // are normally fixed are ticked too (a corruption can change them), and so is its implicit.
+  const rolls = unique && matched.some((m) => m.span !== null);
+  const uniqueTick = (m) => {
+    if (!rolls || m.span === null || m.found.value === null) return false;
+    if (m.corruption || m.span > 0) return true;
+    return !!item.corrupted && m.type === 'explicit' && !m.unscalable;
+  };
+
+  // Items are compared by totals: 40 fire and 30 cold resistance is worth what 70 cold is.
   const dropped = new Set();
-  if (!unique) {
-    let res = 0, life = 0, hasLife = false;
+  if (!unique || rolls) {
+    let res = 0, life = 0, hasLife = false, resSpan = 0, lifeSpan = 0, resTick = false, lifeTick = false;
     const resTiers = [], lifeTiers = [];
     for (const m of matched) {
       if (m.type === 'enchant' || m.type === 'pseudo' || m.found.value === null) continue;
       const times = ELEMENTAL[m.found.ref];
-      // A fractured modifier counts towards its total and is also kept by itself: it is what
-      // the item is bought for, and part of its base.
-      const keep = m.type === 'fractured';
-      if (times) { res += m.found.value * times; resTiers.push(m.tier); if (!keep && !/Chaos|All Resistances/.test(m.found.ref)) dropped.add(m); }
-      if (m.found.ref === LIFE) { life += m.found.value; hasLife = true; lifeTiers.push(m.tier); if (!keep) dropped.add(m); }
-      if (STRENGTH.includes(m.found.ref)) life += m.found.value / 2;
+      // A fractured modifier and a corruption's implicit count towards their total and are also
+      // kept by themselves: they are what the item is bought for.
+      const keep = m.type === 'fractured' || m.corruption;
+      if (times) {
+        res += m.found.value * times; resSpan += (m.span || 0) * times; resTiers.push(m.tier); resTick = resTick || uniqueTick(m);
+        if (!keep && !/Chaos|All Resistances/.test(m.found.ref)) dropped.add(m);
+      }
+      if (m.found.ref === LIFE) { life += m.found.value; lifeSpan += m.span || 0; hasLife = true; lifeTiers.push(m.tier); lifeTick = lifeTick || uniqueTick(m); if (!keep) dropped.add(m); }
+      if (STRENGTH.includes(m.found.ref)) { life += m.found.value / 2; lifeSpan += (m.span || 0) / 2; lifeTick = lifeTick || (hasLife && uniqueTick(m)); }
     }
     const resIds = index.pseudo('+#% total Elemental Resistance');
     const lifeIds = index.pseudo('+# total maximum Life');
-    if (hasLife && lifeIds) out.stats.push(statFilter('pseudo:life', `+${Math.floor(life)} total maximum Life`, 'pseudo', { ids: lifeIds, value: Math.floor(life), better: 1 }, true, lifeTiers));
-    if (res > 0 && resIds) out.stats.push(statFilter('pseudo:res', `+${res}% total Elemental Resistance`, 'pseudo', { ids: resIds, value: res, better: 1 }, true, resTiers));
+    // On a unique the lowest total is worked out from the exact sum (38.5), before it is shown whole.
+    const total = (key, text, ids, value, tiers, span, tick) => {
+      const f = statFilter(key, text, 'pseudo', { ids, value: Math.floor(value), better: 1 }, unique ? tick : true, tiers, unique ? span : null);
+      if (unique) f.min = uniqueFloor(value, span);
+      return f;
+    };
+    if (hasLife && lifeIds) out.stats.push(total('pseudo:life', `+${Math.floor(life)} total maximum Life`, lifeIds, life, lifeTiers, lifeSpan, lifeTick));
+    if (res > 0 && resIds) out.stats.push(total('pseudo:res', `+${res}% total Elemental Resistance`, resIds, res, resTiers, resSpan, resTick));
     if (!hasLife || !lifeIds) for (const m of matched) if (m.found.ref === LIFE) dropped.delete(m);
     if (!(res > 0 && resIds)) for (const m of matched) if (ELEMENTAL[m.found.ref]) dropped.delete(m);
   }
@@ -166,7 +202,8 @@ function buildFilters(item, index) {
     if (dropped.has(m)) continue;
     // A fractured modifier can never be changed, so it is what the item is bought for.
     // kind is what the window shows beside the stat; a corruption's implicit is named as such.
-    out.stats.push(statFilter(`stat:${n++}`, m.text, m.corruption ? 'corruption' : m.type, m.found, m.type === 'fractured' || keyStat(kind.category, m), [m.tier]));
+    const tick = unique ? uniqueTick(m) : (m.type === 'fractured' || keyStat(kind.category, m));
+    out.stats.push(statFilter(`stat:${n++}`, m.text, m.corruption ? 'corruption' : m.type, m.found, tick, [m.tier], rolls && m.span !== null ? m.span : null));
   }
   if (!unique && out.type) out.presets = { stats: ticks(out), base: baseTicks(out) };
   return out;

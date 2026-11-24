@@ -55,7 +55,17 @@ const HINT = /^(Right click |Place into |Shift click |Can be |Travel to |Use Int
 // in curly brackets above each modifier, saying what kind it is, and writes each number with
 // the range it could have rolled: "+62(50-75)% to Fire Resistance". Both texts are read.
 const MOD_HEADER = /^\{.*\}$/;
-const ROLL_RANGE = /((?<![\d)])[+-]?\d+(?:\.\d+)?)\([^()]*\)/g;
+const ROLL_RANGE = /((?<![\d)])[+-]?\d+(?:\.\d+)?)\(([^()]*)\)/g;
+// How far a line's numbers could have rolled apart: 10 for "+17(10-20) to Strength", 0 when
+// the modifier always has the same value. Several numbers on a line count by their average.
+function spanOf(line) {
+  let total = 0, n = 0;
+  for (const m of line.matchAll(ROLL_RANGE)) {
+    const r = /^(-?[\d.]+)-(-?[\d.]+)$/.exec(m[2]);
+    if (r) { total += Math.abs(Number(r[2]) - Number(r[1])); n += 1; }
+  }
+  return n ? total / n : 0;
+}
 // A modifier line as the short text would have it: without ranges and remarks.
 const plainStat = (line) => line.replace(/ — Unscalable Value$/, '').replace(ROLL_RANGE, '$1');
 // What a line in curly brackets says about the modifiers under it:
@@ -119,7 +129,12 @@ function readGear(item, text, sections) {
       const kind = MOD_KIND.exec(l);
       const line = { text: l.replace(MOD_KIND, ''), type: kind ? kind[1] : (header ? header.type : 'explicit'), section: i };
       // Lines under one header belong to one modifier and are never joined with the next one's.
-      if (header) { line.group = group; if (header.corruption) line.corruption = true; if (header.tier) line.tier = header.tier; }
+      if (header) {
+        line.group = group; line.span = spanOf(raw);
+        if (header.corruption) line.corruption = true;
+        if (header.tier) line.tier = header.tier;
+        if (/ — Unscalable Value$/.test(raw)) line.unscalable = true;
+      }
       item.modLines.push(line);
     }
   }

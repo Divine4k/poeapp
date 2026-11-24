@@ -490,18 +490,19 @@ test('item text: the game\'s fuller text, with a line above each modifier and ro
     ['60% increased Ignite Duration on Enemies', 'explicit', false],
   ]);
   const f = buildFilters(cloak, index);
-  // Every modifier is offered, the corruption's own named as such, and none is ticked on a unique.
+  // Every modifier is offered and the corruption's own is named as such. On this corrupted
+  // unique all of them are ticked (see the test on uniques), the fire resistance as its total.
   assert.deepEqual(f.stats.map((s) => [s.text, s.kind, s.enabled]), [
-    ['4% reduced Fire Damage taken', 'corruption', false],
-    ['40% of Physical Damage taken as Fire Damage', 'explicit', false],
-    ['Reflects 100 Fire Damage to Melee Attackers', 'explicit', false],
-    ['+62% to Fire Resistance', 'explicit', false],
-    ['60% increased Ignite Duration on Enemies', 'explicit', false],
+    ['+62% total Elemental Resistance', 'pseudo', true],
+    ['4% reduced Fire Damage taken', 'corruption', true],
+    ['40% of Physical Damage taken as Fire Damage', 'explicit', true],
+    ['Reflects 100 Fire Damage to Melee Attackers', 'explicit', true],
+    ['60% increased Ignite Duration on Enemies', 'explicit', true],
   ]);
   // "4% reduced" is searched as written: at least 4% reduced, which the trade site keeps as -4.
-  const taken = f.stats[0];
+  const taken = f.stats[1];
   assert.deepEqual([taken.ids, taken.min, taken.max, taken.negated], [['implicit.stat_3743301799'], null, -4, true]);
-  const q = buildQuery(applyEdits(f, { stats: { [taken.key]: { enabled: true } } }));
+  const q = buildQuery(applyEdits(f, { stats: Object.fromEntries(f.stats.map((x) => [x.key, { enabled: x === taken }])) }));
   assert.deepEqual(q.query.stats[0].filters, [{ id: 'implicit.stat_3743301799', value: { max: -4 } }]);
   assert.deepEqual([q.query.name, q.query.filters.misc_filters], ['Cloak of Flame', { filters: { corrupted: { option: 'true' } } }]);
 
@@ -518,7 +519,9 @@ test('item text: the game\'s fuller text, with a line above each modifier and ro
 
   // The short text of the same cloak gives the same stats, without knowing it is a corruption's.
   const short = CLOAK_FULL.split('\n').filter((l) => !l.startsWith('{')).join('\n').replace(/\(\d+-\d+\)/g, '');
-  assert.deepEqual(buildFilters(parseItemText(short), index).stats.map((s) => [s.text, s.kind]), f.stats.map((s) => [s.text, s.kind === 'corruption' ? 'implicit' : s.kind]));
+  // Without the rolls nothing is combined into a total and nothing is ticked.
+  const fromShort = buildFilters(parseItemText(short), index).stats;
+  assert.deepEqual(fromShort.map((s) => [s.text, s.kind, s.enabled]), cloak.modLines.filter((l) => l.section < 6).map((l) => [l.text, l.type, false]));
   // A map's mods are read without the extra lines too.
   const map = parseItemText('Item Class: Maps\nRarity: Rare\nX\nStrand Map\n--------\nMap Tier: 16\n--------\nItem Level: 83\n--------\n{ Prefix Modifier "Mirrored" (Tier: 1) }\nMonsters reflect 18(13-18)% of Physical Damage\n');
   assert.deepEqual(map.mods, ['Monsters reflect 18% of Physical Damage']);
@@ -583,4 +586,58 @@ test('tiers of modifiers, and the search for the base item', () => {
   assert.equal(buildFilters(parseItemText(FLASK), index).presets, undefined); // short text: base unknown
   // A unique has one search only.
   assert.equal(buildFilters(parseItemText(HEADHUNTER), index).presets, undefined);
+});
+
+const KAOM = `Item Class: Rings
+Rarity: Unique
+Kaom's Sign
+Coral Ring
+--------
+Requirements:
+Level: 20
+--------
+Item Level: 85
+--------
+{ Implicit Modifier \u2014 Life }
++30(20-30) to maximum Life (implicit)
+--------
+{ Unique Modifier \u2014 Attribute }
++17(10-20) to Strength
+{ Unique Modifier }
++1 to Maximum Endurance Charges
+{ Unique Modifier \u2014 Gem }
+Grants Level 10 \u200bEnduring Cry \u2014 Unscalable Value
+--------
+Corrupted
+--------
+Kaom's strength was rivalled only by
+the power of his ancestors.
+`;
+
+test('uniques: what can roll differently is ticked, as in Awakened PoE Trade', () => {
+  // Corrupted: the life total (implicit 20 to 30, and half of 10 to 20 strength), the strength,
+  // and the modifier that is normally fixed, since a corruption can change it. What cannot
+  // change at all ("Unscalable Value") is listed, unticked.
+  const f = buildFilters(parseItemText(KAOM), index);
+  assert.deepEqual(f.stats.map((s) => [s.text, s.kind, s.enabled, s.min]), [
+    ['+38 total maximum Life', 'pseudo', true, 37],          // 38.5, less a tenth of its range of 15
+    ['+17 to Strength', 'explicit', true, 16],               // 17, less a tenth of its range of 10
+    ['+1 to Maximum Endurance Charges', 'explicit', true, 1],
+    ['Grants Level 10 \u200bEnduring Cry', 'explicit', false, 10],
+  ]);
+  const q = buildQuery(f);
+  assert.deepEqual([q.query.name, q.query.type], ["Kaom's Sign", 'Coral Ring']);
+  assert.deepEqual(q.query.stats[0].filters.map((x) => [x.id.split('.')[0], x.value.min]), [['pseudo', 37], ['explicit', 16], ['explicit', 1]]);
+
+  // Not corrupted: the fixed modifier is the same on every copy, so it is left out of the search.
+  const clean = buildFilters(parseItemText(KAOM.replace('Corrupted\n--------\n', '')), index);
+  assert.deepEqual(clean.stats.map((s) => s.enabled), [true, true, false, false]);
+  // The short item text does not say what can vary: nothing is ticked, nothing combined.
+  const short = KAOM.split('\n').filter((l) => !l.startsWith('{')).join('\n').replace(/\(\d+-\d+\)/g, '').replace(' \u2014 Unscalable Value', '');
+  assert.deepEqual(buildFilters(parseItemText(short), index).stats.map((s) => [s.text, s.enabled]), [
+    ['+30 to maximum Life', false], ['+17 to Strength', false], ['+1 to Maximum Endurance Charges', false], ['Grants Level 10 \u200bEnduring Cry', false],
+  ]);
+  // A rare keeps its own rule: a tenth below its value, totals ticked.
+  const ring = buildFilters(parseItemText(RING_FULL), index);
+  assert.deepEqual([stat(ring, 'total maximum Life').min, stat(ring, 'total maximum Life').enabled, stat(ring, 'Physical Damage to Attacks').enabled], [76, true, false]);
 });
