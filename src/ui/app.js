@@ -335,6 +335,7 @@
   }
 
   // The right half: the sessions of the strategy being looked at.
+  let runsShown = null;
   function renderSession() {
     const list = (state.sessions || []).filter((x) => x.strategyId === stratSel);
     const running = stratSel === state.config.activeStrategy;
@@ -362,9 +363,16 @@
       head = `<p class="session-note"><span>Saved session, ${esc(dayOf(sum.startedAt))} ${clock(sum.startedAt)} to ${clock(sum.endedAt)}. ${fmtTime(sum.totals.elapsedMs)} long, values as they were then${sum.divine ? ` (1 Divine = ${Math.round(sum.divine)}c)` : ''}.</span>
         <button type="button" class="link" data-act="deleteSession" data-id="${esc(sum.id)}" data-confirm="Delete this saved session? This cannot be undone.">Delete session</button></p>`;
     }
-    $('session-head').innerHTML = head;
+    if (sum === live && live.runs.length) {
+      head = `<p class="session-note"><span></span>
+        <button type="button" class="link" data-act="recheckMaps" title="Looks at the saved inventory pictures of this session's maps again with the items known now, and corrects loot that was counted under a wrong name or not recognised at the time">Re-check items in these maps</button></p>`;
+    }
+    if ($('session-head').dataset.html !== head) { $('session-head').dataset.html = head; $('session-head').innerHTML = head; }
     $('totals').innerHTML = totalsHtml(sum.totals, sum.divine);
-    $('runs').innerHTML = runsHtml(sum, { open: expanded, readonly: sum !== live, redraw: renderSession, divine: sum.divine });
+    // Only redrawn when something changed: redrawing under the mouse would stop the name of a
+    // hovered slot from ever showing.
+    const rows = runsHtml(sum, { open: expanded, readonly: sum !== live, redraw: renderSession, divine: sum.divine });
+    if (rows !== runsShown) { runsShown = rows; $('runs').innerHTML = rows; }
   }
 
   // ---- tools ----------------------------------------------------------------------

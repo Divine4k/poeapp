@@ -26,7 +26,7 @@ test('snapshots: newest reading wins in the map, the fullest one once stashing s
 
   const again = new SnapshotStore(dir).get('run/1'); // read back from disk
   assert.deepEqual(again.trips.map((t) => [t.trip, t.image, t.filled]), [[1, 'e', 7], [2, 'f', 1]]);
-  assert.deepEqual(again.trips[1].cells, [{ cell: 0, status: 'item', name: 'Chaos Orb', qty: 1, carried: false, carriedQty: 0 }]);
+  assert.deepEqual(again.trips[1].cells, [{ cell: 0, status: 'item', name: 'Chaos Orb', qty: 1, source: null, carried: false, carriedQty: 0 }]);
 
   for (let t = 3; t < 12; t++) s.record('run/1', t, { at: t, cells: cells(1), image: 'x' });
   assert.equal(s.get('run/1').trips.length, MAX_TRIPS);
@@ -99,5 +99,5 @@ test('snapshots: what was taken into the map is marked slot by slot', () => {
 
   const s = new SnapshotStore(tmp());
   s.record('r', 1, { at: 1, cells: out, image: 'a' });
-  assert.deepEqual(s.get('r').trips[0].cells[0], { cell: 0, status: 'item', name: 'Portal Scroll', qty: 19, carried: true, carriedQty: 19 });
+  assert.deepEqual(s.get('r').trips[0].cells[0], { cell: 0, status: 'item', name: 'Portal Scroll', qty: 19, source: null, carried: true, carriedQty: 19 });
 });

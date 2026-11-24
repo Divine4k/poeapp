@@ -149,3 +149,38 @@ test('a shared picture with the wrong name is overruled by the downloaded art', 
   bare.addArt('Chaos Orb', other);
   assert.equal(bare.match(chaos).name, 'Some League Item');
 });
+
+test('re-check: old maps get the names known now, and their loot follows', () => {
+  const { recheckCells } = require('../src/core/store');
+  const { Session } = require('../src/core/session');
+  const cells = [
+    { cell: 0, status: 'item', name: 'Eldritch Chaos Orb', qty: 8, carriedQty: 0 },
+    { cell: 1, status: 'item', name: 'Eldritch Chaos Orb', qty: 5, carriedQty: 2 },   // 2 were brought in
+    { cell: 2, status: 'unknown', name: null, qty: 3 },
+    { cell: 3, status: 'item', name: 'The Doctor', qty: 1, source: 'pinned' },        // named by hand
+    { cell: 4, status: 'item', name: 'House of Mirrors', qty: 1 },                    // old picture, no source kept
+    { cell: 5, status: 'skipped', name: null, qty: 0 },
+    { cell: 6, status: 'item', name: 'Divine Orb', qty: 1 },
+  ];
+  const now = { 0: 'Chaos Orb', 1: 'Chaos Orb', 2: 'Orb of Alteration', 3: 'Chaos Orb', 4: 'Chaos Orb', 5: 'Chaos Orb', 6: 'Divine Orb' };
+  const changes = recheckCells(cells, (c) => ({ name: now[c.cell], source: 'shared' }), (name) => name !== 'House of Mirrors');
+  assert.deepEqual(changes, [
+    { cell: 0, from: 'Eldritch Chaos Orb', to: 'Chaos Orb', qty: 8 },
+    { cell: 1, from: 'Eldritch Chaos Orb', to: 'Chaos Orb', qty: 3 },
+    { cell: 2, from: null, to: 'Orb of Alteration', qty: 3 },
+  ]);
+  assert.equal(cells[2].status, 'item');
+  assert.equal(cells[3].name, 'The Doctor');
+  assert.equal(cells[4].name, 'House of Mirrors');
+
+  const s = new Session();
+  s.startRun({ name: 'Jungle Valley' });
+  const id = s.currentId;
+  s.addLoot([{ name: 'Eldritch Chaos Orb', qty: 6 }], 'inventory');
+  s.addLoot([{ name: 'Eldritch Chaos Orb', qty: 7 }], 'inventory');
+  s.addLoot([{ name: 'Eldritch Chaos Orb', qty: 1 }], 'manual'); // added by hand: stays
+  for (const ch of changes) s.moveLoot(id, ch.from, ch.to, ch.qty);
+  const items = Object.fromEntries(s.summary(null).runs[0].items.map((i) => [i.name, i.qty]));
+  assert.deepEqual(items, { 'Chaos Orb': 11, 'Eldritch Chaos Orb': 3, 'Orb of Alteration': 3 });
+  assert.equal(s.moveLoot(id, 'Nothing Here', 'Chaos Orb', 4), 0);
+});

@@ -89,6 +89,12 @@ class IconIndex {
     return [...byName].map(([name, score]) => ({ name, score })).sort((x, y) => y.score - x.score).slice(0, count);
   }
 
+  // Can a picture be recognised as this name at all? False for names given to one slot by hand
+  // (divination cards, uniques), which no picture leads to.
+  knows(name) {
+    return [this.learned, this.shared, this.art].some((list) => list.some((e) => e.name === name));
+  }
+
   // Returns { name, score, source } or null when nothing matches well enough.
   // An item you chose to ignore comes back as { ignored: true }.
   //

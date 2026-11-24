@@ -50,13 +50,20 @@ class SnapshotStore {
     const data = this.get(runId);
     const entry = {
       trip, at, filled: cells.length, sig: signature(cells), image,
-      cells: cells.map((c) => ({ cell: c.cell, status: c.status, name: c.name || null, qty: c.qty || 0, carried: !!c.carried, carriedQty: c.carriedQty || 0 })),
+      cells: cells.map((c) => ({ cell: c.cell, status: c.status, name: c.name || null, qty: c.qty || 0, source: c.source || null, carried: !!c.carried, carriedQty: c.carriedQty || 0 })),
     };
     const i = data.trips.findIndex((t) => t.trip === trip);
     if (i >= 0) data.trips[i] = entry; else data.trips.push(entry);
     if (data.trips.length > MAX_TRIPS) data.trips.splice(0, data.trips.length - MAX_TRIPS);
     try { writeFile(this.file(runId), data); } catch (e) { console.error('snapshot save failed', e.message); }
     return true;
+  }
+
+  // Saves a map's pictures again after their slots were changed in place.
+  rewrite(runId) {
+    const data = this.get(runId);
+    for (const t of data.trips) t.sig = signature(t.cells);
+    writeFile(this.file(runId), data);
   }
 
   remove(runId) {
@@ -83,6 +90,28 @@ function markCarried(cells, base, similar) {
     else if (b && !b.name && b.print && c.print && similar(b.print, c.print)) n = 1;
     return { ...c, carriedQty: n, carried: n > 0 && (!c.name || n >= (c.qty || 1)) };
   });
+}
+
+// Looks at the kept slots of one inventory again with what is known about items now.
+// identify(cell): { name } for what the slot's picture is recognised as today, or null.
+// canChange(name): whether a name came from a picture at all. Names given to one slot by hand
+// (a divination card named with the check key) are left alone.
+// Changes the cells in place and returns [{ cell, from, to, qty }], qty being how much of the
+// slot was loot (what was taken into the map is left out).
+function recheckCells(cells, identify, canChange = () => true) {
+  const changes = [];
+  for (const c of cells) {
+    if (!['item', 'remembered', 'unknown'].includes(c.status) || !(c.qty > 0)) continue;
+    if (c.source === 'pinned' || c.source === 'map') continue;
+    if (c.name && !canChange(c.name)) continue;
+    const hit = identify(c);
+    if (!hit || !hit.name || hit.name === c.name) continue;
+    const loot = c.carried ? 0 : Math.max(0, c.qty - (c.carriedQty || 0));
+    changes.push({ cell: c.cell, from: c.name || null, to: hit.name, qty: loot });
+    c.name = hit.name; c.source = hit.source || null;
+    if (c.status === 'unknown') c.status = 'item';
+  }
+  return changes;
 }
 
 // Closed sessions, one file each, with every value frozen as it was when the session ended:
@@ -135,4 +164,4 @@ class SessionArchive {
 
 const brief = (s) => ({ id: s.id, strategyId: s.strategyId || null, startedAt: s.startedAt, endedAt: s.endedAt, divine: s.divine, totals: s.totals });
 
-module.exports = { SnapshotStore, SessionArchive, markCarried, MAX_TRIPS };
+module.exports = { recheckCells, SnapshotStore, SessionArchive, markCarried, MAX_TRIPS };

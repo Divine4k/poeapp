@@ -17,14 +17,14 @@ const { Session } = require('./core/session');
 const { CANON, COLS, ROWS, gridRect, isInventoryOpen, extractCell, isEmptyCell } = require('./core/inventory/grid');
 const { IconIndex, similarity, fingerprint, encodePrint, decodePrint } = require('./core/inventory/icons');
 const { readStack } = require('./core/inventory/digits');
-const { InventoryReader } = require('./core/inventory/reader');
+const { InventoryReader, SINGLE_ART_SCORE } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
 const { captureFrame, cursorInFrame, cursorOnDisplay } = require('./capture');
 const { ArtLoader } = require('./art');
 const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
-const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
+const { SnapshotStore, SessionArchive, markCarried, recheckCells } = require('./core/store');
 const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
@@ -353,6 +353,61 @@ function gridPicture(cells) {
   }
   const jpeg = nativeImage.createFromBitmap(bgra, { width: w, height: h }).toJPEG(84);
   return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
+}
+
+// The slots of a kept inventory picture, cut back out of it: cell number -> pixels.
+function cellsOfPicture(dataUrl) {
+  const img = nativeImage.createFromDataURL(dataUrl);
+  const { width, height } = img.getSize();
+  if (width !== COLS * CANON || height !== ROWS * CANON) return null;
+  const bgra = img.toBitmap();
+  return (cell) => {
+    const x0 = (cell % COLS) * CANON, y0 = Math.floor(cell / COLS) * CANON;
+    const rgb = Buffer.alloc(CANON * CANON * 3);
+    for (let y = 0; y < CANON; y++) {
+      for (let x = 0; x < CANON; x++) {
+        const s = ((y0 + y) * width + x0 + x) * 4, d = (y * CANON + x) * 3;
+        rgb[d] = bgra[s + 2]; rgb[d + 1] = bgra[s + 1]; rgb[d + 2] = bgra[s];
+      }
+    }
+    return rgb;
+  };
+}
+
+// Looks at the kept pictures of every map in the open session again, with the item pictures
+// and names known now, and corrects the loot that was counted under a wrong name or not at all.
+function recheckMaps() {
+  if (!snapshots) return;
+  let maps = 0, slots = 0;
+  const moved = new Map(); // "from -> to" -> quantity
+  for (const run of session.runs) {
+    const data = snapshots.get(run.id);
+    let touched = false;
+    for (const trip of data.trips) {
+      let cut = null;
+      try { cut = cellsOfPicture(trip.image); } catch (_) { /* a picture that cannot be opened is skipped */ }
+      if (!cut) continue;
+      const changes = recheckCells(trip.cells, (c) => {
+        const hit = index.match(fingerprint(cut(c.cell)));
+        if (!hit || hit.ignored) return null;
+        if (hit.source === 'art' && c.qty <= 1 && hit.score < SINGLE_ART_SCORE) return null;
+        return hit;
+      }, (name) => index.knows(name));
+      for (const ch of changes) {
+        touched = true; slots++;
+        const n = session.moveLoot(run.id, ch.from, ch.to, ch.qty);
+        if (n) { const key = `${ch.from || 'not recognised'} → ${ch.to}`; moved.set(key, (moved.get(key) || 0) + n); }
+      }
+    }
+    if (touched) {
+      maps++;
+      try { snapshots.rewrite(run.id); } catch (e) { console.error('snapshot save failed', e.message); }
+      session.markSnapshot(run.id);
+    }
+  }
+  if (!slots) { say('Checked the maps of this session again: nothing to correct.'); return; }
+  const list = [...moved].map(([k, n]) => `${k} ×${n}`).join(', ');
+  say(`Corrected ${slots} ${slots === 1 ? 'slot' : 'slots'} in ${maps} ${maps === 1 ? 'map' : 'maps'}${list ? `: ${list}` : ''}.`);
 }
 
 // Keeps this reading as the picture of what the current map brought in.
@@ -1082,6 +1137,7 @@ function applyConfig(patch) {
 const actions = {
   startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(); },
   endRun: () => { session.endRun(); syncLedger(); },
+  recheckMaps: () => { recheckMaps(); },
   deleteRun: (a) => { session.deleteRun(a.runId); if (snapshots) snapshots.remove(a.runId); syncLedger(); },
   // The session that ends is kept, with its values as they are now.
   newSession: () => {

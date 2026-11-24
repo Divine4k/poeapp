@@ -168,6 +168,27 @@ class Session {
     if (run) run.loot = run.loot.filter((l) => l.name !== name);
   }
 
+  // Corrects loot that was counted under the wrong name: up to qty of `from` becomes `to`.
+  // Loot added by hand is left alone. With no `from` (the item was not recognised at the time)
+  // the quantity is added. Returns how many were corrected.
+  moveLoot(runId, from, to, qty) {
+    const run = this.runs.find((r) => r.id === runId);
+    if (!run || !(qty > 0)) return 0;
+    if (!from) { this.addLoot([{ name: to, qty }], 'recheck', runId); return qty; }
+    let left = qty;
+    const extra = [];
+    for (const l of run.loot) {
+      if (!left) break;
+      if (l.name !== from || l.source === 'manual') continue;
+      const n = Math.min(l.qty, left);
+      if (n === l.qty) l.name = to;
+      else { l.qty -= n; extra.push({ ...l, id: uid(), name: to, qty: n }); }
+      left -= n;
+    }
+    run.loot.push(...extra);
+    return qty - left;
+  }
+
   removeBatch(runId, batch) {
     const run = this.runs.find((r) => r.id === runId);
     if (run) run.loot = run.loot.filter((l) => l.batch !== batch);
