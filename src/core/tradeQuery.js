@@ -19,6 +19,15 @@ const CLASSES = {
   Tinctures: ['Tincture', 'tincture'],
 };
 
+// How many inventory cells an item takes, [wide, tall], for the kinds where every base is the
+// same size. It decides how the sockets are laid out on its picture (two wide: they snake).
+const SIZES = {
+  Helmets: [2, 2], Gloves: [2, 2], Boots: [2, 2], 'Body Armours': [2, 3], Quivers: [2, 3], Belts: [2, 1],
+  Amulets: [1, 1], Rings: [1, 1], Jewels: [1, 1], 'Abyss Jewels': [1, 1], Wands: [1, 3], Daggers: [1, 3],
+  'Rune Daggers': [1, 3], Claws: [2, 2], Bows: [2, 4], Staves: [2, 4], Warstaves: [2, 4], Tinctures: [1, 2],
+  'Life Flasks': [1, 2], 'Mana Flasks': [1, 2], 'Hybrid Flasks': [1, 2], 'Utility Flasks': [1, 2],
+};
+
 function gearKind(item) {
   if (!item) return null;
   const c = CLASSES[item.itemClass];
@@ -122,7 +131,7 @@ function buildFilters(item, index) {
     type: base ? { value: base, enabled: unique } : null,
     category: unique ? null : { id: kind.tradeId, label: kind.category, enabled: true },
     flags: [], props: unique ? [] : propFilters(item), stats: [], unknown: [], offline: false,
-    sockets: item.sockets || '', itemLevel: item.itemLevel || null,
+    sockets: item.sockets || '', itemLevel: item.itemLevel || null, size: SIZES[item.itemClass] || null,
   };
   if (item.rarity === 'Rare' && item.name !== item.baseType) out.title = `${item.name}, ${item.baseType}`;
   if (item.rarity === 'Magic') out.title = item.name;
@@ -330,13 +339,15 @@ function compareSpec(filters) {
 
 // Listings priced far under the rest are often bait: the seller does not answer, or the price
 // is a mistake that is gone by the time you whisper. Marked when there are enough to tell.
+const BAIT_FROM = 5; // chaos: below this typical price, nothing is called bait
 function markBait(listings) {
   const known = listings.filter((l) => l.chaos !== null && isFinite(l.chaos) && l.chaos > 0);
   if (known.length < 4) return listings;
   for (const l of known) {
     const rest = known.filter((x) => x !== l).map((x) => x.chaos).sort((a, b) => a - b);
     const median = rest[Math.floor((rest.length - 1) / 2)];
-    l.bait = l.chaos < median * 0.4;
+    // On a cheap item a low price is just a low price (a few alterations for a 1c item).
+    l.bait = median >= BAIT_FROM && l.chaos < median * 0.4;
   }
   return listings;
 }

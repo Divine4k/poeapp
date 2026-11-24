@@ -140,7 +140,7 @@
   };
   window.api = {
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
-    onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {},
+    onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {}, checkKeys: () => {},
     // Settings changed in the preview are kept for as long as the page is open, as the app would keep them.
     getState: async () => state, onState: (cb) => { listener = cb; },
     setConfig: async (patch) => { merge(state.config, patch); listener(state); return true; },

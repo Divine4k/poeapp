@@ -1,9 +1,9 @@
 'use strict';
 // The price check window on top of the game: the item's picture with its sockets and the
 // answer beside it, the item's stats with tick boxes and a number to nudge with - and +, and
-// what the trade site lists like it, each listing with its own picture. The window never takes
-// the keyboard (the game keeps it), so nothing here is typed: exact numbers and a highest value
-// can be set on the app's Prices page, which shows the same search.
+// what the trade site lists like it, each listing with its own picture. The window does not take
+// the keyboard (the game keeps it), except while a number is being typed in: a click on the
+// number asks for the keys, and Enter, Escape or a click elsewhere gives them back.
 (() => {
   const api = window.api;
   const panel = document.getElementById('panel');
@@ -34,11 +34,8 @@
     if (m < 48 * 60) return `${Math.floor(m / 60)} h`;
     return `${Math.floor(m / 1440)} d`;
   }
-  // About a twentieth of the item's own value per click, and never less than one.
-  function stepFor(value) {
-    if (!Number.isInteger(Number(value))) return 0.1;
-    return Math.max(1, Math.round(Math.abs(Number(value) || 0) * 0.05));
-  }
+  // One per click; a tenth for values with a decimal point (1.5% crit).
+  const stepFor = (value) => (Number.isInteger(Number(value)) ? 1 : 0.1);
 
   function rowsFrom(f) {
     const out = [];
@@ -48,13 +45,13 @@
     if (f.type) out.push({ tc: 'type', pk: 'type', chip: true, label: f.type.value, title: 'Only this base type', enabled: f.type.enabled });
     for (const x of f.flags) out.push({ tc: 'flag', pk: `flag:${x.key}`, chip: true, key: x.key, label: x.label, enabled: x.enabled });
     out.push({ tc: 'offline', chip: true, label: 'Offline sellers too', enabled: f.offline });
-    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}`, enabled: x.enabled, bound: 'min', num: x.min === null ? x.value : x.min, step: stepFor(x.value) });
+    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}`, enabled: x.enabled, bound: 'min', num: x.min === null ? x.value : x.min, mine: x.value, step: stepFor(x.value) });
     for (const x of f.stats) {
       // The number shown is the one the search asks for: a lowest value for most stats, a
       // highest where less is better. A "reduced" stat is kept below zero by the trade site;
       // it is shown the way the item words it.
       const bound = x.value === null ? null : (x.min === null && x.max !== null ? 'max' : 'min');
-      out.push({ tc: 'stat', pk: `stat:${x.key}`, key: x.key, label: x.text, mk: x.kind || 'explicit', kind: KIND_WORDS[x.kind] || '', tiers: x.tiers || [], enabled: x.enabled, bound, num: bound ? x[bound] : null, step: stepFor(x.value), flip: !!x.negated });
+      out.push({ tc: 'stat', pk: `stat:${x.key}`, key: x.key, label: x.text, mk: x.kind || 'explicit', kind: KIND_WORDS[x.kind] || '', tiers: x.tiers || [], enabled: x.enabled, bound, num: bound ? x[bound] : null, mine: x.value === null ? null : (x.negated ? -Math.abs(x.value) : x.value), step: stepFor(x.value), flip: !!x.negated });
     }
     return out;
   }
@@ -62,11 +59,14 @@
   const chipHtml = (r, i) => `<button type="button" class="pc-chip${r.enabled ? ' on' : ''}" data-row="${i}" aria-pressed="${r.enabled}"${r.title ? ` title="${esc(r.title)}"` : ''}>${esc(r.label)}</button>`;
   // One stat: a tick, the line in the colour the game gives its kind, its tier, and the number
   // searched for between - and +.
+  // The number as the item words it ("reduced" stats are kept below zero by the trade site).
+  const shown = (r, n) => (r.flip ? -n : n);
   function rowHtml(r, i) {
     let num = '';
     if (r.bound && r.num !== null) {
       const word = (r.bound === 'min') !== r.flip ? 'at least' : 'at most';
-      num = `<div class="pc-num" title="${word}"><button type="button" data-step="-1" aria-label="Lower">−</button><b>${esc(r.flip ? -r.num : r.num)}</b><button type="button" data-step="1" aria-label="Higher">+</button></div>`;
+      const match = r.mine !== null && r.mine !== undefined ? `<button type="button" class="pc-match${r.num === r.mine ? ' same' : ''}" data-match title="Set to this item's own ${esc(shown(r, r.mine))}">Match</button>` : '';
+      num = `${match}<div class="pc-num" title="${word} (click the number to type one)"><button type="button" data-step="-1" aria-label="Lower">−</button><b data-type tabindex="-1">${esc(shown(r, r.num))}</b><button type="button" data-step="1" aria-label="Higher">+</button></div>`;
     }
     const tiers = (r.tiers || []).map((t) => `<small class="pc-tier${t === 1 ? ' best' : ''}" title="Tier ${t}: tier 1 is the best this modifier can be">T${t}</small>`).join('');
     const kind = r.kind && r.mk !== 'pseudo' ? `<small class="k-${r.mk}">${r.kind}</small>` : '';
@@ -152,6 +152,15 @@
   }
   const shortLabel = (t) => { const s = String(t).replace(/^[+#%\s]+/, '').replace(/^total /i, ''); return s.length > 26 ? `${s.slice(0, 24)}…` : s; };
 
+  // The checked item's size in cells: from a listing of the same base when there is one, else
+  // from its kind, else a guess from how many sockets it has (more than four: two wide).
+  function headSize(d, f) {
+    if (d.iconW) return [d.iconW, d.iconH || 3];
+    if (f.size) return f.size;
+    const n = f.sockets ? f.sockets.replace(/[- ]/g, '').length : 0;
+    return n > 4 ? [2, 3] : [1, n > 3 ? 4 : 3];
+  }
+
   function draw() {
     const d = data;
     if (!d || !d.filters || !d.filters.ok) { panel.innerHTML = ''; sendSize(0); return; }
@@ -166,7 +175,7 @@
     const chips = rows.map((r, i) => (r.chip ? chipHtml(r, i) : '')).join('');
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
     const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
-    panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, d.iconW || (f.sockets && f.sockets.replace(/[- ]/g, '').length > 4 ? 2 : 1), d.iconH || 3, 'big')}
+    panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
         <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
         <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
       ${tabs}
@@ -208,14 +217,53 @@
 
   function nudge(row, dir) {
     if (!row || !row.bound || row.num === null) return;
-    row.num = Math.round((Number(row.num) + (row.flip ? -dir : dir) * row.step) * 10) / 10;
+    setNum(row, Math.round((Number(row.num) + (row.flip ? -dir : dir) * row.step) * 10) / 10);
+  }
+  // A new number for a line. Only the number, its Match button and the tick change: the rest of
+  // the window stays as it is (no redraw, so holding + or turning the wheel stays smooth).
+  function setNum(row, n) {
+    row.num = n;
     row.enabled = true; // setting a number means wanting it searched
-    // Only the number and the tick change: the rest of the window stays as it is (no redraw, so
-    // holding + or turning the wheel stays smooth).
-    const li = panel.querySelector(`[data-row="${rows.indexOf(row)}"]`);
+    const li = panel.querySelector(`li[data-row="${rows.indexOf(row)}"]`);
     if (!li) { draw(); return; }
-    li.querySelector('.pc-num b').textContent = row.flip ? -row.num : row.num;
+    const b = li.querySelector('.pc-num b');
+    if (b) b.textContent = shown(row, row.num);
+    const m = li.querySelector('.pc-match');
+    if (m) m.classList.toggle('same', row.num === row.mine);
     setOn(li, true);
+  }
+
+  // Typing a number: the number becomes a box, and the window asks for the keyboard until
+  // Enter, Escape or a click elsewhere.
+  let typing = null; // { row, input }
+  function startTyping(b) {
+    const li = b.closest('li[data-row]');
+    const row = rows[Number(li.dataset.row)];
+    if (!row || typing) return;
+    const input = document.createElement('input');
+    input.type = 'text'; input.inputMode = 'decimal'; input.className = 'pc-type';
+    input.value = String(shown(row, row.num));
+    b.replaceWith(input);
+    typing = { row, input };
+    api.checkKeys(true);
+    input.focus(); input.select();
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); stopTyping(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); stopTyping(false); }
+    });
+    input.addEventListener('blur', () => stopTyping(true));
+  }
+  function stopTyping(keep) {
+    if (!typing) return;
+    const { row, input } = typing;
+    typing = null;
+    const v = Number(String(input.value).replace(',', '.').trim());
+    const b = document.createElement('b');
+    b.dataset.type = ''; b.tabIndex = -1;
+    b.textContent = shown(row, row.num);
+    if (input.isConnected) input.replaceWith(b);
+    api.checkKeys(false);
+    if (keep && input.value.trim() !== '' && isFinite(v)) setNum(row, Math.round(shown(row, v) * 100) / 100);
   }
   function setOn(el, on) {
     el.classList.toggle('on', on); el.classList.toggle('off', !on);
@@ -242,7 +290,10 @@
     const li = e.target.closest('[data-row]');
     if (!li) return;
     const step = e.target.closest('[data-step]');
-    if (step) nudge(rows[Number(li.dataset.row)], Number(step.dataset.step));
+    if (step) { nudge(rows[Number(li.dataset.row)], Number(step.dataset.step)); return; }
+    if (e.target.closest('[data-match]')) { const r = rows[Number(li.dataset.row)]; setNum(r, r.mine); return; }
+    const num = e.target.closest('[data-type]');
+    if (num) startTyping(num);
   });
   panel.addEventListener('change', (e) => {
     const li = e.target.closest('[data-row]');
@@ -262,10 +313,10 @@
 
   // The app sends its state often; the window is only redrawn when this item's search has news,
   // so a click is never lost to a redraw in the middle of it.
-  let shown = '';
+  let drawnFor = '';
   api.onCheck((d) => {
     const key = d && d.filters ? `${d.at}:${d.filtersRev}:${d.rev}:${Math.round(d.divine || 0)}` : '';
     data = d;
-    if (key !== shown || !key) { shown = key; draw(); }
+    if (key !== drawnFor || !key) { drawnFor = key; if (typing) stopTyping(true); draw(); }
   });
 })();

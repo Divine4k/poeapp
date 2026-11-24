@@ -30,4 +30,5 @@ contextBridge.exposeInMainWorld('api', {
   // the price check window on top of the game
   onCheck: (cb) => ipcRenderer.on('check', (_e, data) => cb(data)),
   checkSize: (height) => ipcRenderer.send('check-size', height),
+  checkKeys: (on) => ipcRenderer.send('check-keys', !!on), // a number is being typed: the window needs the keyboard
 });

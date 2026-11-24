@@ -710,7 +710,7 @@ function syncKeyHook() {
   const invRaw = String(config.inventory.key || 'Tab').trim();
   const invCode = lib.UiohookKey[KEY_ALIASES[invRaw.toLowerCase()] || (invRaw.length === 1 ? invRaw.toUpperCase() : invRaw)];
   lib.uIOhook.on('keydown', (e) => {
-    if (!checkPanel || !checkPanel.visible) return;
+    if (!checkPanel || !checkPanel.visible || checkPanel.typing) return; // Escape then only ends the typing
     if (e.keycode !== lib.UiohookKey.Escape && (invCode === undefined || e.keycode !== invCode)) return;
     if (trouble) trouble.event('checkPanel', { closed: e.keycode === lib.UiohookKey.Escape ? 'Escape' : 'inventory key' });
     closeCheckPanel();
@@ -1192,7 +1192,9 @@ async function runTradeSearch(announce) {
     tc.compare = compareSpec(tc.filters);
     tc.listings = markBait(r.listings.map((l) => readListing(l, chaosOfPrice, tc.compare)));
     // The item's own picture: a listing of the same base looks the same (a unique has its own).
-    if (!tc.icon) { const same = tc.listings.find((l) => l.icon && tc.filters.type && l.base === tc.filters.type.value) || (tc.filters.name ? tc.listings.find((l) => l.icon) : null); if (same) { tc.icon = same.icon; tc.iconW = same.w; tc.iconH = same.h; } }
+    // Its size too (for where the sockets go), even when the picture came from poe.ninja.
+    const same = tc.listings.find((l) => l.icon && tc.filters.type && l.base === tc.filters.type.value) || (tc.filters.name ? tc.listings.find((l) => l.icon) : null);
+    if (same) { if (!tc.icon) tc.icon = same.icon; if (same.w) { tc.iconW = same.w; tc.iconH = same.h; } }
     tc.total = r.total;
     tc.url = r.queryId ? searchUrl(config.league, r.queryId) : '';
     tc.summary = summarize(r.total, tc.listings.filter((l) => !l.bait)); // a bait price is not what it sells for
@@ -1872,6 +1874,15 @@ function setupIpc() {
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
   ipcMain.handle('layout-get', () => layoutData());
   ipcMain.on('check-size', (e, h) => { if (checkPanel && checkPanel.win && e.sender === checkPanel.win.webContents) checkPanel.setHeight(h); });
+  // A number typed in the price check window: it takes the keyboard for that moment, then the
+  // game gets it back (only when the game had it before).
+  ipcMain.on('check-keys', (e, on) => {
+    if (!checkPanel || !checkPanel.win || e.sender !== checkPanel.win.webContents) return;
+    if (on) { checkPanel.gameHadKeys = watch.gameInFront(); checkPanel.takeKeys(true); return; }
+    checkPanel.takeKeys(false);
+    if (checkPanel.gameHadKeys) focusGame().catch(() => {});
+    checkPanel.gameHadKeys = false;
+  });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('trouble-list', () => (trouble ? trouble.list() : []));
   ipcMain.handle('trouble-details', (_e, id) => (trouble ? trouble.details(String(id || '')) : null));

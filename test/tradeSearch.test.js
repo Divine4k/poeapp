@@ -206,9 +206,11 @@ test('search choices: weapons, uniques, magic items, cluster jewels and what can
   assert.equal(bow.flags.find((x) => x.key === 'links').enabled, true);
   assert.equal(stat(bow, 'Critical Strike Multiplier').enabled, true); // fractured
   assert.equal(stat(bow, 'Socketed Bow Gems').min, 1);
+  assert.deepEqual(bow.size, [2, 4]); // two wide: its sockets snake
 
   const hh = buildFilters(parseItemText(HEADHUNTER), index);
   assert.deepEqual([hh.name, hh.type.value, hh.type.enabled, hh.category, hh.props], ['Headhunter', 'Leather Belt', true, null, []]);
+  assert.deepEqual(hh.size, [2, 1]);
   assert.deepEqual(hh.flags[0], { key: 'corrupted', label: 'Corrupted', value: true, enabled: true });
   assert.ok(hh.stats.length >= 3 && hh.stats.every((s) => !s.enabled));
   assert.deepEqual(hh.unknown, []); // flavour text is not reported
@@ -673,4 +675,5 @@ test('listings: pictures, sockets, the number compared, bait prices', () => {
   const ls = markBait([{ chaos: 1 }, { chaos: 10 }, { chaos: 11 }, { chaos: 12 }, { chaos: null }]);
   assert.deepEqual(ls.map((l) => !!l.bait), [true, false, false, false, false]);
   assert.deepEqual(markBait([{ chaos: 1 }, { chaos: 10 }]).map((l) => !!l.bait), [false, false]); // too few to tell
+  assert.deepEqual(markBait([{ chaos: 0.1 }, { chaos: 0.1 }, { chaos: 1 }, { chaos: 1 }, { chaos: 1 }]).map((l) => !!l.bait), [false, false, false, false, false]); // a cheap item
 });

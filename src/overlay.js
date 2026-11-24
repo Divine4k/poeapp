@@ -189,6 +189,14 @@ class CheckPanel {
     this.send(data);
   }
 
+  // While a number is typed in, the window takes the keyboard; otherwise it never does.
+  takeKeys(on) {
+    this.typing = !!on;
+    if (!this.win || this.win.isDestroyed()) return;
+    if (on) { this.win.setFocusable(true); this.win.focus(); this.win.webContents.focus(); }
+    else { this.win.setFocusable(false); this.win.setAlwaysOnTop(true, 'screen-saver'); }
+  }
+
   setHeight(h) {
     const height = Math.max(0, Number(h) || 0);
     // Moving or resizing a see-through window costs Windows a redraw of the whole window, so it
@@ -217,6 +225,7 @@ class CheckPanel {
   }
 
   hide() {
+    if (this.typing) this.takeKeys(false);
     this.wanted = false;
     clearInterval(this.timer);
     this.timer = null;
