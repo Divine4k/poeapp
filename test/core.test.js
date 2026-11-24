@@ -220,3 +220,22 @@ test('prices: your own prices win and are listed under their own category', () =
   t.setCustom({});
   assert.equal(t.chaosOf('Map (Tier 16)'), 4);
 });
+
+test('game log: looked for on every drive and in every Steam library, newest wins', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { candidateLogPaths, steamLibraries, findLogPath } = require('../src/core/clientLog');
+  assert.deepEqual(steamLibraries('"0" { "path"\t\t"C:\\\\Program Files (x86)\\\\Steam" }\n"1" { "path"\t\t"E:\\\\Spiele\\\\SteamLib" }'),
+    ['C:\\Program Files (x86)\\Steam', 'E:\\Spiele\\SteamLib']);
+  const list = candidateLogPaths({ drives: ['C', 'E'], exists: (p) => p === 'E:\\', readFile: () => '"path" "F:\\\\My Games\\\\"' });
+  assert.ok(list.every((p) => p.startsWith('E:\\') || p.startsWith('F:\\')));          // drive C is not there
+  assert.ok(list.includes('E:\\SteamLibrary\\steamapps\\common\\Path of Exile\\logs\\Client.txt'));
+  assert.ok(list.includes('F:\\My Games\\steamapps\\common\\Path of Exile\\logs\\Client.txt')); // a Steam library in a custom folder
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-log-'));
+  const old = path.join(dir, 'old.txt'), live = path.join(dir, 'live.txt');
+  fs.writeFileSync(old, 'x'); fs.writeFileSync(live, 'y');
+  fs.utimesSync(old, new Date('2026-01-01'), new Date('2026-01-01'));
+  assert.equal(findLogPath([old, path.join(dir, 'missing.txt'), live]), live);            // the install being played
+  assert.equal(findLogPath([path.join(dir, 'missing.txt')]), null);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

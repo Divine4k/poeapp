@@ -54,19 +54,68 @@ function parseLine(line) {
   return null;
 }
 
-const DEFAULT_LOG_PATHS = [
-  'C:\\Program Files (x86)\\Grinding Gear Games\\Path of Exile\\logs\\Client.txt',
-  'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Path of Exile\\logs\\Client.txt',
-  'C:\\Program Files\\Epic Games\\PathOfExile\\logs\\Client.txt',
-  'D:\\SteamLibrary\\steamapps\\common\\Path of Exile\\logs\\Client.txt',
-  'D:\\Games\\Path of Exile\\logs\\Client.txt',
+// Where the game is usually installed, relative to a drive. The game keeps Client.txt in the
+// "logs" folder of its install folder.
+const INSTALL_FOLDERS = [
+  'Program Files (x86)\\Grinding Gear Games\\Path of Exile',
+  'Program Files\\Grinding Gear Games\\Path of Exile',
+  'Grinding Gear Games\\Path of Exile',
+  'Program Files (x86)\\Steam\\steamapps\\common\\Path of Exile',
+  'Program Files\\Steam\\steamapps\\common\\Path of Exile',
+  'Steam\\steamapps\\common\\Path of Exile',
+  'SteamLibrary\\steamapps\\common\\Path of Exile',
+  'Games\\Steam\\steamapps\\common\\Path of Exile',
+  'Games\\SteamLibrary\\steamapps\\common\\Path of Exile',
+  'Program Files\\Epic Games\\PathOfExile',
+  'Epic Games\\PathOfExile',
+  'Games\\Path of Exile',
+  'Path of Exile',
+];
+const STEAM_LIBRARY_LISTS = [
+  'C:\\Program Files (x86)\\Steam\\steamapps\\libraryfolders.vdf',
+  'C:\\Program Files\\Steam\\steamapps\\libraryfolders.vdf',
 ];
 
-function findLogPath(candidates = DEFAULT_LOG_PATHS) {
-  for (const p of candidates) {
-    try { if (fs.statSync(p).isFile()) return p; } catch (_) { /* keep looking */ }
+// The library folders Steam knows about, from the text of its libraryfolders.vdf.
+function steamLibraries(vdfText) {
+  const out = [];
+  const re = /"path"\s+"([^"]+)"/g;
+  let m;
+  while ((m = re.exec(String(vdfText || '')))) out.push(m[1].replace(/\\\\/g, '\\'));
+  return out;
+}
+
+// Every place worth checking for Client.txt: the usual folders on each drive, plus every Steam
+// library, wherever the player put it.
+function candidateLogPaths({ drives = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), exists = fs.existsSync, readFile = (f) => fs.readFileSync(f, 'utf8') } = {}) {
+  const out = [];
+  for (const d of drives) {
+    let present = false;
+    try { present = exists(`${d}:\\`); } catch (_) { /* no such drive */ }
+    if (!present) continue;
+    for (const f of INSTALL_FOLDERS) out.push(`${d}:\\${f}\\logs\\Client.txt`);
   }
-  return null;
+  for (const list of STEAM_LIBRARY_LISTS) {
+    let text = '';
+    try { text = readFile(list); } catch (_) { continue; }
+    for (const lib of steamLibraries(text)) out.push(`${lib.replace(/[\\/]+$/, '')}\\steamapps\\common\\Path of Exile\\logs\\Client.txt`);
+  }
+  return [...new Set(out)];
+}
+const DEFAULT_LOG_PATHS = INSTALL_FOLDERS.map((f) => `C:\\${f}\\logs\\Client.txt`);
+
+// Of the logs that exist, the one written to most recently: with two installs on one PC (say an
+// old standalone one and Steam), that is the one being played.
+function findLogPath(candidates) {
+  const list = candidates || candidateLogPaths();
+  let best = null, bestTime = -1;
+  for (const p of list) {
+    try {
+      const st = fs.statSync(p);
+      if (st.isFile() && st.mtimeMs > bestTime) { best = p; bestTime = st.mtimeMs; }
+    } catch (_) { /* keep looking */ }
+  }
+  return best;
 }
 
 // The events in the last part of the log, oldest first. Used once at start to pick up what was
@@ -140,4 +189,4 @@ class LogTail extends EventEmitter {
   }
 }
 
-module.exports = { readRecent, parseLine, parseTimestamp, classifyArea, findLogPath, LogTail, DEFAULT_LOG_PATHS };
+module.exports = { readRecent, parseLine, parseTimestamp, classifyArea, findLogPath, LogTail, DEFAULT_LOG_PATHS, candidateLogPaths, steamLibraries };
