@@ -82,16 +82,7 @@
       <div id="session-head"></div>
       <div class="kpis" id="totals"></div>
       <div class="chart" id="sess-chart"></div>
-      <div class="table-wrap">
-        <table class="runs-table">
-          <thead><tr><th class="ic"></th><th>Map</th><th class="num">Time</th><th class="num">Loot</th><th class="num">Costs</th><th class="barcol"></th><th class="num">Net</th><th class="x"></th></tr></thead>
-          <tbody id="runs"></tbody>
-          <tfoot id="runs-total"></tfoot>
-        </table>
-      </div>
-    </section>
-    <section class="panel side" aria-label="This map">
-      <div id="attention" hidden></div>
+      <div id="attention" class="p-sec" hidden></div>
       <div class="p-sec">
         <div class="p-head">
           <h2 id="loot-title">Loot this map</h2>
@@ -107,6 +98,16 @@
         <ul class="feed" id="feed"></ul>
       </div>
       <div class="p-sec" id="best-drops" hidden></div>
+    </section>
+    <section class="panel side" aria-label="Maps this session">
+      <div class="p-head"><h2 id="maps-title">Maps</h2></div>
+      <div class="table-wrap">
+        <table class="runs-table">
+          <thead><tr><th class="ic"></th><th>Map</th><th class="num">Time</th><th class="num">Loot</th><th class="num">Costs</th><th class="barcol"></th><th class="num">Net</th><th class="x"></th></tr></thead>
+          <tbody id="runs"></tbody>
+          <tfoot id="runs-total"></tfoot>
+        </table>
+      </div>
     </section>
   </div>
 </main>

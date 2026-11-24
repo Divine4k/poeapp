@@ -208,9 +208,11 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .arrival .link { font-size: 16px; line-height: 1; }
 
 /* the two panels under it */
-.map-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(330px, 1fr); gap: 14px; }
-.panel.side { overflow-y: auto; }
-.p-sec + .p-sec, #attention:not([hidden]) + .p-sec { border-top: 1px solid var(--line); }
+.map-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 14px; }
+/* left: the session's numbers and line, then this map (what needs a look, its loot, best drops); right: the maps */
+.panel.sess { overflow-y: auto; }
+.panel.side { overflow: hidden; }
+.sess .p-sec { border-top: 1px solid var(--line); }
 
 /* sessions: which one, its numbers, the profit line, the maps */
 .sess .p-head { padding-right: 14px; }
@@ -232,7 +234,7 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .kpi b { font: 600 21px/1.1 var(--display); letter-spacing: -0.03em; }
 .kpi.lead b { font-size: 30px; color: var(--gold); text-shadow: 0 0 22px color-mix(in srgb, var(--gold) 25%, transparent); }
 .kpi.lead.neg b { color: var(--blood); text-shadow: none; }
-.chart { flex: 1 1 0; min-height: 110px; max-height: 260px; margin: 6px 12px 0; position: relative; }
+.chart { flex: 0 0 170px; margin: 6px 12px 8px; position: relative; }
 .chart svg { position: absolute; inset: 0; display: block; overflow: visible; }
 .chart .empty { padding: 30px 6px; }
 .chart .gl { stroke: color-mix(in srgb, var(--bone) 6%, transparent); stroke-dasharray: 2 4; }
@@ -249,7 +251,7 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .chart .pin.now text { fill: var(--gold); }
 .chart .pin.neg text { fill: var(--blood); }
 .chart text.ax { fill: var(--faint); font: 11px var(--body); }
-.sess .table-wrap { flex: 0 1 auto; min-height: 120px; overflow: auto; margin-top: 6px; border-top: 1px solid var(--line); }
+.side .table-wrap { flex: 1; min-height: 0; overflow: auto; }
 
 /* tables */
 .table-wrap { flex: 1; overflow: auto; min-height: 0; }
@@ -570,7 +572,7 @@ dialog h2 { font-size: 20px; color: var(--bone); margin: 0 0 14px; }
   .map-cols { flex: none; grid-template-columns: minmax(0, 1fr); }
   .view.mapping { overflow: auto; }
   .map-cols .panel { min-height: auto; overflow: visible; }
-  .sess .table-wrap { overflow: visible; }
+  .side .table-wrap { overflow: visible; }
   .runs-table tfoot td { position: static; }
   .chart { flex: 0 0 180px; }
 }
