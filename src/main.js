@@ -148,6 +148,13 @@ function loadConfig() {
     config.hotkeys = { ...config.hotkeys, priceCheck: key };
     config.priceKeyMoved = true;
   }
+  // "Check item price" is meant to be on. A copy of the app that had it saved as off (often
+  // without knowing: the check keys then read nothing) gets it on once; switching it off
+  // afterwards sticks.
+  if (!saved.autoCopyOn) {
+    config.inventory = { ...config.inventory, autoCopy: true };
+    config.autoCopyOn = true;
+  }
   if (!Array.isArray(config.strategies) || !config.strategies.length) config.strategies = DEFAULT_CONFIG.strategies;
   if (!config.strategies.some((x) => x.id === config.activeStrategy)) config.activeStrategy = config.strategies[0].id;
   // Keep the user's rule choices but pick up rules added in newer versions.
@@ -157,7 +164,7 @@ function loadConfig() {
     ...(saved.mapRules || []).filter((r) => !DEFAULT_RULES.some((d) => d.id === r.id)),
   ];
   // A key that was moved or filled in above is saved at once, so that it happens one time only.
-  if (!saved.priceKeyMoved || !saved.hideoutKeyGiven) writeJson('config.json', config);
+  if (!saved.priceKeyMoved || !saved.hideoutKeyGiven || !saved.autoCopyOn) writeJson('config.json', config);
 }
 
 function scheduleSave() {
@@ -1229,7 +1236,7 @@ async function checkHovered({ count = true } = {}) {
   } else {
     checkText(clipboard.readText(), { count });
     // With copying switched off, an empty hand is most likely the setting, so name it.
-    if (priceCheck && priceCheck.error && priceCheck.at >= started) priceCheck.error = 'Nothing to check: "Check the item under my mouse" is switched off (Settings, Price check). Switch it on, or press Ctrl+C on the item before the key.';
+    if (priceCheck && priceCheck.error && priceCheck.at >= started) priceCheck.error = 'Nothing to check: "Check item price" is switched off (Settings, Price check). Switch it on, or press Ctrl+C on the item before the key.';
   }
   showCheckToast(started);
   changed();
