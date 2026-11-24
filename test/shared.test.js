@@ -184,3 +184,44 @@ test('re-check: old maps get the names known now, and their loot follows', () =>
   assert.deepEqual(items, { 'Chaos Orb': 11, 'Eldritch Chaos Orb': 3, 'Orb of Alteration': 3 });
   assert.equal(s.moveLoot(id, 'Nothing Here', 'Chaos Orb', 4), 0);
 });
+
+test('your own name for a picture beats the shared list', () => {
+  const p = at(map, 0, 4);
+  const index = new IconIndex();
+  index.setShared([{ name: 'Cheap Thing', print: p }]);
+  index.addLearned('Dear Thing', p);
+  index.priceOf = (n) => ({ 'Cheap Thing': 1, 'Dear Thing': 50 }[n]);
+  const hit = index.match(p);
+  assert.equal(hit.name, 'Dear Thing');
+  assert.equal(hit.source, 'learned');
+});
+
+test('a fingerprint can be shown as a small picture', () => {
+  const { printPixels, SIDE } = require('../src/core/inventory/icons');
+  const px = printPixels(at(map, 0, 4));
+  assert.equal(px.length, SIDE * SIDE * 3);
+  assert.deepEqual([...px.subarray(0, 3)], [18, 18, 18]); // the stack number corner stays dark
+  const rest = [...px.subarray((SIDE * SIDE - 20) * 3)];
+  assert.ok(Math.max(...px) > 200 && new Set(rest).size > 5);
+  // The picture still looks like the item: its own fingerprint pattern survives.
+  const zero = printPixels(new Float32Array(at(map, 0, 4).length));
+  assert.ok(zero.every((v) => v === 18 || v === 120));
+});
+
+test('shared list: a wrongly named picture is renamed for everyone, with a token', async () => {
+  const chaos = at(map, 0, 4);
+  let remote = serialise([{ name: 'Eldritch Chaos Orb', print: chaos }, { name: 'Other', print: at(map, 3, 2) }]);
+  const puts = [];
+  const fetchImpl = async (url, opts = {}) => {
+    if (opts.method === 'PUT') { const body = JSON.parse(opts.body); remote = Buffer.from(body.content, 'base64').toString(); puts.push(body); return { ok: true, status: 200 }; }
+    return opts.headers.Accept.includes('raw') ? { ok: true, status: 200, text: async () => remote } : { ok: true, status: 200, json: async () => ({ sha: 's1' }) };
+  };
+  assert.equal(await new SharedItems({ fetchImpl }).correct(chaos, 'Chaos Orb'), 0); // no token
+  const s = new SharedItems({ fetchImpl, token: 'tok' });
+  assert.equal(await s.correct(at(hide, 0, 4), 'Chaos Orb'), 1); // the same item from another capture
+  assert.deepEqual(parse(remote).map((e) => e.name), ['Chaos Orb', 'Other']);
+  assert.equal(puts[0].sha, 's1');
+  assert.match(puts[0].message, /Eldritch Chaos Orb -> Chaos Orb/);
+  assert.equal(await s.correct(chaos, 'Chaos Orb'), 0); // already right: nothing uploaded
+  assert.equal(puts.length, 1);
+});

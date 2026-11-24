@@ -223,19 +223,50 @@
         : '<li class="empty">Nothing waiting. A stack the app cannot recognise lands here and stays until you name it.</li>';
     }
 
-    const q = $('learned-filter').value.trim().toLowerCase();
-    const names = state.learned || [];
-    const shown = q ? names.filter((n) => n.toLowerCase().includes(q)) : names;
-    $('learned-title').textContent = names.length ? `Items you named: ${names.length}` : 'Items you named';
-    $('learned-filter').hidden = names.length < 8;
-    const lkey = shown.join('|');
-    const box = $('learned');
-    if (box.dataset.key !== lkey) {
-      box.dataset.key = lkey;
-      box.innerHTML = shown.length
-        ? shown.map((n) => `<li><span>${esc(n)}</span><span></span><button type="button" class="link" data-act="forget" data-name="${esc(n)}">Forget</button></li>`).join('')
-        : `<li class="empty">${names.length ? 'No named item matches that.' : 'Nothing yet. Items you name, here or with the check key, are listed here.'}</li>`;
+    renderKnown();
+  }
+
+  // Every named picture beside the item it counts as, so a wrong name can be seen and fixed.
+  let known = null, knownRev = null, renaming = null;
+  function renderKnown() {
+    if (state.itemsRev !== knownRev && api.itemsList) {
+      knownRev = state.itemsRev;
+      api.itemsList().then((d) => { known = d; renaming = null; renderKnown(); });
     }
+    if (!known) return;
+    const q = $('learned-filter').value.trim().toLowerCase();
+    // Doubtful ones first, then by name.
+    const order = (list) => list.filter((r) => !q || (r.name || 'ignored').toLowerCase().includes(q))
+      .sort((a, b) => (b.doubt ? 1 : 0) - (a.doubt ? 1 : 0) || (a.name || '').localeCompare(b.name || ''));
+    const icon = (src) => (src ? `<img class="official" src="${esc(src)}" alt="">` : '<span class="official none"></span>');
+    const row = (r, mine) => {
+      const seen = `<img class="seen${r.sharp ? '' : ' blur'}" src="${esc(r.seen)}" alt="" title="${r.sharp ? 'As it looked in your inventory' : 'As it looked in the inventory. Only a blur of this picture was kept'}">`;
+      if (renaming === r.id) {
+        return `<li>${seen}<form class="inline-form" data-rename-form="${esc(r.id)}" autocomplete="off">
+          <input list="price-names" value="${esc(r.name)}" aria-label="Item name"><button type="submit">Save</button><button type="button" class="link" data-rename="">Cancel</button></form></li>`;
+      }
+      const name = r.name ? `${icon(r.icon)}<span class="nm">${esc(r.name)}</span>${r.priced ? '' : '<small>no price known</small>'}` : '<span class="official none"></span><span class="nm dim">Ignored: never counted</span>';
+      const doubt = r.doubt ? `<p class="doubt">Looks more like ${icon(r.doubt.icon)}<b>${esc(r.doubt.name)}</b>
+        <button type="button" data-act="renameItem" data-id="${esc(r.id)}" data-name="${esc(r.doubt.name)}">Rename to ${esc(r.doubt.name)}</button></p>` : '';
+      const yours = r.yours ? `<small>on this PC you named it ${esc(r.yours)}</small>` : '';
+      return `<li class="${r.doubt ? 'doubtful' : ''}">${seen}<div class="as"><p>${name}${yours}</p>${doubt}</div>
+        <span class="acts"><button type="button" class="link" data-rename="${esc(r.id)}">Rename</button>${mine ? `<button type="button" class="link" data-act="forgetItem" data-id="${esc(r.id)}" title="The app then asks about this picture again">Forget</button>` : ''}</span></li>`;
+    };
+    const fill = (box, list, mine, empty) => {
+      const html = list.length ? list.map((r) => row(r, mine)).join('') : `<li class="empty">${empty}</li>`;
+      const typing = box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+      if (box.dataset.html !== html && !(typing && box.dataset.renaming === String(renaming))) { box.dataset.html = html; box.dataset.renaming = String(renaming); box.innerHTML = html; const f = box.querySelector('[data-rename-form] input'); if (f) { f.focus(); f.select(); } }
+    };
+    const doubts = known.mine.filter((r) => r.doubt).length;
+    $('learned-title').textContent = known.mine.length ? `Items you named: ${known.mine.length}${doubts ? `, ${doubts} to check` : ''}` : 'Items you named';
+    $('learned-filter').hidden = known.mine.length + known.shared.length < 8;
+    fill($('learned'), order(known.mine), true, q ? 'No named item matches that.' : 'Nothing yet. Items you name, here or with the check key, are listed here.');
+    const sd = known.shared.filter((r) => r.doubt && !r.yours).length;
+    $('shared-title').textContent = `Shared by everyone: ${known.shared.length}${sd ? `, ${sd} to check` : ''}`;
+    $('shared-hint').textContent = known.canUpload
+      ? 'Pictures named by players and downloaded by everyone. Renaming one corrects it for everyone.'
+      : 'Pictures named by players and downloaded by everyone. Renaming one corrects it on this PC; with a GitHub token in Settings it is corrected for everyone.';
+    fill($('shared-items'), order(known.shared), false, q ? 'No shared item matches that.' : 'The shared list is empty or could not be downloaded.');
   }
 
   // ---- session ------------------------------------------------------------------
@@ -835,6 +866,8 @@
   document.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-trade]');
     if (tb) { act(tb.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
+    const rn = e.target.closest('[data-rename]');
+    if (rn) { renaming = rn.dataset.rename || null; document.activeElement.blur(); renderKnown(); return; }
     const b = e.target.closest('[data-act]');
     if (b) {
       const d = b.dataset;
@@ -928,6 +961,13 @@
   document.addEventListener('input', (e) => { if (e.target.getAttribute('list') === 'price-names') suggest(e.target.value); });
 
   document.addEventListener('submit', (e) => {
+    const rf = e.target.closest('[data-rename-form]');
+    if (rf) {
+      e.preventDefault();
+      const name = rf.querySelector('input').value.trim();
+      if (name) { act({ type: 'renameItem', id: rf.dataset.renameForm, name }); renaming = null; }
+      return;
+    }
     const f = e.target.closest('[data-learn-form]');
     if (!f) return;
     e.preventDefault();

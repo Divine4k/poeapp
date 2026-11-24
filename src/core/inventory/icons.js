@@ -36,6 +36,25 @@ function fingerprint(rgb) {
   return out;
 }
 
+// A fingerprint as a small picture, SIDE x SIDE pixels of RGB. Brightness and contrast are not
+// kept in a fingerprint, so they are guessed: it shows the shapes and colours of the item as a
+// blur, enough to tell what it is. The corner where the stack number sits is left dark.
+function printPixels(print) {
+  let peak = 0;
+  for (const v of print) peak = Math.max(peak, Math.abs(v));
+  const gain = peak ? 115 / peak : 0;
+  const out = Buffer.alloc(SIDE * SIDE * 3, 18);
+  let k = 0;
+  for (let by = 0; by < SIDE; by++) {
+    for (let bx = 0; bx < SIDE; bx++) {
+      if (by < MASK_ROWS && bx < MASK_COLS) continue;
+      const o = (by * SIDE + bx) * 3;
+      for (let ch = 0; ch < 3; ch++) out[o + ch] = Math.max(0, Math.min(255, Math.round(120 + print[k++] * gain)));
+    }
+  }
+  return out;
+}
+
 function similarity(a, b) {
   let dot = 0;
   for (let k = 0; k < a.length; k++) dot += a[k] * b[k];
@@ -120,7 +139,8 @@ class IconIndex {
       }
     };
     see(this.learned, 'learned', this.learnedThreshold);
-    see(this.shared, 'shared', this.learnedThreshold);
+    // A picture you named yourself settles it: the shared list is only asked when you have none.
+    if (!names.size) see(this.shared, 'shared', this.learnedThreshold);
     see(this.art, 'art', this.artThreshold);
     if (!names.size) return null;
 
@@ -196,4 +216,4 @@ function unpackPrint(text) {
   return out;
 }
 
-module.exports = { fingerprint, similarity, IconIndex, compositeOnCell, encodePrint, decodePrint, packPrint, unpackPrint, CELL_BACKGROUND, SIDE };
+module.exports = { printPixels, fingerprint, similarity, IconIndex, compositeOnCell, encodePrint, decodePrint, packPrint, unpackPrint, CELL_BACKGROUND, SIDE };

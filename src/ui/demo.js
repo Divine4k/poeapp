@@ -37,7 +37,7 @@
       update: { current: { sha: 'abc1234def', message: 'Read loot from the inventory' }, latest: { sha: 'fff9999', message: 'Fix poe.ninja item list parsing' }, available: true, checking: false, applying: false, step: '', error: null, checkedAt: now },
     },
     leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }],
-    learned: ['Alchemy Shard', 'Chaos Orb', 'Legion Thread', '(ignored items)'],
+    learned: ['Alchemy Shard', 'Chaos Orb', 'Legion Thread', '(ignored items)'], itemsRev: '1',
     notice: { text: 'Saved: Chaos Orb.', bad: false, at: now },
     unknown: [{ id: 1, qty: 3, at: now, here: true, guesses: [{ name: 'Vaal Orb', score: 78 }, { name: 'Orb of Fusing', score: 61 }, { name: 'Exalted Orb', score: 55 }], image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
     priceCheck: null,
@@ -117,6 +117,13 @@
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true }), 0), checkSize: () => {},
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
+    itemsList: async () => {
+      const seen = state.unknown[0].image, ic = (n) => (state.summary.runs.flatMap((r) => r.items).find((i) => i.name === n) || {}).icon || null;
+      const mk = (id, name, extra = {}) => ({ id, name, seen, sharp: id.endsWith('0'), icon: ic(name), priced: true, doubt: null, ...extra });
+      return { canUpload: false,
+        mine: [mk('mine:0', 'Chaos Orb'), mk('mine:1', 'Eldritch Chaos Orb', { doubt: { name: 'Chaos Orb', icon: ic('Chaos Orb') } }), mk('mine:2', 'Ritual Thread'), mk('mine:3', '', { priced: false }), mk('mine:4', 'My League Thing', { priced: false })],
+        shared: [mk('shared:0', 'Immortal Astrolabe'), mk('shared:1', 'Lesser Eldritch Ember', { yours: 'Greater Eldritch Ember' })] };
+    },
     runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },
     inventory: async () => {

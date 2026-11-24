@@ -84,6 +84,35 @@ class SharedItems {
     return repoPath;
   }
 
+  // Renames a picture in the shared list that was uploaded under the wrong name. Needs the token.
+  // Returns how many entries were renamed.
+  async correct(print, name) {
+    if (!this.token || !name || this.busy) return 0;
+    this.busy = true;
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const meta = await this.fetch(`${URL_BASE}?ref=${BRANCH}`, { headers: this.headers({ Accept: 'application/vnd.github+json' }) });
+        if (!meta.ok) throw new Error(meta.status === 401 || meta.status === 403 ? 'GitHub refused the token. Check that it can write to the repository.' : `GitHub answered ${meta.status}`);
+        const sha = (await meta.json()).sha;
+        const list = await this.download();
+        const wrong = list.filter((e) => e.name !== name && similarity(e.print, print) > 0.97);
+        if (!wrong.length) { this.items = list; return 0; }
+        const was = wrong.map((e) => e.name).join(', ');
+        for (const e of wrong) e.name = name;
+        const body = { message: `Rename item: ${was} -> ${name}`.slice(0, 200), branch: BRANCH, sha, content: Buffer.from(serialise(list)).toString('base64') };
+        const put = await this.fetch(URL_BASE, { method: 'PUT', headers: this.headers({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
+        if (put.ok) { this.items = list; this.status.error = null; return wrong.length; }
+        if (put.status !== 409 && put.status !== 422) throw new Error(put.status === 401 || put.status === 403 || put.status === 404 ? 'GitHub refused the upload. The token needs "Contents: read and write" on the repository.' : `GitHub answered ${put.status}`);
+      }
+      return 0;
+    } catch (e) {
+      this.status.error = e.message || String(e);
+      return 0;
+    } finally {
+      this.busy = false;
+    }
+  }
+
   // Uploads queued items. Reads the newest list first so nothing anyone else added is lost.
   async flush() {
     if (this.busy || !this.pending.length || !this.token) return 0;

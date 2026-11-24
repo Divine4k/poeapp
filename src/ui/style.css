@@ -426,3 +426,24 @@ fieldset label { margin-bottom: 8px; }
   .trade { height: auto; }
   .mods { columns: 1; }
 }
+
+/* Items page: each named picture beside the item it counts as */
+.known { list-style: none; margin: 0 0 18px; padding: 0; }
+.known li { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--slab); }
+.known li.empty { display: block; color: var(--ash); font-size: 13px; }
+.known .seen { width: 40px; height: 40px; border: 1px solid var(--seam); background: #101317; }
+.known .seen.blur { image-rendering: auto; filter: saturate(1.15); }
+.known .as { min-width: 0; }
+.known .as p { margin: 0; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.known .official { width: 28px; height: 28px; object-fit: contain; flex: 0 0 auto; }
+.known .official.none { display: inline-block; }
+.known .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.known small { color: var(--ash); font-size: 12px; white-space: nowrap; }
+.known .doubt { margin-top: 4px; font-size: 13px; color: var(--gold); flex-wrap: wrap; }
+.known .doubt .official { width: 22px; height: 22px; }
+.known .doubt b { color: inherit; font-weight: 600; }
+.known .doubt button { font-size: 12px; padding: 2px 8px; }
+.known li.doubtful .seen { border-color: var(--gold); }
+.known .acts { display: flex; gap: 14px; }
+.known .inline-form { grid-column: 2 / 4; display: flex; gap: 8px; align-items: center; }
+.known .inline-form input { flex: 1 1 auto; min-width: 0; }

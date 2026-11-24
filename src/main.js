@@ -15,7 +15,7 @@ const { parseItemText, priceName } = require('./core/itemText');
 const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
 const { Session } = require('./core/session');
 const { CANON, COLS, ROWS, gridRect, isInventoryOpen, extractCell, isEmptyCell } = require('./core/inventory/grid');
-const { IconIndex, similarity, fingerprint, encodePrint, decodePrint } = require('./core/inventory/icons');
+const { IconIndex, similarity, fingerprint, encodePrint, decodePrint, printPixels, SIDE } = require('./core/inventory/icons');
 const { readStack } = require('./core/inventory/digits');
 const { InventoryReader, SINGLE_ART_SCORE } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
@@ -106,7 +106,8 @@ let lastSingles = 0; // what the last clean read saw, for the Inventory tab
 // Items the reader could not name, kept until named, ignored or dismissed: [{ id, qty, print, image, guesses, at, here }]
 const backlog = new Backlog({ similar: (a, b) => similarity(a, b) > 0.95 });
 const saveBacklog = () => writeJson('unrecognised.json', backlog.save(encodePrint));
-let learned = []; // [{ name, print(base64) }]
+let learned = []; // [{ name, print(base64), image? }] image: the slot as it looked, kept for items named from 0.16 on
+let itemsRev = 0; // goes up whenever a named item changes, so the Items page reads its list again
 const session = new Session();
 const index = new IconIndex();
 index.priceOf = (name) => prices.chaosOf(name); // settles look-alike pictures towards the cheaper item
@@ -195,6 +196,7 @@ function buildState() {
     inventoryRev: lastInventory.rev,
     unknown: backlog.items.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses, at: u.at, here: !!u.here })),
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
+    itemsRev: `${itemsRev}:${learned.length}:${index.shared.length}:${index.art.length}`,
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
     summary: withIcons(session.summary(prices)),
     sessions: archive ? archive.list().map((x) => ({ ...x, strategyId: strategyOf(x) })) : [],
@@ -410,6 +412,52 @@ function recheckMaps() {
   say(`Corrected ${slots} ${slots === 1 ? 'slot' : 'slots'} in ${maps} ${maps === 1 ? 'map' : 'maps'}${list ? `: ${list}` : ''}.`);
 }
 
+// After the list of named items was edited: the matcher gets the list again and it is saved.
+function relearn() {
+  index.learned = [];
+  for (const l of learned) { try { index.addLearned(l.name, decodePrint(l.print)); } catch (_) { /* skip a broken entry */ } }
+  itemsRev++;
+  writeJson('learned.json', learned);
+  reader.forgetCells();
+}
+
+// A fingerprint as a small picture, for named items whose slot picture was not kept.
+function printPicture(print) {
+  const rgb = printPixels(print);
+  const bgra = Buffer.alloc(SIDE * SIDE * 4);
+  for (let p = 0; p < SIDE * SIDE; p++) { bgra[p * 4] = rgb[p * 3 + 2]; bgra[p * 4 + 1] = rgb[p * 3 + 1]; bgra[p * 4 + 2] = rgb[p * 3]; bgra[p * 4 + 3] = 255; }
+  return nativeImage.createFromBitmap(bgra, { width: SIDE, height: SIDE }).toDataURL();
+}
+
+// Does a named picture look clearly more like another item's official picture than like the
+// one it is named after? Returns { name, icon } of that other item, or null.
+function looksLikeAnother(name, print) {
+  if (!name) return null;
+  const a = IconIndex.best(index.art, print);
+  if (!a.best || a.best.name === name || a.score < 0.8) return null;
+  let own = null;
+  for (const e of index.art) if (e.name === name) own = Math.max(own === null ? -1 : own, similarity(print, e.print));
+  if (own === null || a.score - own < index.artMargin) return null;
+  const other = prices.get(a.best.name);
+  return { name: a.best.name, icon: (other && other.icon) || null };
+}
+
+// Everything the Items page lists: each named picture, the item it counts as, and a doubt.
+function itemsList() {
+  const row = (id, name, print, image) => {
+    const entry = name ? prices.get(name) : null;
+    return { id, name, seen: image || printPicture(print), sharp: !!image, icon: (entry && entry.icon) || null, priced: !!entry, doubt: looksLikeAnother(name, print) };
+  };
+  const mine = [];
+  learned.forEach((l, i) => { try { mine.push(row(`mine:${i}`, l.name, decodePrint(l.print), l.image)); } catch (_) { /* skip a broken entry */ } });
+  const own = index.learned;
+  const everyone = index.shared.map((e, i) => {
+    const yours = own.find((l) => similarity(l.print, e.print) >= index.learnedThreshold);
+    return { ...row(`shared:${i}`, e.name, e.print, null), yours: yours && yours.name !== e.name ? (yours.name || 'ignored') : null };
+  });
+  return { mine, shared: everyone, canUpload: !!(shared && shared.token) };
+}
+
 // Keeps this reading as the picture of what the current map brought in.
 function keepSnapshot(result) {
   const run = session.current;
@@ -517,11 +565,12 @@ function syncKeyHook() {
 function say(text, bad = false) { notice = { text, bad, at: Date.now() }; }
 
 // Remembers that this picture is the named item ('' = ignore it) and queues it for sharing.
-function learnPrint(typed, print) {
+function learnPrint(typed, print, image = null) {
   const entry = typed ? prices.get(typed) : null;
   const name = entry ? entry.name : String(typed || '').trim();
   index.addLearned(name, print);
-  learned.push({ name, print: encodePrint(print) });
+  learned.push(image ? { name, print: encodePrint(print), image } : { name, print: encodePrint(print) });
+  itemsRev++;
   writeJson('learned.json', learned);
   if (backlog.resolve(print)) saveBacklog();
   if (!name) { say('That item is ignored from now on. Undo it on the Items page, under Items you named.'); return; }
@@ -585,7 +634,8 @@ function applyName(k, item, name, entry, print) {
   if ((item.stackable || plainSingle) && !sharedPicture) {
     const hit = index.match(print);
     if (hit && hit.name === name) { say(`${name} is already recognised.`); return; }
-    learnPrint(name, print);
+    const seen = lastInventory.cells.find((c) => c.cell === k);
+    learnPrint(name, print, seen && seen.print && similarity(seen.print, print) > 0.98 ? seen.image : null);
     return;
   }
   if (!entry) { say(`${name} has no known price, so it is not counted.`, true); return; }
@@ -1190,11 +1240,11 @@ const actions = {
     const name = String(a.name || '').trim();
     if (!u) { say('That item is no longer in the list.', true); return; }
     if (!name) { say('Type the item name first, or pick one of the suggestions.', true); return; }
-    learnPrint(name, u.print);
+    learnPrint(name, u.print, u.image);
   },
   ignore: (a) => {
     const u = backlog.get(a.id);
-    if (u) learnPrint('', u.print);
+    if (u) learnPrint('', u.print, u.image);
   },
   // Takes an item off the not-recognised list without naming it. It comes back if it is seen again.
   dismissUnknown: (a) => { if (backlog.remove(a.id)) saveBacklog(); },
@@ -1213,7 +1263,34 @@ const actions = {
     delete next[a.name];
     applyConfig({ customPrices: next });
   },
-  uploadShared: async () => { if (shared) { await shared.flush(); index.setShared(shared.items); } },
+  uploadShared: async () => { if (shared) { await shared.flush(); index.setShared(shared.items); itemsRev++; } },
+  // One named picture gets another name. id: "mine:3" (your own list) or "shared:5" (the list
+  // everyone downloads; your name is then kept on this PC and, with a token, sent to the list).
+  renameItem: async (a) => {
+    const [list, n] = String(a.id || '').split(':');
+    const typed = String(a.name || '').trim();
+    if (!typed) { say('Type the item name first.', true); return; }
+    const entry = prices.get(typed);
+    const name = entry ? entry.name : typed;
+    let print = null;
+    if (list === 'mine' && learned[n]) {
+      print = decodePrint(learned[n].print);
+      learned[n].name = name;
+    } else if (list === 'shared' && index.shared[n]) {
+      print = index.shared[n].print;
+      learned.push({ name, print: encodePrint(print) });
+    }
+    if (!print) { say('That item is no longer in the list.', true); return; }
+    relearn();
+    say(entry ? `That picture now counts as ${name}.` : `Saved as "${name}", but no price is known under that name, so it counts as 0c.`, !entry);
+    if (shared && shared.token && await shared.correct(print, name)) { index.setShared(shared.items); itemsRev++; say(`That picture now counts as ${name}, here and in the shared list for everyone.`); }
+  },
+  forgetItem: (a) => {
+    const [list, n] = String(a.id || '').split(':');
+    if (list !== 'mine' || !learned[n]) return;
+    learned.splice(Number(n), 1);
+    relearn();
+  },
   forget: (a) => {
     const name = a.name === '(ignored items)' ? '' : a.name;
     index.forget(name);
@@ -1284,6 +1361,7 @@ function setupIpc() {
       })),
     };
   });
+  ipcMain.handle('items-list', () => itemsList());
   ipcMain.handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
   ipcMain.handle('price-categories', () => {
     const counts = prices.categoryCounts();
