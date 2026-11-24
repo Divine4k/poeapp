@@ -6,7 +6,6 @@ const PANEL_WIDTH = 460;
 // The game's inventory and stash panels are this wide, as a share of the screen's height.
 const GAME_PANEL = 370 / 600;
 const IDLE_MS = 15000; // never touched: gone after this long without news
-const LEFT_MS = 400;   // used, then the mouse moved off it: gone after this long
 
 // bounds: the game's screen { x, y, width, height }. cursorX: where the mouse was when the
 // item was checked. The window goes beside the panel the item is in, as in Awakened PoE Trade:
@@ -34,9 +33,11 @@ const inside = (r, p, margin = 0) => !!r && !!p && p.x >= r.x - margin && p.x < 
 // Whether the window should close now. entered: the mouse has been on it. sinceInside: ms since
 // the mouse was last on it. sinceNews: ms since it was shown or last got something new.
 // busy: a search is running, so an answer is on its way.
-function shouldClose({ entered, sinceInside, sinceNews, busy }) {
-  if (entered) return sinceInside > LEFT_MS;
+// Once the mouse has been on it, it stays: sliding over it and off again must not lose it. It
+// then goes with its cross, Escape, the inventory key, or the next check (see main.js).
+function shouldClose({ entered, sinceNews, busy }) {
+  if (entered) return false;
   return !busy && sinceNews > IDLE_MS;
 }
 
-module.exports = { checkPanelBounds, inside, shouldClose, PANEL_WIDTH, IDLE_MS, LEFT_MS };
+module.exports = { checkPanelBounds, inside, shouldClose, PANEL_WIDTH, IDLE_MS };

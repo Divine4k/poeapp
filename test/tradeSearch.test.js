@@ -6,7 +6,7 @@ const { StatIndex, wordings } = require('../src/core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks } = require('../src/core/tradeQuery');
 const { TradeClient, parseLimits, readListing, searchUrl, currencyName } = require('../src/core/tradeApi');
 const { checkMessage, tradeMessage } = require('../src/core/checkMessage');
-const { checkPanelBounds, inside, shouldClose, PANEL_WIDTH, IDLE_MS, LEFT_MS } = require('../src/core/checkPanel');
+const { checkPanelBounds, inside, shouldClose, PANEL_WIDTH, IDLE_MS } = require('../src/core/checkPanel');
 
 const index = StatIndex.load();
 
@@ -422,9 +422,9 @@ test('price check window in game: beside the panel the item is in, and gone when
   assert.equal(shouldClose({ entered: false, sinceInside: 0, sinceNews: IDLE_MS - 1, busy: false }), false);
   assert.equal(shouldClose({ entered: false, sinceInside: 0, sinceNews: IDLE_MS + 1, busy: false }), true);
   assert.equal(shouldClose({ entered: false, sinceInside: 0, sinceNews: IDLE_MS + 1, busy: true }), false);
-  // Used: it stays for as long as the mouse is on it, and goes when the mouse has left.
+  // Once the mouse has been on it, it stays, also after the mouse has left it again.
   assert.equal(shouldClose({ entered: true, sinceInside: 100, sinceNews: IDLE_MS * 10, busy: false }), false);
-  assert.equal(shouldClose({ entered: true, sinceInside: LEFT_MS + 1, sinceNews: 0, busy: true }), true);
+  assert.equal(shouldClose({ entered: true, sinceInside: 60000, sinceNews: 60000, busy: false }), false);
 });
 
 const CLOAK_FULL = `Item Class: Body Armours

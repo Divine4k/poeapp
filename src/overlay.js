@@ -122,8 +122,8 @@ class Toast {
 
 // The price check on top of the game: the item's stats with tick boxes, and what the trade
 // site lists like it. Like the trade overlay it never takes the keyboard, so the game keeps
-// your keys while you click it. It closes with its cross, when the mouse leaves it after
-// use, or by itself when it was never touched.
+// your keys while you click it. It closes with its cross (or Escape and the inventory key, in
+// main.js), or by itself when it was never touched.
 class CheckPanel {
   constructor({ preload, page, onClose }) {
     this.preload = preload;
