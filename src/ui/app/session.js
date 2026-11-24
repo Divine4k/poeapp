@@ -107,6 +107,7 @@ function renderSession() {
   const live = state.summary;
   const chip = (id, title, t, divine) => `<button type="button" role="tab" data-session="${esc(id)}" aria-selected="${id === sessionSel}">
       <b>${esc(title)}</b><span>${mapsWord(t.maps)}, <em class="${t.net < 0 ? 'neg' : ''}">${fmtValue(t.net, divine)}</em></span></button>`;
+  $('btn-new-session').hidden = !running; // only the strategy being run has a session to close
   const strip = $('session-strip');
   const left = strip.scrollLeft;
   strip.innerHTML = (running ? chip('current', 'This session', live.totals, live.divine) : '')

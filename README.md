@@ -16,7 +16,7 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures
 | Net profit | A cost loadout (scarabs, map, chisels) charged to every new map |
 | What was counted per map | The inventory picture from each map is kept and shown beside the timer and under the map's row |
 | Trade offers with an overlay on the game | Reads trade whispers from the game log; each button types one chat line |
-| Session history | **Start new session** saves the finished one; pick it from the row of sessions on the Mapping page to see its totals and maps |
+| Session history | **Start new session** (Mapping page, beside Sessions) saves the finished one; pick it from the row of sessions to see its totals and maps |
 | Strategies | Tabs on the Mapping page, each with a name, an atlas tree link and its own sessions |
 
 ## How loot is counted
@@ -123,7 +123,9 @@ Install [Node.js LTS](https://nodejs.org), download this repository as a ZIP, un
 
 ## Updating
 
-The app checks this repository every two minutes. When a newer version has been pushed, the **Check for updates** button at the bottom of the sidebar turns into **Install update**. Clicking it at any other time checks right away. Your settings, named items and session are kept.
+The app checks this repository every two minutes. When a newer version has been pushed, the **Check for updates** button at the bottom of the sidebar turns into **Install update**. Clicking it at any other time checks right away; the button always says what it is doing (checking, up to date, downloading, restarting, or what went wrong). An update found while the app starts is also offered on the loading screen. The app closes and opens again by itself, and your settings, named items and session are kept.
+
+The look of the window is chosen in Settings, under Look: Wraeclast makes it look like the game, the others change the colours.
 
 The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so anyone who can push there controls what gets installed.
 

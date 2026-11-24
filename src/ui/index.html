@@ -7,8 +7,25 @@
 <title>Map Companion</title>
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="tradecard.css">
+<link rel="stylesheet" href="themes.css">
+<script src="theme.js"></script>
 </head>
 <body>
+<!-- Shown while the app starts: what it checks, and whether there is an update. -->
+<div class="boot" id="boot">
+  <div class="boot-card" role="status" aria-live="polite">
+    <svg class="boot-logo" viewBox="0 0 64 64" aria-hidden="true">
+      <circle class="ring" cx="32" cy="32" r="29"/>
+      <circle class="ring2" cx="32" cy="32" r="22"/>
+      <path class="gem" d="M32 14l11 18-11 18-11-18z"/>
+      <path class="gem-line" d="M21 32h22M32 14v36"/>
+    </svg>
+    <div class="boot-name">Map Companion</div>
+    <ul class="boot-steps" id="boot-steps"><li class="busy">Starting</li></ul>
+    <div class="boot-bar"><i id="boot-fill"></i></div>
+    <div class="boot-actions" id="boot-actions" hidden></div>
+  </div>
+</div>
 <aside class="side">
   <div class="side-brand">Map Companion</div>
   <nav class="sidenav" role="tablist" aria-orientation="vertical" aria-label="Pages">
@@ -22,7 +39,7 @@
     <button type="button" class="navi" role="tab" data-tab="trouble" aria-selected="false" id="nav-trouble" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg><span class="lbl">Troubleshooting</span><span class="navdot rec" id="trouble-dot" hidden></span></button>
   </nav>
   <div class="side-foot">
-    <button type="button" class="navi" id="btn-side-update"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span class="lbl" id="side-update-label">Check for updates</span></button>
+    <button type="button" class="navi upd" id="btn-side-update"><svg id="side-update-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span class="lbl"><span id="side-update-label">Check for updates</span><small id="side-update-sub"></small></span></button>
     <button type="button" class="navi" id="btn-account" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="lbl" id="account-label">Log in</span><span class="navdot" id="account-dot" hidden></span></button>
     <button type="button" class="navi" id="btn-settings" data-tab="settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 18h10"/><path d="M18 18h2"/><circle cx="16" cy="18" r="2"/></svg><span class="lbl">Settings</span></button>
   </div>
@@ -30,15 +47,10 @@
 
 <div class="page">
 <header class="bar">
-  <ul class="status" id="status"></ul>
-  <div class="bar-actions">
-    <button type="button" id="btn-new-session">Start new session</button>
-  </div>
+  <ul class="status" id="status" aria-label="What the app is doing"></ul>
 </header>
-<div class="alerts">
-  <p class="notice" id="arrival" hidden></p>
-  <p class="notice" id="notice" hidden></p>
-</div>
+<!-- Messages from the app: small, at the bottom right, gone by themselves. -->
+<div class="toasts" id="toasts" aria-live="polite"></div>
 <datalist id="price-names"></datalist>
 
 <main class="view mapping" id="tab-mapping" role="tabpanel">
@@ -54,6 +66,7 @@
         <button type="button" id="btn-run-toggle">Start a map manually</button>
       </div>
     </div>
+    <div class="arrival" id="arrival" hidden></div>
     <div id="attention" hidden></div>
     <div class="now-top">
       <div id="now-head"></div>
@@ -70,6 +83,10 @@
     <ul class="feed" id="feed"></ul>
   </section>
   <section class="session" aria-label="Sessions">
+    <div class="session-top">
+      <h2>Sessions</h2>
+      <button type="button" id="btn-new-session" title="Saves the session you are on and starts an empty one">Start new session</button>
+    </div>
     <div class="session-strip" id="session-strip" role="tablist" aria-label="Sessions"></div>
     <div id="session-head"></div>
     <div class="totals" id="totals"></div>
@@ -90,6 +107,7 @@
 <main class="view" id="tab-items" role="tabpanel" hidden>
   <div class="db-top">
     <h2 class="pagetitle" id="db-title">Items</h2>
+    <button type="button" class="refresh" id="btn-refresh-shared" data-act="refreshShared" title="Fetches the shared list of named items again"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span>Refresh shared list</span></button>
     <button type="button" class="link" id="db-reset" data-act="removeNamed" hidden>Remove all names given by hand</button>
   </div>
   <p class="db-share" id="db-share" hidden></p>
@@ -196,7 +214,11 @@
   <div class="prices">
     <nav class="price-cats" id="price-cats" aria-label="Price categories"></nav>
     <div class="price-main">
-      <h2 class="pagetitle" id="price-title">Prices</h2>
+      <div class="price-top">
+        <h2 class="pagetitle" id="price-title">Prices</h2>
+        <span class="price-age" id="price-age"></span>
+        <button type="button" class="refresh" id="btn-prices-refresh" data-act="refreshPrices" title="Loads the prices from poe.ninja again"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span>Refresh prices</span></button>
+      </div>
       <form id="custom-price" class="inline-form" autocomplete="off" hidden>
         <input name="name" list="price-names" placeholder="Item name, exactly as the app shows it" aria-label="Item name" required>
         <input name="chaos" type="number" min="0" step="0.1" placeholder="Price (c)" aria-label="Price in chaos" required>
@@ -273,6 +295,7 @@
     <nav class="set-nav" id="set-nav" aria-label="Settings sections">
       <h2 class="pagetitle">Settings</h2>
       <button type="button" data-set="general" aria-pressed="true">General</button>
+      <button type="button" data-set="look" aria-pressed="false">Look</button>
       <button type="button" data-set="keys" aria-pressed="false">Keys</button>
       <button type="button" data-set="loot" aria-pressed="false">Loot counting</button>
       <button type="button" data-set="check" aria-pressed="false">Price check</button>
@@ -305,6 +328,12 @@
             <span class="set-ctl"><select data-cfg="inventory.displayId" aria-label="Screen the game runs on"></select></span>
           </div>
         </div>
+      </section>
+
+      <section class="set-sec" id="set-look" aria-label="Look" hidden>
+        <h2>Look</h2>
+        <p class="set-lead">How the app looks. Wraeclast changes the whole window to look like the game; the others only change the colours.</p>
+        <div class="themes" id="theme-pick" role="radiogroup" aria-label="Theme"></div>
       </section>
 
       <section class="set-sec" id="set-keys" aria-label="Keys" hidden>
@@ -497,9 +526,10 @@
     <p class="account-lead" id="account-lead"></p>
     <div class="account-fields">
       <label>Name <input name="name" maxlength="20" autocomplete="username" spellcheck="false" required></label>
-      <label>Password <input name="password" type="password" autocomplete="new-password" required></label>
-      <label id="account-again">Password again <input name="again" type="password" autocomplete="new-password"></label>
+      <label>Password <span class="pw"><input name="password" type="password" autocomplete="new-password" required><button type="button" class="pw-eye" data-pw-eye aria-label="Show password" title="Show password"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button></span></label>
+      <label id="account-again">Password again <span class="pw"><input name="again" type="password" autocomplete="new-password"><button type="button" class="pw-eye" data-pw-eye aria-label="Show password" title="Show password"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button></span></label>
     </div>
+    <p class="caps" id="account-caps" role="alert" hidden>Caps Lock is on.</p>
     <p class="warn" id="account-error" role="alert" hidden></p>
     <p class="fine">Your finished sessions go up under this name: the maps, the loot, the costs and the inventory picture of each map. Anyone with an account can look at them. Settings, trades and whispers stay on this PC. Your password is never sent; if you forget it, it cannot be recovered yet.</p>
     <div class="dialog-actions">
@@ -515,7 +545,8 @@
       <summary>Delete my account</summary>
       <form id="account-delete-form" autocomplete="off">
         <p class="fine">This takes your account and everything uploaded under it off the server. What is saved on this PC stays. It cannot be undone.</p>
-        <span class="row"><input name="password" type="password" placeholder="Your password" autocomplete="current-password" aria-label="Your password" required><button type="submit">Delete account</button></span>
+        <span class="row"><span class="pw"><input name="password" type="password" placeholder="Your password" autocomplete="current-password" aria-label="Your password" required><button type="button" class="pw-eye" data-pw-eye aria-label="Show password" title="Show password"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path class="slash" d="M4 4l16 16"/></svg></button></span><button type="submit">Delete account</button></span>
+        <p class="caps" hidden>Caps Lock is on.</p>
         <p class="warn" id="account-delete-error" role="alert" hidden></p>
       </form>
     </details>
@@ -585,6 +616,7 @@
 <script src="app/inventory.js"></script>
 <script src="app/trade.js"></script>
 <script src="app/render.js"></script>
+<script src="app/boot.js"></script>
 <script src="app/events.js"></script>
 <script src="app/logcheck.js"></script>
 <script src="app/trouble.js"></script>

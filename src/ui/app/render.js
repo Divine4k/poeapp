@@ -4,8 +4,24 @@
 
 function render() {
   if (!state) return;
+  applyTheme(state.config.theme);
+  renderBoot();
   renderTrade();
-  renderStatus(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderSettings();
+  renderStatus(); renderToasts(); renderArrival(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderSettings(); renderRefresh();
+}
+
+// Refresh buttons turn while what they fetch is on its way, and cannot be pressed twice.
+function renderRefresh() {
+  const st = state.status, prLoading = !!st.prices.loading, shLoading = !!(st.shared && st.shared.loading);
+  for (const [id, busy] of [['btn-prices-refresh', prLoading], ['btn-refresh-prices', prLoading], ['btn-refresh-shared', shLoading]]) {
+    const b = $(id);
+    if (!b) continue;
+    b.disabled = busy;
+    b.classList.toggle('busy', busy);
+  }
+  $('btn-refresh-shared').hidden = !(st.cloud && st.cloud.enabled) && !(st.shared && st.shared.count);
+  const pr = st.prices;
+  $('price-age').textContent = prLoading ? 'Loading from poe.ninja…' : pr.count > 1 ? `${pr.league}, updated at ${clock(pr.updatedAt)}` : '';
 }
 
 function setState(s) {

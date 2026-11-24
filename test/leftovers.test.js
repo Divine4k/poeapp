@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { leftoverScript, restartCommand, closeLeftovers } = require('../src/leftovers');
+const { leftoverScript, waitForExit, afterPid, closeLeftovers } = require('../src/leftovers');
 
 test('leftover copies: found by program, never this copy or its helpers', () => {
   const s = leftoverScript({ pid: 4321, exe: "C:\\Users\\O'Neil\\Map Companion\\Map Companion.exe", appDir: '' });
@@ -14,11 +14,18 @@ test('leftover copies: found by program, never this copy or its helpers', () => 
   assert.match(leftoverScript({ pid: 1, exe: 'C:\\poeapp\\node_modules\\electron\\dist\\electron.exe', appDir: 'C:\\poeapp' }), /\$dir = 'C:\\poeapp'/);
 });
 
-test('restart: the old copy is made to go before the new one starts', async () => {
-  const cmd = restartCommand({ pid: 4321, target: '"C:\\Map Companion\\Map Companion.exe"' });
-  assert.ok(cmd.indexOf('taskkill /F /PID 4321') > 0);
-  assert.ok(cmd.indexOf('taskkill') < cmd.indexOf('start ""'));
-  assert.ok(!/\/T\b/.test(cmd)); // not the whole tree: this very helper is a child of the old copy
+test('restart: the new copy waits for the old one, and closes it if it lingers', async () => {
+  assert.equal(afterPid(['app.exe', '.', '--after-pid=4321']), 4321);
+  assert.equal(afterPid(['app.exe', '.']), 0);
+  const fake = (goneAfter) => { let t = 0; const killed = []; return { killed, alive: () => t < goneAfter, sleep: (ms) => { t += ms; }, kill: (p) => { killed.push(p); goneAfter = 0; } }; };
+  let f = fake(600);
+  assert.equal(waitForExit(4321, 12000, f), 'gone');
+  assert.deepEqual(f.killed, []);
+  f = fake(Infinity);
+  assert.equal(waitForExit(4321, 1000, f), 'closed');
+  assert.deepEqual(f.killed, [4321]);
+  assert.equal(waitForExit(0, 1000, fake(Infinity)), 'none');
+  assert.equal(waitForExit(process.pid, 1000, fake(Infinity)), 'none'); // never itself
   if (process.platform !== 'win32') assert.equal(await closeLeftovers(), 0);
 });
 

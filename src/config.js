@@ -27,6 +27,7 @@ const DEFAULT_CONFIG = {
   activeStrategy: 'default',
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
   ignoredItems: [], // names of items never to count, whatever the picture
+  theme: 'slate', // how the window looks: slate, midnight, ember, verdant, or wraeclast (looks like the game)
   navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
   // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
   // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat

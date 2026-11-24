@@ -33,7 +33,7 @@ const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBo
 const { focusGame, typeChat, copyItem } = require('./chat');
 const { Overlay, Toast, CheckPanel } = require('./overlay');
 const { GameWatch } = require('./gamewin');
-const { closeLeftovers, restartCommand } = require('./leftovers');
+const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize } = require('./core/tradeQuery');
@@ -91,6 +91,7 @@ let toast = null; // the short message shown in game after the check key
 let checkPanel = null; // the price check window on top of the game
 let layoutWin = null; // the full-screen window for dragging overlay parts into place
 const watch = new GameWatch();
+let sharedLoading = false; // the shared item list is being fetched because Refresh was pressed
 let chatBusy = false;
 let tradeSaveTimer = null;
 
@@ -177,8 +178,9 @@ function buildState() {
   status.inventory.art.known = index.art.length;
   status.inventory.awaitingArrival = ledger.pendingArrival && !!session.current;
   status.inventory.noBaseline = !ledger.baseline;
-  if (shared) status.shared = { ...shared.status, canUpload: shared.canUpload, waiting: shared.pending.length, by: shareName() };
+  if (shared) status.shared = { ...shared.status, canUpload: shared.canUpload, waiting: shared.pending.length, by: shareName(), loading: sharedLoading };
   if (cloud) status.cloud = cloud.status;
+  status.game = { known: watch.running, front: watch.gameInFront() };
   return {
     trouble: trouble ? { ...trouble.status, can: canTrouble(), admin: isAdmin(), rev: troubleRev } : null,
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
@@ -1040,6 +1042,7 @@ function loadLearned() {
 async function checkUpdate() {
   if (!updater || status.update.checking || status.update.applying) return;
   status.update.checking = true;
+  push();
   try {
     await updater.check();
     status.update.error = null;
@@ -1067,19 +1070,13 @@ function releaseEverything() {
   ]) { try { step(); } catch (_) { /* closing anyway */ } }
 }
 
-// Starts the app again after it has fully closed. On Windows this goes through a short hidden
-// helper that waits a moment first: starting the new copy while the old one is still shutting
-// down left it without a window, because the old one still held the app's files.
+// Starts the app again after it has fully closed. The new copy is told which copy it replaces
+// and waits until that one is gone before it starts (see the top of the start section):
+// starting while the old one was still shutting down left it without a window. Electron starts
+// it, so no command window shows on the way.
 function restartApp() {
-  if (process.platform === 'win32') {
-    const { spawn } = require('child_process');
-    // The installed program starts by itself; from a download, Electron is told which folder to run.
-    const target = app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`;
-    const cmd = restartCommand({ pid: process.pid, target });
-    spawn('cmd.exe', ['/d', '/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true, cwd: app.getAppPath() }).unref();
-  } else {
-    app.relaunch();
-  }
+  const args = process.argv.slice(1).filter((a) => !String(a).startsWith('--after-pid='));
+  app.relaunch({ args: [...args, `--after-pid=${process.pid}`] });
   // Give back everything this copy holds before it goes: a copy that lingers with its hotkeys
   // still taken leaves the new one unable to use them.
   releaseEverything();
@@ -1100,7 +1097,7 @@ async function applyUpdate() {
   if (!updater || status.update.applying) return;
   status.update.applying = true;
   status.update.error = null;
-  status.update.step = 'Downloading the update';
+  status.update.step = 'Downloading';
   push();
   try {
     if (!updater.latest) await updater.check();
@@ -1109,6 +1106,11 @@ async function applyUpdate() {
     if (depsChanged) { status.update.step = 'Installing new parts (this can take a minute)'; push(); await updater.installDeps(); }
     writeJson('session.json', session.toJSON());
     writeJson('ledger.json', ledger.toJSON());
+    writeJson('trades.json', book.toJSON());
+    // Long enough for the window to show that the app is about to close and come back.
+    status.update.step = 'Restarting';
+    push();
+    await new Promise((r) => setTimeout(r, 700));
     restartApp();
   } catch (e) {
     status.update.applying = false;
@@ -1497,10 +1499,10 @@ function createWindow() {
   win = new BrowserWindow({
     x: target.workArea.x + 40, y: target.workArea.y + 40,
     width: Math.min(1500, target.workArea.width - 80), height: Math.min(950, target.workArea.height - 80),
-    backgroundColor: '#1b1f24', title: 'Map Companion', autoHideMenuBar: true, icon: path.join(__dirname, 'ui', 'icon.png'),
+    backgroundColor: '#1b1f24', title: 'Map Companion', autoHideMenuBar: true, icon: path.join(__dirname, 'ui', 'icon.png'), show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  if (second) win.maximize();
+  win.once('ready-to-show', () => { if (second) win.maximize(); win.show(); });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); });
@@ -1649,6 +1651,7 @@ const actions = {
     applyConfig({ customPrices: next });
   },
   uploadShared: () => offerLocalItems({ announce: true, retry: true }),
+  refreshShared: async () => { if (sharedLoading) return; sharedLoading = true; push(); try { await loadShared(); } finally { sharedLoading = false; } },
   // A picture in the item database gets another name, or goes. id: "mine:3" for one kept on
   // this PC, "shared:5" for one that is only in the shared database.
   renameItem: (a) => {
@@ -1858,6 +1861,8 @@ function setupIpc() {
 }
 
 // ---- start ---------------------------------------------------------------------
+// Started by an update: the copy that started this one goes first.
+if (afterPid(process.argv)) waitForExit(afterPid(process.argv));
 // Only one copy may run. A second one (the installed program started while the copy from
 // start.bat is still open, say) could not take the hotkeys, and the two would fight over the
 // overlay and the saved files. The second copy brings the first to the front and closes.

@@ -1,0 +1,170 @@
+/* Themes. The default (Slate) lives in style.css. Most themes only change the colours below;
+   Wraeclast also changes letters, panels, buttons and borders so the window looks like the
+   game's own interface. The theme is set on <html data-theme="..."> by theme.js and boot.js. */
+
+/* ---- recolours ---- */
+:root[data-theme=midnight] {
+  --stone: #10151f; --slab: #18202e; --seam: #2a3548; --bone: #e4ebf5; --ash: #93a2b8;
+  --gold: #7fb4ff; --portal: #c79bff; --blood: #ff6b81; --moss: #5fd3a0; --ink: #0b1020; --deep: #0a0e16;
+}
+:root[data-theme=ember] {
+  --stone: #1a1514; --slab: #241d1b; --seam: #3b302c; --bone: #f2e6dc; --ash: #b19c90;
+  --gold: #ff8a4c; --portal: #ffc65c; --blood: #ff5a4f; --moss: #9ccf6a; --ink: #1a1009; --deep: #120d0b;
+}
+:root[data-theme=verdant] {
+  --stone: #121a17; --slab: #1a2420; --seam: #2b3a33; --bone: #e3eee6; --ash: #92a89c;
+  --gold: #6fcf97; --portal: #d6c27a; --blood: #ef6f6c; --moss: #a5d86b; --ink: #0b1510; --deep: #0b110e;
+}
+
+/* ---- the theme cards in Settings, Look: each shows its own four colours ---- */
+.sw-slate i:nth-child(1) { background: #1b1f24; } .sw-slate i:nth-child(2) { background: #242a31; } .sw-slate i:nth-child(3) { background: #d1ad62; } .sw-slate i:nth-child(4) { background: #62afd0; }
+.sw-wraeclast i:nth-child(1) { background: #0d0b09; } .sw-wraeclast i:nth-child(2) { background: linear-gradient(#2a2218, #15110c); } .sw-wraeclast i:nth-child(3) { background: #c8a35a; } .sw-wraeclast i:nth-child(4) { background: #af6025; }
+.sw-midnight i:nth-child(1) { background: #10151f; } .sw-midnight i:nth-child(2) { background: #18202e; } .sw-midnight i:nth-child(3) { background: #7fb4ff; } .sw-midnight i:nth-child(4) { background: #c79bff; }
+.sw-ember i:nth-child(1) { background: #1a1514; } .sw-ember i:nth-child(2) { background: #241d1b; } .sw-ember i:nth-child(3) { background: #ff8a4c; } .sw-ember i:nth-child(4) { background: #ffc65c; }
+.sw-verdant i:nth-child(1) { background: #121a17; } .sw-verdant i:nth-child(2) { background: #1a2420; } .sw-verdant i:nth-child(3) { background: #6fcf97; } .sw-verdant i:nth-child(4) { background: #d6c27a; }
+
+/* ======================================================================================
+   Wraeclast: the game's look. Near-black stone, panels in carved bronze frames, old gold
+   headings in a serif with small capitals, buttons like the game's (dark, framed, glowing
+   when hovered), item colours for values and links.
+   ====================================================================================== */
+:root[data-theme=wraeclast] {
+  --stone: #0d0b09;      /* the dark behind everything */
+  --slab: #17130f;       /* panels */
+  --seam: #3a2f22;       /* frames and lines */
+  --bone: #d9cdb4;       /* text */
+  --ash: #8f8371;        /* quiet text, like the game's grey */
+  --gold: #c8a35a;       /* headings and the important numbers */
+  --portal: #8888ff;     /* links: the game's magic blue */
+  --blood: #d2493a;
+  --moss: #7fb25a;
+  --ink: #120e0a;
+  --deep: #070605;
+  --bronze: #6b5634;     /* bright edge of a frame */
+  --unique: #af6025;     /* the game's unique orange, for the main buttons */
+  --display: "Fontin SmallCaps", "Fontin", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  --body: "Fontin", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+  /* fine grain over the stone, so large areas are not flat */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.3 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+:root[data-theme=wraeclast] body {
+  background: var(--grain), radial-gradient(ellipse at 60% 0%, #1c160f 0%, transparent 60%), var(--stone);
+  font-size: 15.5px;
+}
+:where(:root[data-theme=wraeclast]) h1, :where(:root[data-theme=wraeclast]) h2, :where(:root[data-theme=wraeclast]) h3 { font-variant: small-caps; letter-spacing: 0.04em; }
+:where(:root[data-theme=wraeclast]) h2 { color: var(--gold); }
+
+/* the sidebar: a carved column with a bronze edge */
+:root[data-theme=wraeclast] .side {
+  background: var(--grain), linear-gradient(180deg, #1d1711 0%, #110e0a 100%);
+  border-right: 0;
+  box-shadow: inset -1px 0 0 #000, inset -2px 0 0 var(--bronze), inset -3px 0 0 #000;
+}
+:root[data-theme=wraeclast] .side-brand {
+  font-variant: small-caps; letter-spacing: 0.06em; color: var(--gold); text-align: center; padding: 0 0 18px;
+  text-shadow: 0 0 12px rgba(200, 163, 90, 0.35), 0 1px 0 #000;
+  background: linear-gradient(90deg, transparent, var(--bronze), transparent) bottom / 100% 1px no-repeat;
+  margin-bottom: 10px;
+}
+:root[data-theme=wraeclast] .navi { font-family: var(--display); font-variant: small-caps; letter-spacing: 0.05em; font-size: 15px; color: #a39377; border-radius: 2px; }
+:root[data-theme=wraeclast] .navi:hover { color: var(--bone); background: linear-gradient(90deg, rgba(200, 163, 90, 0.10), transparent); }
+:root[data-theme=wraeclast] .navi[aria-selected=true], :root[data-theme=wraeclast] .navi[aria-current=page] {
+  color: #f0dfb5; background: linear-gradient(90deg, rgba(175, 96, 37, 0.35), rgba(175, 96, 37, 0.05) 80%, transparent);
+  text-shadow: 0 0 8px rgba(240, 200, 120, 0.45);
+}
+:root[data-theme=wraeclast] .navi[aria-selected=true]::before, :root[data-theme=wraeclast] .navi[aria-current=page]::before { width: 2px; background: var(--gold); box-shadow: 0 0 8px var(--gold); border-radius: 0; }
+:root[data-theme=wraeclast] .side-foot { border-top: 0; background: linear-gradient(90deg, transparent, var(--bronze), transparent) top / 100% 1px no-repeat; }
+:root[data-theme=wraeclast] .navi.has-update { color: #fff1d0; background: linear-gradient(180deg, #8a4a1c, #5a2b0e); box-shadow: inset 0 0 0 1px #c28a4a, inset 0 0 12px rgba(255, 180, 90, 0.25); }
+
+/* top bar: a thin carved strip */
+:root[data-theme=wraeclast] .bar { border-bottom: 0; background: linear-gradient(180deg, #19140e, #110d0a); box-shadow: inset 0 -1px 0 #000, inset 0 -2px 0 var(--seam); }
+:root[data-theme=wraeclast] .chip { border-radius: 2px; background: rgba(0, 0, 0, 0.35); border-color: var(--seam); font-family: var(--body); font-weight: 400; font-size: 12.5px; }
+:root[data-theme=wraeclast] .chip::before { border-radius: 1px; transform: rotate(45deg); width: 6px; height: 6px; }
+
+/* buttons: dark and framed, a warm glow on hover; the main button in the unique orange.
+   Only plain buttons get it: buttons with a look of their own (tabs, links, chips) keep theirs. */
+:where(:root[data-theme=wraeclast]) :is(button:not([class]), button.primary, button.refresh) {
+  font-family: var(--display); font-variant: small-caps; letter-spacing: 0.04em;
+  color: #e2d3b1; border-radius: 1px; border: 1px solid #5b4a30;
+  background: linear-gradient(180deg, #2c231a 0%, #18130e 55%, #120e0a 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 230, 180, 0.08), 0 1px 0 #000;
+}
+:where(:root[data-theme=wraeclast]) :is(button:not([class]), button.primary, button.refresh):hover { border-color: #a3844f; color: #fff1d0; box-shadow: inset 0 0 10px rgba(200, 163, 90, 0.28), 0 1px 0 #000; }
+:where(:root[data-theme=wraeclast]) button.primary {
+  color: #fff3dc; border-color: #c28a4a; font-weight: 600;
+  background: linear-gradient(180deg, #934d1d 0%, #6a3311 55%, #4d230a 100%);
+  text-shadow: 0 1px 0 #000;
+}
+:where(:root[data-theme=wraeclast]) button.primary:hover { filter: none; box-shadow: inset 0 0 12px rgba(255, 190, 110, 0.4), 0 0 8px rgba(175, 96, 37, 0.4); }
+:root[data-theme=wraeclast] .navi.upd.busy { background: rgba(200, 163, 90, 0.1); }
+
+/* fields: sunk into the stone */
+:where(:root[data-theme=wraeclast]) input, :where(:root[data-theme=wraeclast]) select {
+  font-family: var(--body); background: #080706; border: 1px solid #33291d; border-radius: 1px;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+:where(:root[data-theme=wraeclast]) input:focus, :where(:root[data-theme=wraeclast]) select:focus { border-color: var(--bronze); }
+:root[data-theme=wraeclast] :focus-visible { outline-color: var(--gold); }
+
+/* panels: a carved frame (dark, bronze, dark) */
+:root[data-theme=wraeclast] .set-list, :root[data-theme=wraeclast] .maprules, :root[data-theme=wraeclast] .totals > div,
+:root[data-theme=wraeclast] dialog, :root[data-theme=wraeclast] .theme-card, :root[data-theme=wraeclast] .db-share,
+:root[data-theme=wraeclast] .session-strip button, :root[data-theme=wraeclast] .toast, :root[data-theme=wraeclast] #attention {
+  border-radius: 1px; border: 1px solid #000;
+  background: var(--grain), linear-gradient(180deg, #1c1712 0%, #120f0b 100%);
+  box-shadow: inset 0 0 0 1px var(--seam), inset 0 0 0 2px #000, inset 0 0 24px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme=wraeclast] .session-strip button[aria-selected=true], :root[data-theme=wraeclast] .theme-card[aria-checked=true] {
+  box-shadow: inset 0 0 0 1px var(--gold), inset 0 0 0 2px #000, inset 0 0 18px rgba(200, 163, 90, 0.18);
+}
+:root[data-theme=wraeclast] .set-row { border-top-color: #241d15; }
+
+/* page titles: the game's centred title bar with gold rules either side */
+:root[data-theme=wraeclast] .pagetitle, :root[data-theme=wraeclast] .set-sec > h2, :root[data-theme=wraeclast] .map-name {
+  font-family: var(--display); font-variant: small-caps; letter-spacing: 0.05em; color: #e9d5a4;
+  text-shadow: 0 0 14px rgba(200, 163, 90, 0.25), 0 1px 0 #000;
+}
+:root[data-theme=wraeclast] .set-sec > h2, :root[data-theme=wraeclast] .pagetitle {
+  padding-bottom: 8px;
+  background: linear-gradient(90deg, var(--bronze), rgba(107, 86, 52, 0.4) 40%, transparent 85%) bottom / 100% 1px no-repeat;
+}
+:root[data-theme=wraeclast] .set-nav { border-right: 0; box-shadow: inset -1px 0 0 #000, inset -2px 0 0 var(--seam); }
+:root[data-theme=wraeclast] .set-nav button[aria-pressed=true] { background: linear-gradient(90deg, rgba(175, 96, 37, 0.3), transparent); box-shadow: inset 2px 0 0 var(--gold); color: #f0dfb5; }
+:root[data-theme=wraeclast] .strat-tabs button { font-variant: small-caps; letter-spacing: 0.04em; }
+:root[data-theme=wraeclast] .strat-tabs button[aria-selected=true] { background: linear-gradient(180deg, rgba(175, 96, 37, 0.25), transparent); box-shadow: inset 0 -2px 0 var(--gold); }
+:root[data-theme=wraeclast] .view.mapping { background: #000; }
+:root[data-theme=wraeclast] .view.mapping > section, :root[data-theme=wraeclast] .strat { background: var(--grain), var(--stone); }
+
+/* numbers: the timer like the game's, values in currency gold */
+:root[data-theme=wraeclast] .big .timer { font-family: var(--display); font-weight: 400; color: #e9dcc0; text-shadow: 0 0 20px rgba(233, 220, 192, 0.15); }
+:root[data-theme=wraeclast] .big .value, :root[data-theme=wraeclast] .totals .lead { color: #e2b85c; text-shadow: 0 0 16px rgba(226, 184, 92, 0.3); }
+:root[data-theme=wraeclast] .totals > div, :root[data-theme=wraeclast] .big, :root[data-theme=wraeclast] .split dd { font-family: var(--display); }
+:root[data-theme=wraeclast] table th { font-variant: small-caps; letter-spacing: 0.04em; color: var(--gold); }
+:where(:root[data-theme=wraeclast]) a { color: var(--portal); }
+
+/* switches: a bronze socket with a gem */
+:root[data-theme=wraeclast] .set-row input[type=checkbox] { border-radius: 2px; background: #080706; border-color: #4a3b28; box-shadow: inset 0 1px 3px #000; }
+:root[data-theme=wraeclast] .set-row input[type=checkbox]::after { border-radius: 1px; transform: rotate(45deg) scale(0.8); background: #5b4a30; }
+:root[data-theme=wraeclast] .set-row input[type=checkbox]:checked { background: linear-gradient(180deg, #6a3311, #3e1d08); border-color: #c28a4a; }
+:root[data-theme=wraeclast] .set-row input[type=checkbox]:checked::after { transform: translateX(18px) rotate(45deg) scale(0.8); background: #ffcf7a; box-shadow: 0 0 6px #ffb84d; }
+:root[data-theme=wraeclast] .keycap { font-variant: normal; background: linear-gradient(180deg, #2a2219, #0f0c09); border-color: #5b4a30; }
+
+/* notes and toasts */
+:root[data-theme=wraeclast] .arrival { border-radius: 1px; background: linear-gradient(90deg, rgba(136, 136, 255, 0.12), transparent); border: 0; box-shadow: inset 2px 0 0 var(--portal); }
+:root[data-theme=wraeclast] .arrival.bad { background: linear-gradient(90deg, rgba(210, 73, 58, 0.18), transparent); box-shadow: inset 2px 0 0 var(--blood); }
+:root[data-theme=wraeclast] .toast { border-left: 0; box-shadow: inset 0 0 0 1px var(--seam), inset 3px 0 0 var(--moss), 0 8px 28px rgba(0, 0, 0, 0.6); }
+:root[data-theme=wraeclast] .toast.bad { box-shadow: inset 0 0 0 1px var(--seam), inset 3px 0 0 var(--blood), 0 8px 28px rgba(0, 0, 0, 0.6); }
+
+/* scrollbars in bronze */
+:root[data-theme=wraeclast] ::-webkit-scrollbar-thumb { background-color: #3a2f22; border-radius: 1px; }
+:root[data-theme=wraeclast] ::-webkit-scrollbar-thumb:hover { background-color: var(--bronze); }
+
+/* the loading screen: a waystone glowing in the dark */
+:root[data-theme=wraeclast] .boot { background: var(--grain), radial-gradient(ellipse at 50% 42%, #2a1f12 0%, #0d0b09 60%); }
+:root[data-theme=wraeclast] .boot-name { font-variant: small-caps; letter-spacing: 0.08em; color: #e9d5a4; text-shadow: 0 0 18px rgba(200, 163, 90, 0.4); }
+:root[data-theme=wraeclast] .boot-logo .gem { fill: rgba(175, 96, 37, 0.35); filter: drop-shadow(0 0 8px rgba(255, 170, 80, 0.55)); }
+:root[data-theme=wraeclast] .boot-bar i { background: linear-gradient(90deg, var(--unique), var(--gold)); box-shadow: 0 0 8px var(--gold); }
+
+/* the Settings sections are a list, not a row of buttons */
+:root[data-theme=wraeclast] .set-nav button { border: 0; background: none; box-shadow: none; font-family: var(--display); font-variant: small-caps; letter-spacing: 0.04em; color: #a39377; }
+:root[data-theme=wraeclast] .set-nav button:hover { color: var(--bone); background: linear-gradient(90deg, rgba(200, 163, 90, 0.10), transparent); }

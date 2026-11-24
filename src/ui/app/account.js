@@ -37,8 +37,31 @@ function renderAccount() {
   $('account-label').textContent = c.signedIn ? c.name : 'Log in';
   $('account-dot').hidden = !(c.signedIn && c.error);
   if (acc.open) accView();
-  else if (!c.signedIn && !accAsked) { accAsked = true; accMode = 'register'; accError(''); accView(); acc.showModal(); }
+  else if (!c.signedIn && !accAsked && bootDone) { accAsked = true; accMode = 'register'; accError(''); accView(); acc.showModal(); }
 }
+// The eye beside a password shows what was typed; Caps Lock is pointed out while typing one.
+acc.addEventListener('click', (e) => {
+  const eye = e.target.closest('[data-pw-eye]');
+  if (!eye) return;
+  e.preventDefault();
+  const input = eye.parentElement.querySelector('input');
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  eye.classList.toggle('on', show);
+  eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  eye.title = eye.getAttribute('aria-label');
+  input.focus();
+});
+function capsNote(e) {
+  if (!e.target.matches || !e.target.matches('input[type=password], .pw input') || typeof e.getModifierState !== 'function') return;
+  const note = e.target.closest('form').querySelector('.caps');
+  if (note) note.hidden = !e.getModifierState('CapsLock');
+}
+for (const type of ['keydown', 'keyup', 'click']) acc.addEventListener(type, capsNote);
+// Passwords go back to hidden whenever the window opens again.
+function hidePasswords() { for (const i of acc.querySelectorAll('.pw input')) i.type = 'password'; for (const b of acc.querySelectorAll('[data-pw-eye]')) { b.classList.remove('on'); b.setAttribute('aria-label', 'Show password'); b.title = 'Show password'; } for (const c of acc.querySelectorAll('.caps')) c.hidden = true; }
+acc.addEventListener('close', hidePasswords);
+
 $('btn-account').addEventListener('click', () => { accError(''); accView(); acc.showModal(); });
 $('account-later').addEventListener('click', () => acc.close());
 $('account-close').addEventListener('click', () => acc.close());
@@ -52,12 +75,14 @@ accForm.addEventListener('submit', async (e) => {
   accBusy = false;
   if (r.error) { accError(r.error); accView(); return; }
   el.password.value = ''; el.again.value = '';
+  hidePasswords();
   accView();
 });
 $('account-logout').addEventListener('click', async () => { accAsked = true; accMode = 'login'; await api.account({ type: 'logout' }); accView(); });
 $('account-sync').addEventListener('click', () => api.account({ type: 'sync' }));
 $('account-delete-form').addEventListener('submit', async (e) => {
   e.preventDefault();
+  hidePasswords();
   const f = e.target, err = $('account-delete-error');
   const r = await api.account({ type: 'delete', password: f.elements.password.value });
   f.elements.password.value = '';

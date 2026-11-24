@@ -40,8 +40,11 @@ document.addEventListener('click', (e) => {
 });
 
 $('btn-read').addEventListener('click', () => act({ type: 'readInventory' }));
-$('btn-side-update').addEventListener('click', async () => {
-  if (state.status.update.available) { act({ type: 'applyUpdate' }); return; }
-  await act({ type: 'checkUpdate' });
-  setTimeout(() => { if (state) renderStatus(); }, 8200); // lets "Up to date" fall back to the normal label
+$('btn-side-update').addEventListener('click', () => {
+  const up = state.status.update;
+  if (up.applying || up.checking) return;
+  // The button changes at once; the app's answer follows.
+  if (up.available) { updInstall = Date.now(); renderUpdate(); act({ type: 'applyUpdate' }); return; }
+  updPressed = Date.now(); renderUpdate();
+  act({ type: 'checkUpdate' });
 });

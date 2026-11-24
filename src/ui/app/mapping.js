@@ -3,50 +3,129 @@
 // Part of the main window script: all files in src/ui/app/ share one scope, loaded in the order of index.html.
 
 // ---- status bar ----------------------------------------------------------
-function renderStatus() {
-  const st = state.status, hk = state.config.hotkeys, items = [];
-  items.push(st.log.ok ? ['ok', 'Game log connected'] : ['bad', st.log.error || 'Game log not connected']);
-  if (st.prices.loading) items.push(['busy', 'Loading prices']);
-  else if (st.prices.count > 1) items.push(['ok', `${st.prices.count} prices for ${st.prices.league}, updated ${clock(st.prices.updatedAt)}`]);
-  else items.push(['bad', st.prices.errors[0] || 'No prices loaded']);
-  const inv = st.inventory, ic = state.config.inventory;
-  if (inv.error) items.push(['bad', `Inventory reading failed: ${inv.error}`]);
-  else if (inv.keyHook === 'missing' && ic.onKey && !ic.timed) items.push(['bad', 'Key listener not installed, so the inventory key is not noticed. Switch on "Also read it by itself" in Settings, under Loot counting, or use Read inventory now']);
-  else if (inv.keyHook === 'badkey') items.push(['bad', `Inventory key "${ic.key}" is not a key name the app knows`]);
-  else if (inv.lastReadAt) items.push(['ok', `Inventory read at ${clock(inv.lastReadAt)}: ${inv.recognised} item stacks recognised`]);
-  else items.push(['', `Open your inventory in game (${ic.key}) to start reading it`]);
-  if (inv.art.total > inv.art.done) items.push(['busy', `Learning item pictures: ${inv.art.done} of ${inv.art.total}`]);
-  else if (inv.art.failed && !inv.art.known) items.push(['bad', `${inv.art.failed} item pictures failed to download`]);
-  else if (!inv.art.known && st.prices.count > 1) items.push(['bad', 'Prices loaded but no item pictures came with them']);
-  else if (inv.art.known) items.push(['ok', `${inv.art.known} item pictures known`]);
-  if (!st.hotkeys.clipboard) items.push(['bad', `Hotkey ${hk.clipboard} is taken by another app`]);
-  if (st.hotkeys.priceCheckHeld && !st.hotkeys.priceCheck) items.push(['bad', `Price check key ${hk.priceCheck} is taken by another app or is not a key name`]);
-  if (hk.snapshot && !st.hotkeys.snapshot) items.push(['bad', `Hotkey ${hk.snapshot} is taken by another app`]);
-  const tc = state.config.trade;
+// Short chips across the top. Each says one thing at a glance; its hover text says the rest,
+// and a click goes where it can be fixed or refreshed. Things that are fine and need no
+// attention (item pictures known, the Divine price) are left out.
+function statusChips() {
+  const st = state.status, c = state.config, hk = c.hotkeys, chips = [];
+  const chip = (cls, label, tip, go) => chips.push({ cls, label, tip, go });
+  const g = st.game || {};
+  if (g.known) chip(g.front ? 'ok' : '', 'Game', g.front ? 'Path of Exile is the window in front, so the check keys work.' : 'Path of Exile is not the window in front. The price check and hideout keys only work while it is.', null);
+  if (st.log.ok) chip('ok', 'Game log', `Reading ${st.log.path || 'the game log'}. Click for the game log check.`, 'logcheck');
+  else chip('bad', 'Game log not found', `${st.log.error || 'The game log is not connected'}. Click to choose Client.txt.`, 'set:general');
+  const pr = st.prices, old = pr.updatedAt && Date.now() - pr.updatedAt > 2 * 3600000;
+  if (pr.loading) chip('busy', 'Prices…', 'Loading prices from poe.ninja.', null);
+  else if (pr.count > 1) chip(old ? 'busy' : 'ok', `Prices · ${pr.league}`, `${pr.count.toLocaleString()} prices for ${pr.league} from poe.ninja, updated at ${clock(pr.updatedAt)}.${old ? ' They are more than two hours old.' : ''} Click to refresh.`, 'prices');
+  else chip('bad', 'No prices', `${pr.errors[0] || 'No prices loaded'}. Click to try again.`, 'prices');
+  const inv = st.inventory, ic = c.inventory;
+  if (inv.error) chip('bad', 'Inventory', `Reading the inventory failed: ${inv.error}`, 'tab:inventory');
+  else if (inv.keyHook === 'missing' && ic.onKey && !ic.timed) chip('bad', 'Inventory key', 'The key listener is not installed, so your inventory key is not noticed. Switch on "Also read it by itself" in Settings, Loot counting, or use Read inventory now.', 'set:loot');
+  else if (inv.keyHook === 'badkey') chip('bad', 'Inventory key', `"${ic.key}" is not a key name the app knows. Click to choose it again.`, 'set:keys');
+  else if (inv.lastReadAt) chip('ok', `Inventory · ${clock(inv.lastReadAt)}`, `Last read at ${clock(inv.lastReadAt)}: ${inv.recognised} item stacks recognised. Click to see it.`, 'tab:inventory');
+  else chip('', 'Inventory', `Not read yet. Open your inventory in game (${ic.key}).`, 'tab:inventory');
+  const art = inv.art;
+  if (art.total > art.done) chip('busy', `Pictures ${art.done}/${art.total}`, 'Learning item pictures from poe.ninja.', null);
+  else if (art.failed && !art.known) chip('bad', 'Item pictures', `${art.failed} item pictures failed to download.`, null);
+  else if (!art.known && pr.count > 1) chip('bad', 'Item pictures', 'Prices loaded but no item pictures came with them.', null);
+  // Every key problem in one chip.
+  const keys = [];
+  if (!st.hotkeys.clipboard) keys.push(`${hk.clipboard} (check and count) is taken by another program`);
+  if (st.hotkeys.priceCheckHeld && !st.hotkeys.priceCheck) keys.push(`${hk.priceCheck} (price check) is taken by another program or is not a key name`);
+  if (hk.snapshot && !st.hotkeys.snapshot) keys.push(`${hk.snapshot} (report) is taken by another program`);
+  const tc = c.trade;
   if (tc) {
-    if (tc.hotkeys.layout && !st.hotkeys.layout) items.push(['bad', `Overlay key ${tc.hotkeys.layout} is taken by another app`]);
-    if (tc.enabled && tc.hotkeys.next && !st.hotkeys.tradeNext) items.push(['bad', `Trade key ${tc.hotkeys.next} is taken by another app`]);
-    for (const k of st.hotkeys.tradeTaken || []) items.push(['bad', `Key ${k} is taken by another app or is not a key name`]);
-    if (tc.enabled && tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) items.push(['bad', `Trade key ${tc.hotkeys.dismiss} is taken by another app`]);
+    if (tc.hotkeys.layout && !st.hotkeys.layout) keys.push(`${tc.hotkeys.layout} (move the overlay) is taken by another program`);
+    if (tc.enabled && tc.hotkeys.next && !st.hotkeys.tradeNext) keys.push(`${tc.hotkeys.next} (next trade step) is taken by another program`);
+    if (tc.enabled && tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) keys.push(`${tc.hotkeys.dismiss} (dismiss offer) is taken by another program`);
+    for (const k of st.hotkeys.tradeTaken || []) keys.push(`${k} is taken by another program or is not a key name`);
   }
-  if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
-  const up = st.update, btn = $('btn-side-update');
-  if (up.applying) items.push(['busy', up.step || 'Updating']);
-  else if (up.error) items.push(['bad', `Update problem: ${up.error}`]);
-  else if (up.available) items.push(['busy', `Update available: ${up.latest.message}`]);
-  // The button at the bottom of the sidebar checks, and turns into "Install update" when there is one.
-  btn.disabled = !!up.applying || !!up.checking;
-  btn.classList.toggle('has-update', !!up.available && !up.applying);
-  $('side-update-label').textContent = up.applying ? 'Updating…' : up.checking ? 'Checking…' : up.available ? 'Install update' : (up.checkedAt && Date.now() - up.checkedAt < 8000 ? 'Up to date' : 'Check for updates');
-  btn.title = up.available ? `Installs: ${up.latest.message}. The app restarts.` : (up.checkedAt ? `Last checked at ${clock(up.checkedAt)}` : '');
+  if (keys.length) chip('bad', `${keys.length} ${keys.length === 1 ? 'key' : 'keys'} not working`, `${keys.join('.\n')}.\nClick to change them.`, 'set:keys');
+  else chip('ok', 'Keys', `Every key works: price check ${hk.priceCheck || 'not set'}, check and count ${hk.clipboard}. Click to change them.`, 'set:keys');
+  const offers = (state.trade && state.trade.offers || []).filter((o) => !o.test).length;
+  if (tc && tc.enabled && offers) chip('busy', `${offers} trade ${offers === 1 ? 'offer' : 'offers'}`, 'Open trade offers. Click to see them.', 'tab:trade');
+  const cl = st.cloud || {};
+  if (cl.enabled && cl.signedIn && cl.error) chip('bad', 'Upload stopped', `${cl.error} It is tried again by itself. Click for your account.`, 'account');
+  else if (cl.enabled && cl.signedIn && cl.waiting) chip('busy', `${cl.waiting} to upload`, `${cl.waiting} finished ${cl.waiting === 1 ? 'session is' : 'sessions are'} waiting to go up.`, 'account');
+  return chips;
+}
+function renderStatus() {
+  setHtml($('status'), statusChips().map((x) => `<li><${x.go ? `button type="button" data-go="${x.go}"${x.go === 'logcheck' ? ' data-logcheck' : ''}` : 'span'} class="chip ${x.cls}" title="${esc(x.tip)}">${esc(x.label)}</${x.go ? 'button' : 'span'}></li>`).join(''));
+  renderUpdate();
+}
+$('status').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-go]');
+  if (!b) return;
+  const go = b.dataset.go;
+  if (go === 'prices') act({ type: 'refreshPrices' });
+  // 'logcheck' is opened by the game log check's own click handler (data-logcheck).
+  else if (go === 'account') $('btn-account').click();
+  else if (go.startsWith('tab:')) showTab(go.slice(4));
+  else if (go.startsWith('set:')) { showTab('settings'); showSettings(go.slice(4)); }
+});
+
+// ---- the update button at the bottom of the sidebar ---------------------------------
+// It always says what it is doing: checking, up to date, install, downloading, restarting, or
+// what went wrong. A click shows its new state at once, before the app has answered.
+let updPressed = 0;   // when "Check for updates" was clicked
+let updInstall = 0;   // when "Install update" was clicked
+let updTimer = null;
+function updateLook() {
+  const up = state.status.update, now = Date.now();
+  if (up.applying || (updInstall && now - updInstall < 3000 && !up.error)) {
+    const step = up.step || 'Downloading';
+    return { cls: 'busy', label: step === 'Restarting' ? 'Restarting…' : /Installing/.test(step) ? 'Installing…' : 'Downloading…', sub: step === 'Restarting' ? 'Back in a moment' : 'Keep the app open', busy: true, tip: step };
+  }
+  if (up.checking || (updPressed && now - updPressed < 600)) return { cls: 'busy', label: 'Checking…', sub: 'Asking GitHub', busy: true, tip: '' };
+  if (up.error) return { cls: 'bad', label: up.available ? 'Install failed' : 'Check failed', sub: 'Click to try again', tip: up.error };
+  if (up.available) return { cls: 'has-update', label: 'Install update', sub: up.latest.message, tip: `New: ${up.latest.message}. The app closes and opens again by itself.` };
+  if (updPressed && up.checkedAt >= updPressed - 1000 && now - up.checkedAt < 5000) return { cls: 'done', label: 'Up to date', sub: 'You have the newest version', tip: '' };
+  return { cls: '', label: 'Check for updates', sub: up.checkedAt ? `Checked at ${clock(up.checkedAt)}` : '', tip: up.current ? `Installed: ${up.current.message}` : '' };
+}
+function renderUpdate() {
+  const look = updateLook(), btn = $('btn-side-update'), up = state.status.update;
+  btn.className = `navi upd ${look.cls}`;
+  btn.disabled = !!look.busy;
+  btn.setAttribute('aria-busy', String(!!look.busy));
+  $('side-update-icon').classList.toggle('spin', !!look.busy);
+  $('side-update-label').textContent = look.label;
+  $('side-update-sub').textContent = look.sub;
+  btn.title = look.tip;
   const line = $('version-line');
   if (line) {
     const cur = up.current ? `Installed version ${up.current.sha.slice(0, 7)} (${up.current.message}).` : 'Installed from a download, so the exact version is not known yet. Install the update once to fix that.';
     const chk = up.checkedAt ? ` Last checked at ${clock(up.checkedAt)}${up.available ? '' : ': up to date'}.` : '';
     line.textContent = cur + chk;
   }
-  $('status').innerHTML = items.map(([cls, text]) => `<li class="${cls}">${esc(text)}</li>`).join('');
+  // "Checking…" and "Up to date" change by time alone, so they are drawn again without a new state.
+  clearTimeout(updTimer);
+  if (look.busy || look.cls === 'done') updTimer = setTimeout(() => { if (state) renderUpdate(); }, 400);
 }
+
+// ---- messages from the app: small toasts at the bottom right --------------------------
+// Each message shows once, for a few seconds (longer when something went wrong), and stays
+// while the mouse is on it.
+let toastSeen = 0;
+function renderToasts() {
+  const n = state.notice;
+  if (!n || n.at <= toastSeen) return;
+  toastSeen = n.at;
+  if (Date.now() - n.at > 30000) return; // an old message brought by the first state
+  const box = $('toasts');
+  for (const t of box.querySelectorAll('.toast')) if (t.dataset.text === n.text) t.remove();
+  const t = document.createElement('div');
+  t.className = `toast${n.bad ? ' bad' : ''}`;
+  t.dataset.text = n.text;
+  t.setAttribute('role', n.bad ? 'alert' : 'status');
+  t.innerHTML = `<span>${esc(n.text)}</span><button type="button" class="link" aria-label="Close">×</button>`;
+  box.prepend(t);
+  while (box.children.length > 3) box.lastElementChild.remove();
+  const ms = n.bad ? 9000 : 5000;
+  let timer = setTimeout(() => closeToast(t), ms);
+  t.addEventListener('mouseenter', () => clearTimeout(timer));
+  t.addEventListener('mouseleave', () => { timer = setTimeout(() => closeToast(t), 2500); });
+  t.querySelector('button').addEventListener('click', () => closeToast(t));
+}
+function closeToast(t) { t.classList.add('gone'); setTimeout(() => t.remove(), 250); }
 
 // What a map's total leaves out, in words.
 function uncountedLine(run, withHelp) {
@@ -58,6 +137,36 @@ function uncountedLine(run, withHelp) {
   const help = withHelp ? ` Hover one in game and press ${esc(state.config.hotkeys.clipboard)} to count it.` : '';
   return `<p class="uncounted">Not in this total: ${parts.join(' and ')}.${help}</p>`;
 }
+
+// ---- back from a map: one short line above the current map --------------------
+// Says what to do so this map's loot is counted. Red only when something must be done
+// (press the key, open the inventory once); otherwise it is a reminder. Closed with its cross
+// until the next time it is needed.
+let arrivalClosed = '';
+function arrivalNote() {
+  const invS = state.status.inventory, invC = state.config.inventory, key = esc(invC.key);
+  if (invS.noBaseline) return { id: 'base', bad: true, text: `Open your inventory once (<b>${key}</b>) so the app knows what you already carry.`, tip: 'The app has not seen your inventory yet, so it cannot tell what is new. Do this in your hideout, before the next map.' };
+  if (!invS.awaitingArrival) return null;
+  const id = `back:${state.summary.currentId || ''}`;
+  if (invC.timed) return { id, bad: false, text: 'Back from the map: open your stash or inventory to count the loot.', tip: 'Keep the mouse off the inventory for a second while it is read.' };
+  if (invC.onClick && invS.keyHook === 'ok') return { id, bad: false, text: `Back from the map: open your inventory (<b>${key}</b>) and stash as usual.`, tip: 'Each click is followed by one read, so the loot is counted and the app sees what you take back in.' };
+  return { id, bad: true, text: `Back from the map: press <b>${key}</b> before you stash, or this map's loot is not counted.`, tip: 'To have this happen by itself, switch on "Also read it by itself" in Settings, Loot counting.' };
+}
+function renderArrival() {
+  const a = arrivalNote(), box = $('arrival');
+  const show = a && a.id !== arrivalClosed;
+  box.hidden = !show;
+  if (!show) return;
+  box.className = `arrival${a.bad ? ' bad' : ''}`;
+  box.title = a.tip;
+  setHtml(box, `<span>${a.text}</span><button type="button" class="link" data-arrival-close aria-label="Hide this note">×</button>`);
+  box.dataset.id = a.id;
+}
+$('arrival').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-arrival-close]')) return;
+  arrivalClosed = $('arrival').dataset.id;
+  $('arrival').hidden = true;
+});
 
 // ---- the inventory picture kept for each map --------------------------------
 const snaps = new Map(); // "run id:when it changed" -> pictures, plus "last:run id" while a newer one loads
@@ -266,22 +375,5 @@ function renderNow() {
         <span class="val ${l.chaos > 0 ? '' : 'dim'}">${l.chaos > 0 ? fmtValue(l.chaos) : 'no price'}</span>
         <button type="button" class="link x" data-act="removeLootName" data-run="${esc(run.id)}" data-name="${esc(l.name)}" title="Remove from this map's loot" aria-label="Remove ${esc(l.name)}">×</button></li>`).join('');
   }
-  const invS = state.status.inventory, invC = state.config.inventory, arr = $('arrival');
-  if (invS.noBaseline) {
-    arr.hidden = false; arr.className = 'notice bad';
-    arr.textContent = `The app has not seen your inventory yet, so it cannot tell what is new. Open it once in your hideout (${invC.key}) before the next map.`;
-  } else if (invS.awaitingArrival) {
-    arr.hidden = false; arr.className = 'notice bad';
-    arr.textContent = invC.timed
-      ? 'Back from the map: open your stash or inventory now and the loot is counted. Keep the mouse off the inventory for a second.'
-      : invC.onClick && invS.keyHook === 'ok'
-        ? `Back from the map: open your inventory (${invC.key}) and stash as usual. Each click is followed by one read, so the loot is counted and the app sees what you take back in.`
-        : `Back from the map: press ${invC.key} before you stash anything, or the loot from this map is not counted. To have this happen by itself, switch on "Also read it by itself" in Settings, under Loot counting.`;
-  } else arr.hidden = true;
-
-  const n = state.notice, note = $('notice');
-  if (n && Date.now() - n.at < 30000) { note.hidden = false; note.className = n.bad ? 'notice bad' : 'notice'; note.textContent = n.text; }
-  else note.hidden = true;
-
   renderItems();
 }

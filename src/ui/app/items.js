@@ -95,7 +95,7 @@ function renderKnown() {
         <span class="row"><button type="button" data-act="uploadShared">Try again</button></span>`;
   } else {
     shareCls = 'on';
-    shareHtml = `<span>Sharing is on. What you name is sent to the item database as <b>${esc(sh.by || known.me)}</b> and every app has it at its next start. ${sh.count} ${sh.count === 1 ? 'picture' : 'pictures'} in the database.${unsent ? ` ${unsent} on this PC not sent yet.` : ''}</span>
+    shareHtml = `<span>Sharing is on. What you name is sent to the item database as <b>${esc(sh.by || known.me)}</b> and every app has it at its next start, or when Refresh shared list is pressed. ${sh.count} ${sh.count === 1 ? 'picture' : 'pictures'} in the database.${unsent ? ` ${unsent} on this PC not sent yet.` : ''}</span>
         ${unsent ? '<button type="button" data-act="uploadShared">Send now</button>' : ''}`;
   }
   share.hidden = false;

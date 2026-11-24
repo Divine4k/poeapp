@@ -48,6 +48,7 @@ const keyText = (v) => (v ? Keys.pretty(v) : 'no key set');
 function renderSettings() {
   if (!state || setPage.hidden) return;
   const c = state.config, st = state.status;
+  renderThemes(c.theme);
   // The lists to choose from come first, so that the choice can be shown in them.
   const leagues = state.leagues.length ? state.leagues : (c.league ? [{ id: c.league, name: c.league }] : []);
   setHtml(setPage.querySelector('[data-cfg="league"]'), leagues.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join(''));
@@ -200,3 +201,18 @@ document.addEventListener('keyup', (e) => {
 // button the list would be drawn again under the mouse and the click would be lost.
 document.addEventListener('click', (e) => { if (listening && !e.target.closest(`[data-key="${listening}"]`)) stopListening(); }, true);
 window.addEventListener('blur', stopListening);
+
+// ---- Look: the theme picker ------------------------------------------------------------
+// Each theme is a card with its colours (drawn by themes.css: the page allows no inline styles); the chosen one is ticked. A click changes the look at once.
+function renderThemes(current) {
+  const cur = THEMES.some((t) => t.id === current) ? current : 'slate';
+  setHtml($('theme-pick'), THEMES.map((t) => `<button type="button" class="theme-card" role="radio" aria-checked="${t.id === cur}" data-theme-pick="${t.id}">
+      <span class="theme-prev sw-${t.id}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <b>${esc(t.name)}</b><small>${esc(t.note)}</small></button>`).join(''));
+}
+$('theme-pick').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-theme-pick]');
+  if (!b) return;
+  applyTheme(b.dataset.themePick); // at once, before the app has saved it
+  saveSetting('theme', b.dataset.themePick);
+});

@@ -35,10 +35,28 @@ function closeLeftovers({ pid = process.pid, exe = process.execPath, appDir = ''
   });
 }
 
-// The command line that restarts the app once this copy is gone: wait, make sure this copy
-// really is gone (it is closed by force if it is still there), wait again, start the new one.
-function restartCommand({ pid, target }) {
-  return `ping -n 3 127.0.0.1 >nul & taskkill /F /PID ${Number(pid)} >nul 2>&1 & ping -n 2 127.0.0.1 >nul & start "" ${target}`;
+// After an update the new copy is started with --after-pid=<old copy>. It waits here until
+// the old copy is gone, so the two never hold the app's files or hotkeys at the same time.
+// This used to be a hidden cmd.exe that waited with ping and taskkill, but each of those
+// opened a black command window of its own on the way. The old copy is closed by force when
+// it is still there after limitMs. Returns 'gone', 'closed' or 'none'.
+function waitForExit(pid, limitMs = 12000, { alive = isAlive, sleep = sleepSync, kill = (p) => process.kill(p) } = {}) {
+  pid = Number(pid);
+  if (!pid || pid === process.pid || !alive(pid)) return 'none';
+  for (let waited = 0; waited < limitMs; waited += 150) {
+    sleep(150);
+    if (!alive(pid)) return 'gone';
+  }
+  try { kill(pid); } catch (_) { /* gone in the meantime */ }
+  for (let i = 0; i < 20 && alive(pid); i++) sleep(100);
+  return 'closed';
 }
+function isAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+}
+// Waits without letting anything else run; only used while the app is still starting.
+function sleepSync(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
+// The number after --after-pid= among the arguments, or 0.
+const afterPid = (argv) => { const a = (argv || []).find((x) => String(x).startsWith('--after-pid=')); return a ? Number(a.slice(12)) || 0 : 0; };
 
-module.exports = { closeLeftovers, leftoverScript, restartCommand };
+module.exports = { closeLeftovers, leftoverScript, waitForExit, afterPid };
