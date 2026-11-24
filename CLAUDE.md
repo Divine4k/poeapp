@@ -63,6 +63,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 - Roles come from the server (`users.admin` = admin, `users.role` = 'moderator'). `cloud.role` in the app; `canTrouble()` / `isAdmin()` in main.js.
 - Admins and moderators: the Troubleshooting page (`#tab-trouble`) and the record key (`hotkeys.record`, Shift+F9). Admins: Settings, Developer tools (`#set-dev`): reports repository, GitHub token, every user's role.
 - The GitHub token and repository are kept on the server (D1 `meta`, key `github`), handed to admins and moderators when they send. Recordings go to the reports repository, not to this one.
+- Admins and moderators also see everyone's recordings: `trouble.syncRemote()` looks in the reports repository once a minute (and when the page opens) and fetches facts and events of new ones; the video is fetched when one is opened (`videoFor`). Removed ones are listed in `recordings/hidden.json` so they are not fetched again.
 - Hook points that feed a recording in main.js: `say`, `push`, the log tail, `applyConfig`, the IPC `action` handler, hotkeys (`noted`), `sendChat`, `showToast`, console output, the window in front. A new thing the app does should call `trouble.event(kind, data)` there too.
 
 ## Conventions

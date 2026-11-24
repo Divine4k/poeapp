@@ -999,6 +999,10 @@ function setupTrouble() {
     cloud, fetchImpl: webFetch, say,
     changed: () => { troubleRev++; push(); },
   });
+  // Admins and moderators see everyone's recordings: the reports repository is looked at once a minute.
+  const look = () => { if (trouble && canTrouble() && !trouble.current) trouble.syncRemote().catch(() => {}); };
+  setTimeout(look, 8000);
+  setInterval(look, 60 * 1000);
   // What the app writes to its console goes into a recording too.
   for (const level of ['log', 'warn', 'error']) {
     const was = console[level].bind(console);
@@ -1629,6 +1633,7 @@ const actions = {
   // Troubleshooting page.
   troubleToggle: () => toggleRecording(),
   troubleNote: (a) => { if (trouble && trouble.setNote(a.id, a.note)) troubleRev++; },
+  troubleSync: () => { if (trouble && canTrouble()) return trouble.syncRemote(); },
   troubleRemove: (a) => { if (trouble && trouble.remove(a.id)) { troubleRev++; say('Recording deleted.'); } },
   troubleSend: async (a) => {
     if (!trouble) return;
@@ -1847,7 +1852,10 @@ function setupIpc() {
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('trouble-list', () => (trouble ? trouble.list() : []));
   ipcMain.handle('trouble-details', (_e, id) => (trouble ? trouble.details(String(id || '')) : null));
-  ipcMain.handle('trouble-video', (_e, id) => (trouble ? trouble.video(String(id || '')) : null));
+  ipcMain.handle('trouble-video', async (_e, id) => {
+    if (!trouble) return null;
+    try { return await trouble.videoFor(String(id || '')); } catch (e) { say(`The video could not be fetched: ${e.message || e}`, true); push(); return null; }
+  });
   ipcMain.handle('dev', (_e, a) => devAction(a || {}));
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];

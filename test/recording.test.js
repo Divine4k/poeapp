@@ -83,6 +83,15 @@ function fakeGithub({ empty = false, racing = 0, token = 'good' } = {}) {
     if (o.headers.Authorization !== `Bearer ${token}`) return answer(401, { message: 'Bad credentials' });
     if (o.method === 'GET' && route === '/git/ref/heads/main') return gh.ref ? answer(200, { object: { sha: gh.ref } }) : answer(409, { message: 'Git Repository is empty.' });
     if (o.method === 'PUT' && route === '/contents/README.md') { gh.commits.c1 = { tree: 't1', parents: [] }; gh.trees.t1 = { 'README.md': 'first' }; gh.ref = 'c1'; return answer(201, {}); }
+    if (o.method === 'GET' && route.startsWith('/contents/')) {
+      // A folder lists its entries; a file comes back as it is (raw).
+      const p = decodeURIComponent(route.slice('/contents/'.length).split('?')[0]);
+      const tree = gh.ref ? gh.trees[gh.commits[gh.ref].tree] : {};
+      if (tree[p]) return { ok: true, status: 200, arrayBuffer: async () => gh.blobs[tree[p]] };
+      const names = new Map();
+      for (const k of Object.keys(tree)) if (k.startsWith(`${p}/`)) { const rest = k.slice(p.length + 1).split('/'); names.set(rest[0], rest.length > 1 ? 'dir' : 'file'); }
+      return names.size ? answer(200, [...names].map(([name, type]) => ({ name, type }))) : answer(404, { message: 'Not Found' });
+    }
     if (o.method === 'POST' && route === '/git/blobs') { const sha = `b${++n}`; gh.blobs[sha] = Buffer.from(body.content, 'base64'); return answer(201, { sha }); }
     if (o.method === 'GET' && route.startsWith('/git/commits/')) return answer(200, { tree: { sha: gh.commits[route.split('/').pop()].tree } });
     if (o.method === 'POST' && route === '/git/trees') { const sha = `t${++n}`; gh.trees[sha] = { ...gh.trees[body.base_tree] }; for (const e of body.tree) gh.trees[sha][e.path] = e.sha; return answer(201, { sha }); }
@@ -203,4 +212,49 @@ test('without the screen, keys and app events are still recorded', async () => {
   assert.match(d.videoProblem, /no screen here/);
   assert.ok(/-local$/.test(id));
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('admins and moderators get everyone else\'s recordings from GitHub, and can remove them from their list', async () => {
+  const gh = fakeGithub();
+  const cloud = { github: async () => ({ repo: 'Divine4k/reports', token: 'good' }) };
+  const make = (dir, name) => new Troubleshoot({
+    dir, recorder: {
+      async start({ file }) { this.file = file; return { width: 1600, height: 900, mime: 'video/webm', screen: { width: 1920, height: 1080, scaleFactor: 1 } }; },
+      async stop() { fs.writeFileSync(this.file, Buffer.from(`video of ${name}`)); return { bytes: 13 }; },
+    },
+    displayId: () => null, version: 'x', cloud, fetchImpl: gh.fetch,
+    snapshot: async () => ({ state: { status: {} }, inventory: null }), who: () => ({ name, role: 'moderator' }),
+  });
+  const dirA = fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-a-'));
+  const dirB = fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-b-'));
+  const a = make(dirA, 'Helper');
+  const b = make(dirB, 'Divine');
+  await a.start(); a.event('notice', { text: 'hi' }); const id = await a.stop();
+  assert.strictEqual(await a.send(id, 'The overlay flickers.'), '');
+
+  assert.strictEqual(await b.syncRemote(), 1);
+  assert.strictEqual(b.unseen, 1);
+  const [r] = b.list();
+  assert.deepStrictEqual([r.id, r.remote, r.seen, r.by, r.note], [id, true, false, 'Helper', 'The overlay flickers.']);
+  assert.strictEqual(await b.syncRemote(), 0); // nothing new the second time
+  const d = b.details(id);
+  assert.ok(d.events.some((e) => e.kind === 'notice'));
+  assert.strictEqual(b.unseen, 0);
+  assert.strictEqual(b.video(id), null); // not fetched until watched
+  assert.strictEqual((await b.videoFor(id)).toString(), 'video of Helper');
+  assert.strictEqual(b.video(id).toString(), 'video of Helper');
+  assert.match(await b.send(id, 'x'), /came from GitHub/);
+  // The sender's own copy is not fetched back.
+  assert.strictEqual(await a.syncRemote(), 0);
+  // Removed from the list: it stays on GitHub and does not come back.
+  assert.ok(b.remove(id));
+  assert.strictEqual(await b.syncRemote(), 0);
+  assert.deepStrictEqual(b.list(), []);
+
+  // A broken token is told, not thrown.
+  const c = make(fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-c-')), 'X');
+  c.cloud = { github: async () => ({ repo: 'Divine4k/reports', token: 'bad' }) };
+  assert.strictEqual(await c.syncRemote(), 0);
+  assert.match(c.remoteError, /did not accept the token/);
+  for (const dir of [dirA, dirB, c.dir]) fs.rmSync(dir, { recursive: true, force: true });
 });

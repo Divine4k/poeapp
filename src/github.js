@@ -70,4 +70,27 @@ async function uploadFolder({ fetchImpl, token, repo, branch = 'main', folder, f
   throw new Error('GitHub kept changing while sending. Try again in a moment.');
 }
 
-module.exports = { uploadFolder, MAX_FILE };
+// Reading back what was sent, for the admins' list of everyone's recordings.
+// The names in a folder: [{ name, type: 'dir' | 'file' }]. A folder not there yet gives [].
+async function listFolder({ fetchImpl, token, repo, path, branch = 'main' }) {
+  const r = await call(fetchImpl, token, 'GET', `/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`);
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error(explain(r, repo));
+  return Array.isArray(r.data) ? r.data.map((e) => ({ name: e.name, type: e.type })) : [];
+}
+// One file as it is (a video included, up to GitHub's 100 MB). null when it is not there.
+async function readFile({ fetchImpl, token, repo, path, branch = 'main' }) {
+  const res = await fetchImpl(`${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.raw+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'poeapp' },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* no body */ }
+    throw new Error(explain({ status: res.status, data }, repo));
+  }
+  return Buffer.from(await res.arrayBuffer());
+}
+
+module.exports = { uploadFolder, listFolder, readFile, MAX_FILE };

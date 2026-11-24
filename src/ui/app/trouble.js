@@ -43,7 +43,10 @@ function renderTrouble() {
   const tr = state.trouble;
   const can = !!(tr && (tr.can || tr.recording));
   $('nav-trouble').hidden = !can;
-  $('trouble-dot').hidden = !(tr && tr.recording);
+  // Blinking while recording; a still dot when other people's recordings came in unopened.
+  $('trouble-dot').hidden = !(tr && (tr.recording || tr.unseen));
+  $('trouble-dot').classList.toggle('rec', !!(tr && tr.recording));
+  $('trouble-dot').title = tr && !tr.recording && tr.unseen ? `${tr.unseen} new recording${tr.unseen === 1 ? '' : 's'}` : '';
   if (!can && !$('tab-trouble').hidden) showTab('mapping');
   if (!tr || $('tab-trouble').hidden) return;
   for (const el of $('tab-trouble').querySelectorAll('[data-keyname]')) el.textContent = keyText(getPath(state.config, el.dataset.keyname));
@@ -56,6 +59,8 @@ function renderTrouble() {
     ? `${tr.video ? 'Screen, keys and the app' : 'Keys and the app (not the screen)'}. Stops by itself after ${Math.round(tr.maxMs / 60000)} minutes.`
     : `Or press ${key ? Keys.pretty(key) : 'the record key (set it in Settings, Keys)'} in game, and again to stop.`;
   trTick();
+  $('tr-remote-error').hidden = !tr.remoteError;
+  $('tr-remote-error').textContent = tr.remoteError ? `Could not look for other people's recordings: ${tr.remoteError}` : '';
   if (tr.rev !== trListRev) { trListRev = tr.rev; trLoadList(); }
   trSendLine();
 }
@@ -69,8 +74,9 @@ async function trLoadList() {
   trList = await api.troubleList();
   setHtml($('tr-list'), trList.length ? trList.map((r) => {
     const first = (r.note || '').trim().split('\n')[0];
-    return `<li><button type="button" class="tr-item${r.id === trSel ? ' on' : ''}" data-rec="${esc(r.id)}">
-      <span class="tr-item-top"><b>${esc(trWhen(r.startedAt))}</b><span class="dim">${esc(trClock(r.endedAt - r.startedAt))}${r.videoBytes ? `, ${esc(trSize(r.videoBytes))}` : ', no video'}</span>${r.sent ? '<span class="tag good">Sent</span>' : ''}</span>
+    const tag = r.remote ? (r.seen ? '' : '<span class="tag warn">New</span>') : r.sent ? '<span class="tag good">Sent</span>' : '';
+    return `<li><button type="button" class="tr-item${r.id === trSel ? ' on' : ''}${r.remote && !r.seen ? ' new' : ''}" data-rec="${esc(r.id)}">
+      <span class="tr-item-top"><b>${esc(trWhen(r.startedAt))}</b><span class="dim">${r.remote ? `${esc(r.by || 'someone')} · ` : ''}${esc(trClock(r.endedAt - r.startedAt))}${r.videoBytes ? `, ${esc(trSize(r.videoBytes))}` : ', no video'}</span>${tag}</span>
       <span class="tr-item-note${first ? '' : ' dim'}">${esc(first || 'No note yet')}</span></button></li>`;
   }).join('') : '<li class="empty">No recordings yet. Press Record, show the problem in game, then press Stop.</li>');
   if (trSel && !trList.some((r) => r.id === trSel)) trOpen(null);
@@ -97,8 +103,13 @@ async function trOpen(id) {
   trEvents();
   trSendLine();
   if (d.video) {
+    // One from someone else is fetched from GitHub the first time; that can take a moment.
+    $('tr-novideo').hidden = false;
+    $('tr-novideo').textContent = d.remote ? 'Fetching the video from GitHub…' : '';
     const bytes = await api.troubleVideo(id);
-    if (!bytes || trSel !== id) return;
+    if (trSel !== id) return;
+    if (!bytes) { $('tr-novideo').textContent = 'The video could not be fetched. Open it on GitHub instead.'; return; }
+    $('tr-novideo').hidden = true;
     trVideoUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/webm' }));
     v.src = trVideoUrl;
   }
@@ -139,6 +150,15 @@ function trEvents() {
 
 function trSendLine() {
   if (!trDetail || !state.trouble) return;
+  // Someone else's recording: read only, already on GitHub.
+  const remote = !!trDetail.remote;
+  $('tr-sendbtn').hidden = remote;
+  $('tr-note').readOnly = remote;
+  $('tr-delete').textContent = remote ? 'Remove from this list' : 'Delete';
+  if (remote) {
+    $('tr-sendinfo').innerHTML = `Sent by ${esc(trDetail.by || 'someone')}${trDetail.sent && trDetail.sent.at ? ` ${esc(trWhen(trDetail.sent.at))}` : ''}. <a href="${esc(trDetail.sent ? trDetail.sent.url : '')}" target="_blank" rel="noreferrer">Open on GitHub</a>`;
+    return;
+  }
   const s = state.trouble.sending;
   const mine = s && s.id === trSel;
   $('tr-sendbtn').disabled = !!s;
@@ -174,9 +194,11 @@ $('tr-sendbtn').addEventListener('click', () => {
   act({ type: 'troubleSend', id: trSel, note: $('tr-note').value });
 });
 $('tr-delete').addEventListener('click', () => {
-  if (!trSel || !window.confirm('Delete this recording from this PC? What was already sent stays on GitHub.')) return;
+  const remote = trDetail && trDetail.remote;
+  if (!trSel || !window.confirm(remote ? 'Remove this recording from your list? It stays on GitHub.' : 'Delete this recording from this PC? What was already sent stays on GitHub.')) return;
   act({ type: 'troubleRemove', id: trSel });
 });
 
 // Called when the page is opened.
-function troubleShown() { trListRev = -1; renderTrouble(); }
+// Also looks on GitHub right away for recordings sent since the last look.
+function troubleShown() { trListRev = -1; renderTrouble(); if (state.trouble && state.trouble.can) act({ type: 'troubleSync' }); }

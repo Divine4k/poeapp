@@ -14,9 +14,10 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { Trace, keyNames, keyLabel, buttonName, stateBrief, briefChanges, readme, recordingId, ID } = require('./core/recording');
-const { uploadFolder } = require('./github');
+const { uploadFolder, listFolder, readFile } = require('./github');
 
 const MAX_MS = 8 * 60 * 1000; // a longer video would be too large to send in one piece
+const SYNC_MAX = 20;          // recordings fetched in one go; the rest come with the next look
 
 class Troubleshoot {
   // dir: where recordings are kept. recorder: a ScreenRecorder. displayId(): the game's screen.
@@ -33,6 +34,9 @@ class Troubleshoot {
     this.held = new Set();
     this.names = {};
     this.ownUntil = 0; // keys and clicks seen before this time were sent by the app itself
+    this.syncing = false;
+    this.unseen = 0;   // other people's recordings fetched and not opened yet
+    this.remoteError = '';
   }
 
   // The app is about to press keys in the game: what the keyboard helper sees in the next ms
@@ -45,6 +49,7 @@ class Troubleshoot {
     return {
       recording: !!this.current, busy: this.busy, startedAt: this.current ? this.current.startedAt : 0,
       video: this.current ? !!this.current.video : false, maxMs: MAX_MS, sending: this.sending,
+      unseen: this.unseen, remoteError: this.remoteError,
     };
   }
 
@@ -154,7 +159,69 @@ class Troubleshoot {
     return names.map((id) => this.meta(id)).filter(Boolean)
       .filter((m) => !this.current || m.id !== this.current.id)
       .sort((a, b) => b.startedAt - a.startedAt)
-      .map((m) => ({ id: m.id, startedAt: m.startedAt, endedAt: m.endedAt, by: m.by, note: m.note, sent: m.sent, events: m.events, videoBytes: m.video ? m.video.bytes : 0, videoProblem: m.videoProblem }));
+      .map((m) => ({ id: m.id, startedAt: m.startedAt, endedAt: m.endedAt, by: m.by, note: m.note, sent: m.sent, events: m.events, videoBytes: m.video ? m.video.bytes : 0, videoProblem: m.videoProblem, remote: !!m.remote, seen: m.seen !== false }));
+  }
+
+  // ---- everyone's recordings, for admins and moderators ----
+  // Recordings removed from this PC's list, so the next look at GitHub does not bring them back.
+  hiddenFile() { return path.join(this.dir, 'hidden.json'); }
+  hidden() { try { return new Set(JSON.parse(fs.readFileSync(this.hiddenFile(), 'utf8'))); } catch (_) { return new Set(); } }
+  hide(id) {
+    const h = this.hidden(); h.add(id);
+    fs.mkdirSync(this.dir, { recursive: true });
+    fs.writeFileSync(this.hiddenFile(), JSON.stringify([...h]));
+  }
+  countUnseen() { this.unseen = this.list().filter((r) => r.remote && !r.seen).length; }
+
+  // Looks in the reports repository for recordings this PC does not have yet, and fetches their
+  // facts and events (the video only when one is opened). Answers how many came in.
+  async syncRemote() {
+    if (this.syncing) return 0;
+    this.syncing = true;
+    let added = 0;
+    try {
+      const gh = await this.cloud.github();
+      if (gh.error) throw new Error(gh.error);
+      if (!gh.token || !gh.repo) throw new Error('No reports repository or token is saved in Developer tools.');
+      const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
+      const hidden = this.hidden();
+      const ids = (await listFolder({ ...where, path: 'recordings' }))
+        .filter((e) => e.type === 'dir' && ID.test(e.name) && !hidden.has(e.name) && !this.meta(e.name))
+        .map((e) => e.name).sort().reverse().slice(0, SYNC_MAX); // newest first
+      for (const id of ids) {
+        const raw = await readFile({ ...where, path: `recordings/${id}/meta.json` });
+        if (!raw) continue;
+        let m;
+        try { m = JSON.parse(raw.toString('utf8')); } catch (_) { continue; }
+        const events = await readFile({ ...where, path: `recordings/${id}/events.json.gz` });
+        fs.mkdirSync(this.folder(id), { recursive: true });
+        if (events) fs.writeFileSync(path.join(this.folder(id), 'events.json.gz'), events);
+        this.saveMeta({ ...m, id, remote: true, seen: false, repo: gh.repo, sent: m.sent || { at: m.endedAt, url: `https://github.com/${gh.repo}/tree/main/recordings/${id}` } });
+        added++;
+      }
+      this.remoteError = '';
+    } catch (e) {
+      this.remoteError = e.message || String(e);
+    } finally {
+      this.syncing = false;
+    }
+    this.countUnseen();
+    if (added || this.remoteError) this.changed();
+    return added;
+  }
+
+  // The video of a recording; one fetched from GitHub is downloaded the first time it is watched.
+  async videoFor(id) {
+    const have = this.video(id);
+    if (have) return have;
+    const m = ID.test(String(id)) ? this.meta(id) : null;
+    if (!m || !m.remote || !m.video) return null;
+    const gh = await this.cloud.github();
+    if (gh.error) throw new Error(gh.error);
+    const data = await readFile({ fetchImpl: this.fetchImpl, token: gh.token, repo: m.repo || gh.repo, path: `recordings/${id}/video.webm` });
+    if (!data) return null;
+    fs.writeFileSync(path.join(this.folder(id), 'video.webm'), data);
+    return data;
   }
 
   // One recording for the preview: its facts and its events (the video comes separately).
@@ -164,6 +231,7 @@ class Troubleshoot {
     if (!m) return null;
     let events = [];
     try { events = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(this.folder(id), 'events.json.gz')))).events; } catch (_) { /* none kept */ }
+    if (m.remote && m.seen === false) { m.seen = true; this.saveMeta(m); this.countUnseen(); this.changed(); }
     return { ...m, events };
   }
   video(id) {
@@ -179,9 +247,13 @@ class Troubleshoot {
     return true;
   }
 
+  // Off this PC. One that is on GitHub stays there, and is not fetched again.
   remove(id) {
     if (!ID.test(String(id)) || (this.current && this.current.id === id)) return false;
+    const m = this.meta(id);
+    if (m && (m.remote || m.sent)) this.hide(id);
     fs.rmSync(this.folder(id), { recursive: true, force: true });
+    this.countUnseen();
     return true;
   }
 
@@ -189,6 +261,7 @@ class Troubleshoot {
   async send(id, note) {
     const m = ID.test(String(id)) ? this.meta(id) : null;
     if (!m) return 'That recording is no longer here.';
+    if (m.remote) return 'This one came from GitHub; it is there already.';
     if (this.sending) return 'Another recording is being sent. Wait until it is done.';
     if (note !== undefined) { m.note = String(note || '').slice(0, 5000); this.saveMeta(m); }
     if (!m.note.trim()) return 'Write a note first: what went wrong, and what you expected instead.';
