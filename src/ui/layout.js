@@ -8,11 +8,11 @@
   const SAMPLES = {
     toast: '<div class="toast-box"><b>Chaos Orb ×40: 40c (1c each)</b><span>Shown for a moment after the check key.</span></div>',
     check: `<div class="pc-panel"><div class="pc-head"><h1>Doom Loop, Two-Stone Ring</h1></div>
-      <div class="pc-body"><ul class="pc-rows">${[['Kind: Ring, any base type', ''], ['+91 total maximum Life', 82], ['+69% total Elemental Resistance', 62], ['+17% to Chaos Resistance', 15]]
-    .map(([label, n]) => `<li><span class="pc-tick"><input type="checkbox" checked tabindex="-1"><span>${label}</span></span>${n ? `<div class="pc-num"><i>at least</i><b>${n}</b></div>` : ''}</li>`).join('')}</ul></div>
-      <div class="pc-go"><button type="button" class="primary" tabindex="-1">Search</button></div>
-      <div class="pc-result"><p class="pc-sum">37 listed, from <b>45c</b>.</p><ul class="pc-list">${[['45 c', 'Zana_Mapper'], ['80 c', 'KiracsApprentice'], ['1 div', 'NikoTheMad']]
-    .map(([price, seller]) => `<li><span class="pc-price">${price}</span><span class="pc-seller">${seller}</span></li>`).join('')}</ul></div></div>`,
+      <div class="pc-headline"><div class="pc-figs"><span class="pc-fig main"><b>45c</b><i>cheapest</i></span><span class="pc-fig"><b>120c</b><i>typical</i></span><span class="pc-fig"><b>37</b><i>listed</i></span></div></div>
+      <div class="pc-body"><div class="pc-chips"><span class="pc-chip on">Ring</span><span class="pc-chip on">Not corrupted</span></div>
+        <ul class="pc-rows">${[['+91 total maximum Life', 82], ['+69% total Elemental Resistance', 62], ['+17% to Chaos Resistance', 15]]
+    .map(([label, n]) => `<li class="on"><span class="pc-tick"><input type="checkbox" checked tabindex="-1"><span>${label}</span></span><div class="pc-num"><i>min</i><b>${n}</b></div></li>`).join('')}</ul></div>
+      <div class="pc-go"><button type="button" class="primary" tabindex="-1">Search</button></div></div>`,
     trade: [['Invite', 'Tabula Rasa Simple Robe', '12 chaos'], ['Trade', '400× Chaos Orb', '1.5 divine'], ['Hideout', 'The Nurse', '75 chaos']]
       .map(([step, item, price]) => `<div class="tt in"><button type="button" class="primary" tabindex="-1">${step}</button><span class="tt-open"><span class="tt-item">${item}</span><span class="tt-price">${price}</span></span></div>`).join(''),
   };

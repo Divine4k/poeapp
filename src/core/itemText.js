@@ -33,8 +33,8 @@ function parseItemText(text) {
       const s = sections[i];
       if (s.some((l) => /^Travel to this Map/i.test(l))) break;
       for (const l of s) {
-        if (/^(Corrupted|Unidentified|Mirrored|Split|Note: )/.test(l)) continue;
-        item.mods.push(l.replace(/ \((implicit|enchant|fractured|crafted)\)$/, ''));
+        if (/^(Corrupted|Unidentified|Mirrored|Split|Note: )/.test(l) || MOD_HEADER.test(l)) continue;
+        item.mods.push(plainStat(l).replace(/ \((implicit|enchant|fractured|crafted)\)$/, ''));
       }
     }
   }
@@ -50,6 +50,21 @@ const INFLUENCE = /^(Shaper|Elder|Crusader|Redeemer|Hunter|Warlord) Item$/;
 const NOT_A_MOD = /^(Corrupted|Unidentified|Mirrored|Split|Synthesised Item|Fractured Item|Searing Exarch Item|Eater of Worlds Item|Unmodifiable|Note: .*)$/;
 // The game's own hints at the end of an item's text.
 const HINT = /^(Right click |Place into |Shift click |Can be |Travel to |Use Intelligence |This is a Support Gem|Take this item |Give this |Relics can )/;
+
+// The game has a fuller item text (Ctrl+Alt+C, or always with some settings). It puts a line
+// in curly brackets above each modifier, saying what kind it is, and writes each number with
+// the range it could have rolled: "+62(50-75)% to Fire Resistance". Both texts are read.
+const MOD_HEADER = /^\{.*\}$/;
+const ROLL_RANGE = /((?<![\d)])[+-]?\d+(?:\.\d+)?)\([^()]*\)/g;
+// A modifier line as the short text would have it: without ranges and remarks.
+const plainStat = (line) => line.replace(/ — Unscalable Value$/, '').replace(ROLL_RANGE, '$1');
+// What a line in curly brackets says about the modifiers under it.
+function headerKind(line) {
+  if (/Implicit Modifier/.test(line)) return { type: 'implicit', corruption: /Corruption/.test(line) };
+  if (/Fractured/.test(line)) return { type: 'fractured' };
+  if (/Crafted/.test(line)) return { type: 'crafted' };
+  return { type: 'explicit' };
+}
 
 // Everything a trade search needs from an item that is not a map: its level, sockets,
 // influences and every modifier line with its kind. Lines the game adds as explanation, in
@@ -82,14 +97,20 @@ function readGear(item, text, sections) {
   const start = sections.findIndex((s) => s.some((l) => /^Item Level: /.test(l)));
   for (let i = start + 1; i < sections.length && start >= 0; i++) {
     let explaining = false;
-    for (const l of sections[i]) {
-      if (!explaining && l.startsWith('(')) explaining = true;
-      if (explaining) { if (l.endsWith(')')) explaining = false; continue; }
-      const inf = INFLUENCE.exec(l);
+    let header = null, group = 0;
+    for (const raw of sections[i]) {
+      if (!explaining && raw.startsWith('(')) explaining = true;
+      if (explaining) { if (raw.endsWith(')')) explaining = false; continue; }
+      if (MOD_HEADER.test(raw)) { header = headerKind(raw); group += 1; continue; }
+      const inf = INFLUENCE.exec(raw);
       if (inf) { item.influences.push(inf[1]); continue; }
-      if (NOT_A_MOD.test(l) || HINT.test(l)) continue;
+      if (NOT_A_MOD.test(raw) || HINT.test(raw)) continue;
+      const l = plainStat(raw);
       const kind = MOD_KIND.exec(l);
-      item.modLines.push({ text: l.replace(MOD_KIND, ''), type: kind ? kind[1] : 'explicit', section: i });
+      const line = { text: l.replace(MOD_KIND, ''), type: kind ? kind[1] : (header ? header.type : 'explicit'), section: i };
+      // Lines under one header belong to one modifier and are never joined with the next one's.
+      if (header) { line.group = group; if (header.corruption) line.corruption = true; }
+      item.modLines.push(line);
     }
   }
 }

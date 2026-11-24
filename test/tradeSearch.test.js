@@ -167,7 +167,8 @@ test('stat list: a modifier line finds its id on the trade site', () => {
   assert.notDeepEqual(onBow.ids, onRing.ids);
   assert.deepEqual(onBow.ids, ['explicit.stat_210067635']);
   // "reduced" is the same stat as "increased", counted below zero.
-  assert.equal(index.match('10% reduced Attack Speed', 'explicit', 'Ring').value, -10);
+  const slower = index.match('10% reduced Attack Speed', 'explicit', 'Ring');
+  assert.deepEqual([slower.value, slower.negated, index.match('10% increased Attack Speed', 'explicit', 'Ring').negated], [-10, true, false]);
   // A fixed number that is part of the wording stays in it.
   assert.equal(index.match('1 Added Passive Skill is a Jewel Socket', 'enchant', 'Cluster Jewel').value, 1);
   // Stats the trade site only has as a total.
@@ -215,8 +216,8 @@ test('search choices: weapons, uniques, magic items, cluster jewels and what can
   const flask = buildFilters(parseItemText(FLASK), index);
   assert.deepEqual([flask.type, flask.category.id, flask.unknown.length], [null, 'flask', 0]);
   assert.equal(isNarrow(flask), false); // nothing ticked: searching would only find the cheapest flask
-  // Fewer charges per use is better: the search asks for at least this much "reduced".
-  assert.deepEqual([stat(flask, 'Charges per use').min, stat(flask, 'Charges per use').max], [null, -25]);
+  // A "reduced" stat is searched as written, a tenth below the item's own: at least 23% reduced.
+  assert.deepEqual([stat(flask, 'Charges per use').min, stat(flask, 'Charges per use').max], [null, -23]);
 
   const cluster = buildFilters(parseItemText(CLUSTER), index);
   assert.equal(cluster.category.id, 'jewel.cluster');
@@ -354,7 +355,7 @@ test('trade site: a lock-out, an error in words, and limits not told yet are all
 
 test('listings and the message in game', () => {
   const chaosOf = (amount, currency) => (currency === 'chaos' ? amount : currency === 'divine' ? amount * 200 : null);
-  const raw = { id: 'x1', listing: { indexed: '2026-11-24T08:00:00Z', whisper: '@Seller Hi, I would like to buy your ring', account: { name: 'acc#1234', lastCharacterName: 'Seller', online: { league: 'L' } }, price: { type: '~b/o', amount: 2, currency: 'divine' } }, item: { name: 'Doom Loop', typeLine: 'Two-Stone Ring', ilvl: 84, corrupted: true } };
+  const raw = { id: 'x1', listing: { indexed: '2026-11-24T08:00:00Z', account: { name: 'acc#1234', lastCharacterName: 'Seller', online: { league: 'L' } }, price: { type: '~b/o', amount: 2, currency: 'divine' } }, item: { name: 'Doom Loop', typeLine: 'Two-Stone Ring', ilvl: 84, corrupted: true } };
   const l = readListing(raw, chaosOf);
   assert.deepEqual([l.id, l.price, l.chaos, l.seller, l.status, l.itemLevel, l.corrupted, l.name], ['x1', { amount: 2, currency: 'divine' }, 400, 'Seller', 'online', 84, true, 'Doom Loop, Two-Stone Ring']);
   assert.equal(l.listedAt, Date.parse('2026-11-24T08:00:00Z'));
@@ -371,7 +372,7 @@ test('listings and the message in game', () => {
 
   const filters = { ok: true, title: 'Doom Loop, Two-Stone Ring' };
   const done = { state: 'done', filters, summary: { total: 37, low: 45, median: 400 }, error: '' };
-  assert.deepEqual(tradeMessage(done, 200), { title: 'Doom Loop, Two-Stone Ring: from 45c', detail: '37 listed. Middle of the cheapest 10: 2.00 div.', bad: false });
+  assert.deepEqual(tradeMessage(done, 200), { title: 'Doom Loop, Two-Stone Ring: from 45c', detail: '37 listed. Typical price: 2.00 div.', bad: false });
   assert.match(tradeMessage({ ...done, summary: { total: 0, low: null, median: null } }).title, /nothing like it is listed/);
   assert.match(tradeMessage({ ...done, summary: { total: 3, low: null, median: null } }).title, /3 listed/);
   assert.deepEqual(tradeMessage({ state: 'error', filters, error: 'The trade site allows another search in 4 s.' }), { title: 'Doom Loop, Two-Stone Ring: not searched', detail: 'The trade site allows another search in 4 s.', bad: true });
@@ -424,4 +425,101 @@ test('price check window in game: beside the panel the item is in, and gone when
   // Used: it stays for as long as the mouse is on it, and goes when the mouse has left.
   assert.equal(shouldClose({ entered: true, sinceInside: 100, sinceNews: IDLE_MS * 10, busy: false }), false);
   assert.equal(shouldClose({ entered: true, sinceInside: LEFT_MS + 1, sinceNews: 0, busy: true }), true);
+});
+
+const CLOAK_FULL = `Item Class: Body Armours
+Rarity: Unique
+Cloak of Flame
+Scholar's Robe
+--------
+Energy Shield: 48
+--------
+Sockets: B-B-B-B B-B 
+--------
+Item Level: 85
+--------
+{ Corruption Implicit Modifier \u2014 Elemental, Fire }
+4(4-6)% reduced Fire Damage taken (implicit)
+--------
+{ Unique Modifier \u2014 Physical, Elemental, Fire }
+40% of Physical Damage taken as Fire Damage
+{ Unique Modifier \u2014 Damage, Elemental, Fire }
+Reflects 100 Fire Damage to Melee Attackers
+{ Unique Modifier \u2014 Elemental, Fire, Resistance }
++62(50-75)% to Fire Resistance
+{ Unique Modifier \u2014 Elemental, Fire, Ailment }
+60(40-75)% increased Ignite Duration on Enemies
+--------
+Corrupted
+--------
+He who sows an ember shall reap an inferno.
+`;
+const RING_FULL = `Item Class: Rings
+Rarity: Rare
+Doom Loop
+Two-Stone Ring
+--------
+Item Level: 84
+--------
+{ Implicit Modifier \u2014 Elemental, Fire, Cold, Resistance }
++14(12-16)% to Fire and Cold Resistances (implicit)
+--------
+{ Fractured Prefix Modifier "Rotund" (Tier: 3) \u2014 Life }
++72(70-79) to maximum Life (fractured)
+{ Prefix Modifier "Annealed" (Tier: 6) \u2014 Damage, Physical, Attack }
+Adds 8(6-9) to 14(13-15) Physical Damage to Attacks
+{ Suffix Modifier "of the Maelstrom" (Tier: 2) \u2014 Elemental, Lightning, Resistance }
++41(36-41)% to Lightning Resistance
+{ Master Crafted Suffix Modifier "of Craft" (Rank: 3) \u2014 Attribute }
++25(21-25) to Strength (crafted)
+(Attributes grant bonuses)
+{ Suffix Modifier "of Zzz" \u2014 Speed }
+-12(-15--10)% to Chaos Resistance
+1 Added Passive Skill is a Jewel Socket \u2014 Unscalable Value
+--------
+Fractured Item
+`;
+
+test('item text: the game\'s fuller text, with a line above each modifier and rolled ranges, reads the same', () => {
+  const cloak = parseItemText(CLOAK_FULL);
+  assert.deepEqual(cloak.modLines.filter((l) => l.section < 6).map((l) => [l.text, l.type, !!l.corruption]), [
+    ['4% reduced Fire Damage taken', 'implicit', true],
+    ['40% of Physical Damage taken as Fire Damage', 'explicit', false],
+    ['Reflects 100 Fire Damage to Melee Attackers', 'explicit', false],
+    ['+62% to Fire Resistance', 'explicit', false],
+    ['60% increased Ignite Duration on Enemies', 'explicit', false],
+  ]);
+  const f = buildFilters(cloak, index);
+  // Every modifier is offered, the corruption's own named as such, and none is ticked on a unique.
+  assert.deepEqual(f.stats.map((s) => [s.text, s.kind, s.enabled]), [
+    ['4% reduced Fire Damage taken', 'corruption', false],
+    ['40% of Physical Damage taken as Fire Damage', 'explicit', false],
+    ['Reflects 100 Fire Damage to Melee Attackers', 'explicit', false],
+    ['+62% to Fire Resistance', 'explicit', false],
+    ['60% increased Ignite Duration on Enemies', 'explicit', false],
+  ]);
+  // "4% reduced" is searched as written: at least 4% reduced, which the trade site keeps as -4.
+  const taken = f.stats[0];
+  assert.deepEqual([taken.ids, taken.min, taken.max, taken.negated], [['implicit.stat_3743301799'], null, -4, true]);
+  const q = buildQuery(applyEdits(f, { stats: { [taken.key]: { enabled: true } } }));
+  assert.deepEqual(q.query.stats[0].filters, [{ id: 'implicit.stat_3743301799', value: { max: -4 } }]);
+  assert.deepEqual([q.query.name, q.query.filters.misc_filters], ['Cloak of Flame', { filters: { corrupted: { option: 'true' } } }]);
+
+  const ring = parseItemText(RING_FULL);
+  assert.deepEqual(ring.modLines.map((l) => [l.text, l.type]), [
+    ['+14% to Fire and Cold Resistances', 'implicit'], ['+72 to maximum Life', 'fractured'], ['Adds 8 to 14 Physical Damage to Attacks', 'explicit'],
+    ['+41% to Lightning Resistance', 'explicit'], ['+25 to Strength', 'crafted'], ['-12% to Chaos Resistance', 'explicit'], ['1 Added Passive Skill is a Jewel Socket', 'explicit'],
+  ]);
+  assert.deepEqual(ring.influences, []);
+  const rf = buildFilters(ring, index);
+  assert.equal(stat(rf, 'total Elemental Resistance').value, 69);
+  assert.equal(stat(rf, 'total maximum Life').value, 84); // 72 and half of 25 strength
+  assert.deepEqual(rf.unknown, []);
+
+  // The short text of the same cloak gives the same stats, without knowing it is a corruption's.
+  const short = CLOAK_FULL.split('\n').filter((l) => !l.startsWith('{')).join('\n').replace(/\(\d+-\d+\)/g, '');
+  assert.deepEqual(buildFilters(parseItemText(short), index).stats.map((s) => [s.text, s.kind]), f.stats.map((s) => [s.text, s.kind === 'corruption' ? 'implicit' : s.kind]));
+  // A map's mods are read without the extra lines too.
+  const map = parseItemText('Item Class: Maps\nRarity: Rare\nX\nStrand Map\n--------\nMap Tier: 16\n--------\nItem Level: 83\n--------\n{ Prefix Modifier "Mirrored" (Tier: 1) }\nMonsters reflect 18(13-18)% of Physical Damage\n');
+  assert.deepEqual(map.mods, ['Monsters reflect 18% of Physical Damage']);
 });

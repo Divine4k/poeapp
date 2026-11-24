@@ -54,14 +54,14 @@
           { key: 'pseudo:res', text: '+70% total Elemental Resistance', kind: 'pseudo', ids: ['x'], value: 70, min: 63, max: null, enabled: true },
           { key: 'stat:0', text: '30% increased Movement Speed', kind: 'explicit', ids: ['x'], value: 30, min: 27, max: null, enabled: true },
           { key: 'stat:1', text: '35% increased Armour and Evasion', kind: 'explicit', ids: ['x'], value: 35, min: 32, max: null, enabled: false },
-          { key: 'stat:2', text: '8% reduced Mana Cost of Skills', kind: 'crafted', ids: ['x'], value: 8, min: 7, max: null, enabled: false },
+          { key: 'stat:2', text: '8% reduced Mana Cost of Skills', kind: 'crafted', ids: ['x'], value: -8, min: null, max: -7, negated: true, enabled: false },
         ],
         unknown: [],
       },
       listings: [
-        { id: 'a', price: { amount: 45, currency: 'chaos' }, chaos: 45, seller: 'Zana_Mapper', status: 'instant', listedAt: now - 40 * 60000, itemLevel: 85, corrupted: false, name: 'Dusk Trail, Two-Toned Boots', whisper: '' },
-        { id: 'b', price: { amount: 80, currency: 'chaos' }, chaos: 80, seller: 'KiracsApprentice', status: 'online', listedAt: now - 5 * 3600000, itemLevel: 86, corrupted: false, name: 'Storm Spur, Two-Toned Boots', whisper: '@KiracsApprentice Hi' },
-        { id: 'c', price: { amount: 1, currency: 'divine' }, chaos: 212, seller: 'NikoTheMad', status: 'afk', listedAt: now - 3 * 86400000, itemLevel: 84, corrupted: false, name: 'Gale Stride, Two-Toned Boots', whisper: '@NikoTheMad Hi' },
+        { id: 'a', price: { amount: 45, currency: 'chaos' }, chaos: 45, seller: 'Zana_Mapper', status: 'instant', listedAt: now - 40 * 60000, itemLevel: 85, corrupted: false, name: 'Dusk Trail, Two-Toned Boots' },
+        { id: 'b', price: { amount: 80, currency: 'chaos' }, chaos: 80, seller: 'KiracsApprentice', status: 'online', listedAt: now - 5 * 3600000, itemLevel: 86, corrupted: false, name: 'Storm Spur, Two-Toned Boots' },
+        { id: 'c', price: { amount: 1, currency: 'divine' }, chaos: 212, seller: 'NikoTheMad', status: 'afk', listedAt: now - 3 * 86400000, itemLevel: 84, corrupted: false, name: 'Gale Stride, Two-Toned Boots' },
       ],
     },
     mapCheck: {

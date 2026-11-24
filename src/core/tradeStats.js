@@ -106,7 +106,9 @@ class StatIndex {
       if (matcher.negate) values = values.map((v) => -v);
       if (!values.length && matcher.value !== undefined) values = [matcher.value];
       const value = values.length === 2 ? (values[0] + values[1]) / 2 : (values.length ? values[0] : null);
-      return { ref: stat.ref, ids: stat.ids[type], value, better: stat.better, inverted: !!stat.inverted };
+      // negated: the item words it the other way round ("reduced" for the stat's "increased"),
+      // so its value is below zero here.
+      return { ref: stat.ref, ids: stat.ids[type], value, better: stat.better, inverted: !!stat.inverted, negated: !!matcher.negate };
     }
     return null;
   }

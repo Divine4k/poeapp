@@ -80,9 +80,12 @@ function keyStat(category, m) {
 }
 
 function statFilter(key, text, kind, found, enabled) {
-  const f = { key, text, kind, ids: found.ids, value: found.value, min: null, max: null, enabled, inverted: !!found.inverted };
+  const f = { key, text, kind, ids: found.ids, value: found.value, min: null, max: null, enabled, inverted: !!found.inverted, negated: !!found.negated };
   if (found.value !== null) {
-    if (found.better === -1) f.max = found.value;
+    // "4% reduced Fire Damage taken" is searched as written: at least about that much reduced,
+    // which on the trade site is "at most -4% increased".
+    if (found.negated && found.better !== 0) f.max = -floorFor(Math.abs(found.value));
+    else if (found.better === -1) f.max = found.value;
     else if (found.better === 0) { f.min = found.value; f.max = found.value; }
     else f.min = floorFor(found.value);
   }
@@ -125,9 +128,9 @@ function buildFilters(item, index) {
     let hit = null;
     for (let n = Math.min(3, lines.length - i); n >= 1 && !hit; n--) {
       const run = lines.slice(i, i + n);
-      if (run.some((l) => l.section !== run[0].section || l.type !== run[0].type)) continue;
+      if (run.some((l) => l.section !== run[0].section || l.type !== run[0].type || l.group !== run[0].group)) continue;
       const found = index.match(run.map((l) => l.text).join('\n'), run[0].type, kind.category);
-      if (found) hit = { found, n, text: run.map((l) => l.text).join(' '), type: found.pseudo ? 'pseudo' : run[0].type };
+      if (found) hit = { found, n, text: run.map((l) => l.text).join(' '), type: found.pseudo ? 'pseudo' : run[0].type, corruption: !!run[0].corruption };
     }
     if (hit) { matched.push(hit); i += hit.n - 1; } else if (!unique) out.unknown.push(lines[i].text);
   }
@@ -154,7 +157,8 @@ function buildFilters(item, index) {
   for (const m of matched) {
     if (dropped.has(m)) continue;
     // A fractured modifier can never be changed, so it is what the item is bought for.
-    out.stats.push(statFilter(`stat:${n++}`, m.text, m.type, m.found, m.type === 'fractured' || keyStat(kind.category, m)));
+    // kind is what the window shows beside the stat; a corruption's implicit is named as such.
+    out.stats.push(statFilter(`stat:${n++}`, m.text, m.corruption ? 'corruption' : m.type, m.found, m.type === 'fractured' || keyStat(kind.category, m)));
   }
   return out;
 }
@@ -233,7 +237,8 @@ function buildQuery(filters) {
   return { query, sort: { price: 'asc' } };
 }
 
-// One line of what a search found, for the message in game: "12 listed, from 40c".
+// What a search found, in three numbers: how many are listed, the cheapest price, and the
+// typical price (the middle one of the cheapest ten, which a single underpriced item does not move).
 // listings: [{ chaos }] cheapest first, chaos null when the currency has no known rate.
 function summarize(total, listings) {
   const known = listings.map((l) => l.chaos).filter((c) => c !== null && isFinite(c)).sort((a, b) => a - b);

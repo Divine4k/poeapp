@@ -395,7 +395,7 @@
   }
 
   // ---- trade site search for the item last checked ---------------------------------------
-  const KIND_WORDS = { pseudo: 'total', implicit: 'implicit', crafted: 'crafted', fractured: 'fractured', enchant: 'enchant', scourge: 'scourge', crucible: 'crucible' };
+  const KIND_WORDS = { pseudo: 'total', implicit: 'implicit', corruption: 'corruption', crafted: 'crafted', fractured: 'fractured', enchant: 'enchant', scourge: 'scourge', crucible: 'crucible' };
   const COIN_WORDS = { chaos: 'c', divine: 'div', exalted: 'ex', mirror: 'mirror' };
   const STATUS_WORDS = { instant: 'Instant buyout', online: 'Online', afk: 'Away', offline: 'Offline' };
   const numAttr = (v) => (v === null || v === undefined ? '' : esc(v));
@@ -438,18 +438,17 @@
     if (!tc.total) return `<p class="notice">Nothing like it is listed. Untick a stat or lower a number to widen the search.</p>${link}`;
     const s = tc.summary || {};
     const head = s.low === null ? `${tc.total.toLocaleString()} listed.`
-      : `${tc.total.toLocaleString()} listed, from <b>${fmtValue(s.low)}</b>. Middle of the cheapest ${tc.listings.length}: <b>${fmtValue(s.median)}</b>.`;
+      : `Cheapest <b>${fmtValue(s.low)}</b>, typical <b>${fmtValue(s.median)}</b>. ${tc.total.toLocaleString()} listed.`;
     const rowsHtml = tc.listings.map((l) => {
       const price = l.price ? `${l.price.amount} ${esc(COIN_WORDS[l.price.currency] || l.price.currency)}` : 'No price';
       const inChaos = l.price && l.price.currency !== 'chaos' && l.chaos !== null ? `<small>about ${Math.round(l.chaos).toLocaleString()}c</small>` : '';
-      const whisper = l.whisper && l.status !== 'instant' ? `<button type="button" data-act="tradeWhisper" data-id="${esc(l.id)}">Whisper</button>` : '';
       return `<tr><td class="num val">${price}${inChaos}</td>
         <td>${esc(l.name)}${l.itemLevel ? `<small>Item level ${l.itemLevel}${l.corrupted ? ', corrupted' : ''}</small>` : ''}</td>
         <td>${esc(l.seller)}<small class="st-${esc(l.status)}">${STATUS_WORDS[l.status] || ''}</small></td>
-        <td class="num dim">${ago(l.listedAt)}</td><td>${whisper}</td></tr>`;
+        <td class="num dim">${ago(l.listedAt)}</td></tr>`;
     }).join('');
     return `<p class="tc-sum">${head} ${link}</p>
-      <div class="table-wrap"><table class="tc-list"><thead><tr><th class="num">Price</th><th>Item</th><th>Seller</th><th class="num">Listed</th><th></th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
+      <div class="table-wrap"><table class="tc-list"><thead><tr><th class="num">Price</th><th>Item</th><th>Seller</th><th class="num">Listed</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
   }
 
   function renderTradeCheck() {

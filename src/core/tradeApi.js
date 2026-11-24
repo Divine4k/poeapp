@@ -120,7 +120,7 @@ function readListing(raw, chaosOf = () => null) {
     // A listing with a fee is in a merchant's tab: bought at once in the seller's hideout, no whisper.
     status: l.fee != null ? 'instant' : (acc.online ? (acc.online.status === 'afk' ? 'afk' : 'online') : 'offline'),
     listedAt: l.indexed ? Date.parse(l.indexed) || 0 : 0, itemLevel: it.ilvl || null, corrupted: !!it.corrupted,
-    name: [it.name, it.typeLine].filter(Boolean).join(', '), whisper: typeof l.whisper === 'string' ? l.whisper : '',
+    name: [it.name, it.typeLine].filter(Boolean).join(', '),
   };
 }
 

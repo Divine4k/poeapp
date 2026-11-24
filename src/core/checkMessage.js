@@ -70,7 +70,7 @@ function tradeMessage(tc, divine = 0) {
   const s = tc.summary || {};
   if (!s.total) return { title: `${title}: nothing like it is listed`, detail: 'Untick a stat on the Prices page to widen the search.', bad: false };
   if (s.low === null) return { title: `${title}: ${s.total} listed`, detail: 'Their prices are in currencies the app has no rate for.', bad: false };
-  return { title: `${title}: from ${worth(s.low, divine)}`, detail: `${s.total} listed. Middle of the cheapest ${Math.min(10, s.total)}: ${worth(s.median, divine)}.`, bad: false };
+  return { title: `${title}: from ${worth(s.low, divine)}`, detail: `${s.total} listed. Typical price: ${worth(s.median, divine)}.`, bad: false };
 }
 
 module.exports = { checkMessage, noteMessage, tradeMessage, worth };

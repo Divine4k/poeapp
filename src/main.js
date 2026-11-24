@@ -1167,13 +1167,6 @@ const actions = {
   // The cross on the window in game: the search stays on the Prices page.
   checkPanelClose: () => { if (checkPanel) checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; },
   tradeOpen: () => { if (tradeCheck && /^https:\/\/www\.pathofexile\.com\//.test(tradeCheck.url)) shell.openExternal(tradeCheck.url); },
-  // One click, one chat line: the whisper the trade site wrote for this listing.
-  tradeWhisper: async (a) => {
-    const l = tradeCheck && tradeCheck.listings.find((x) => x.id === a.id);
-    // Only ever a whisper: a line that starts with anything but @name is not typed.
-    if (!l || !/^@\S+ /.test(l.whisper)) return;
-    if (await sendChat(l.whisper)) say(`Whispered ${l.seller}.`);
-  },
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),
   refreshPrices: () => { refreshPrices(); },
