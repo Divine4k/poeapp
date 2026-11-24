@@ -663,12 +663,19 @@ const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape
 const hookWanted = () => !!(config.inventory.onKey || config.inventory.onClick || config.inventory.autoCopy || config.trade.enabled || config.trade.hotkeys.hideout || config.trade.hotkeys.remaining);
 // What the helper is set up from. It is only started again when one of these changes.
 const hookSetup = () => JSON.stringify([hookWanted(), !!config.inventory.onKey, config.inventory.key, !!config.inventory.onClick]);
+// The helper is started once and then left running: only what it listens for is swapped when
+// a setting changes. Stopping and starting it again (as every change on the Settings page used
+// to do) can leave it unable to start on Windows, and with it gone the app could neither copy
+// the hovered item nor type in the game. Sending keys does not need it to be listening at all,
+// so `hook` is set as soon as the helper is loaded, whether or not listening works.
+let hookListening = false;
 function syncKeyHook() {
-  if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.removeAllListeners('mouseup'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
+  let lib = hook;
+  if (!lib) { try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; } }
+  hook = lib;
+  try { lib.uIOhook.removeAllListeners('keydown'); lib.uIOhook.removeAllListeners('mouseup'); } catch (_) { /* none were set */ }
   status.inventory.keyHook = 'off';
   if (!hookWanted()) return;
-  let lib;
-  try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; }
   if (config.inventory.onKey) {
     const raw = String(config.inventory.key || 'Tab').trim();
     const name = KEY_ALIASES[raw.toLowerCase()] || (raw.length === 1 ? raw.toUpperCase() : raw);
@@ -685,7 +692,10 @@ function syncKeyHook() {
       clickTimer = setTimeout(readInventory, 300);
     });
   }
-  try { lib.uIOhook.start(); hook = lib; if (status.inventory.keyHook !== 'badkey') status.inventory.keyHook = 'ok'; } catch (_) { status.inventory.keyHook = 'missing'; }
+  try {
+    if (!hookListening) { lib.uIOhook.start(); hookListening = true; }
+    if (status.inventory.keyHook !== 'badkey') status.inventory.keyHook = 'ok';
+  } catch (_) { status.inventory.keyHook = 'missing'; }
 }
 
 // ---- naming items ------------------------------------------------------------------
@@ -960,7 +970,7 @@ function releaseEverything() {
     () => globalShortcut.unregisterAll(),
     () => watch.stop(),
     () => { clearInterval(timedTimer); },
-    () => { if (hook) { hook.uIOhook.removeAllListeners(); hook.uIOhook.stop(); hook = null; } },
+    () => { if (hook) { hook.uIOhook.removeAllListeners(); hook.uIOhook.stop(); hook = null; hookListening = false; } },
     () => { for (const w of BrowserWindow.getAllWindows()) w.destroy(); },
   ]) { try { step(); } catch (_) { /* closing anyway */ } }
 }
@@ -1121,11 +1131,18 @@ async function checkHovered({ count = true } = {}) {
       if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }
       checkText(text, { count });
     } catch (e) {
+      // Whatever went wrong is said as it is, not passed off as an empty clipboard.
       clipboard.writeText(before);
-      checkText(before, { count });
+      say(`The item could not be checked: ${e.message || e}`, true);
     }
+  } else if (config.inventory.autoCopy) {
+    // The app is meant to copy the item itself but cannot press keys: say so, as what is on
+    // the clipboard is then not the item under the mouse.
+    say('The item was not copied, because the part of the app that presses keys in the game could not be loaded. Restart the app; if this stays, reinstall it.', true);
   } else {
     checkText(clipboard.readText(), { count });
+    // With copying switched off, an empty hand is most likely the setting, so name it.
+    if (priceCheck && priceCheck.error && priceCheck.at >= started) priceCheck.error = 'Nothing to check: "Copy the hovered item for me" is switched off (Settings, Price check). Switch it on, or press Ctrl+C on the item before the key.';
   }
   showCheckToast(started);
   changed();
