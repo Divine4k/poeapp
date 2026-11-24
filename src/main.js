@@ -989,7 +989,7 @@ function autoRun(offer, steps) {
   const opts = { messages: config.trade.messages, characterName: config.characterName };
   const lines = steps.map((action) => ({ action, text: chatCommand(action, offer, opts) })).filter((l) => l.text);
   autoQueue = autoQueue.then(async () => {
-    await sleep(60); // let the trade window close first
+    await sleep(40); // let the trade window close first
     for (const { action, text } of lines) {
       for (let wait = 0; chatBusy && wait < 100; wait++) await sleep(20);
       if (!(await sendChat(text, { auto: true }))) {

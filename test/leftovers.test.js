@@ -23,7 +23,7 @@ test('restart: the old copy is made to go before the new one starts', async () =
 });
 
 test('chat lines go out fast and hand the clipboard back once', async () => {
-  const { typeChat, KEY_GAP_MS } = require('../src/chat');
+  const { typeChat, LINE_GAP_MS } = require('../src/chat');
   const keys = [];
   const hook = { UiohookKey: { Enter: 'Enter', A: 'A', V: 'V', Ctrl: 'Ctrl' }, uIOhook: { keyTap: (k, mods) => keys.push({ k: (mods ? 'Ctrl+' : '') + k, clip: clip.text }) } };
   const clip = { text: 'my own copy', readText() { return this.text; }, writeText(t) { this.text = t; } };
@@ -31,8 +31,8 @@ test('chat lines go out fast and hand the clipboard back once', async () => {
   assert.equal(await typeChat(hook, clip, '@Buyer Thank you'), true);
   assert.equal(await typeChat(hook, clip, '/kick Buyer'), true);
   const took = Date.now() - started;
-  assert.ok(took < 400, `two lines took ${took} ms`); // was about 500 ms plus pauses
-  assert.ok(KEY_GAP_MS <= 25);
+  assert.ok(took < 250, `two lines took ${took} ms`); // was about 500 ms plus pauses
+  assert.ok(LINE_GAP_MS <= 50);
   assert.deepEqual(keys.map((x) => x.k), ['Enter', 'Ctrl+A', 'Ctrl+V', 'Enter', 'Enter', 'Ctrl+A', 'Ctrl+V', 'Enter']);
   // Each paste happens while the clipboard holds that line.
   assert.deepEqual(keys.filter((x) => x.k === 'Ctrl+V').map((x) => x.clip), ['@Buyer Thank you', '/kick Buyer']);

@@ -27,12 +27,14 @@ function focusGame() {
 let borrowed = null; // { text } while the clipboard holds one of our lines
 let giveBack = null;
 
-// How long the game gets to act on a key before the next one, in milliseconds. The game reads
-// its keys in order, so this only has to cover the paste reading the clipboard: one drawn frame.
-const KEY_GAP_MS = 18;
+// The keys of one line go out back to back with no wait at all, the way PoE Lurker sends them:
+// the game takes its keys in order, so the chat box opens, fills and sends within a frame or
+// two and is barely seen. The only wait is after a line, before the clipboard may change for
+// the next one: the game must have read the paste by then. In milliseconds, about two frames.
+const LINE_GAP_MS = 35;
 const RESTORE_MS = 400;
 
-// Types one line into the game's chat: Enter, paste, Enter, as fast as the game takes it. The
+// Types one line into the game's chat: Enter, paste, Enter, all at once. The
 // clipboard is put back a moment after the last line.
 // hook: the uiohook-napi module. clipboard: Electron's clipboard.
 // send: false leaves the line in the open chat box instead of sending it.
@@ -45,12 +47,10 @@ async function typeChat(hook, clipboard, text, { send = true } = {}) {
   try {
     clipboard.writeText(line);
     uIOhook.keyTap(UiohookKey.Enter);
-    await sleep(KEY_GAP_MS);
     uIOhook.keyTap(UiohookKey.A, [UiohookKey.Ctrl]); // replace anything half typed
     uIOhook.keyTap(UiohookKey.V, [UiohookKey.Ctrl]);
-    await sleep(KEY_GAP_MS);
     if (send) uIOhook.keyTap(UiohookKey.Enter);
-    await sleep(KEY_GAP_MS); // the paste must have been read before the clipboard changes again
+    await sleep(LINE_GAP_MS);
   } finally {
     giveBack = setTimeout(() => {
       const mine = borrowed;
@@ -62,4 +62,4 @@ async function typeChat(hook, clipboard, text, { send = true } = {}) {
   return true;
 }
 
-module.exports = { focusGame, typeChat, KEY_GAP_MS };
+module.exports = { focusGame, typeChat, LINE_GAP_MS };
