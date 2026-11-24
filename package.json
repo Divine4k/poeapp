@@ -6,7 +6,15 @@
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js"
+    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js",
+    "t": "node --test --test-reporter=dot test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js",
+    "test:core": "node --test test/core.test.js",
+    "test:inventory": "node --test test/inventory.test.js test/backlog.test.js test/shared.test.js",
+    "test:trade": "node --test test/trade.test.js test/tradeSearch.test.js test/checkMessage.test.js",
+    "test:keys": "node --test test/keys.test.js",
+    "test:store": "node --test test/store.test.js",
+    "test:cloud": "node --test test/cloud.test.js",
+    "test:update": "node --test test/tar.test.js test/leftovers.test.js"
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"
