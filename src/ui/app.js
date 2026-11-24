@@ -26,6 +26,8 @@
   const currentRun = () => state.summary.runs.find((r) => r.id === state.summary.currentId) || null;
   const liveDuration = (run) => run.durationMs + (run.segmentStart !== null ? Date.now() - receivedAt : 0);
   const act = (a) => api.action(a);
+  // Redraws a box only when what it shows has changed, so nothing flickers under the mouse.
+  const setHtml = (el, html) => { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } };
 
   // ---- status bar ----------------------------------------------------------
   function renderStatus() {
@@ -36,7 +38,7 @@
     else items.push(['bad', st.prices.errors[0] || 'No prices loaded']);
     const inv = st.inventory, ic = state.config.inventory;
     if (inv.error) items.push(['bad', `Inventory reading failed: ${inv.error}`]);
-    else if (inv.keyHook === 'missing' && ic.onKey && !ic.timed) items.push(['bad', 'Key listener not installed, so the inventory key is not noticed. Turn on checking by itself in Settings, or use Read inventory now']);
+    else if (inv.keyHook === 'missing' && ic.onKey && !ic.timed) items.push(['bad', 'Key listener not installed, so the inventory key is not noticed. Switch on "Also read it by itself" in Settings, under Loot counting, or use Read inventory now']);
     else if (inv.keyHook === 'badkey') items.push(['bad', `Inventory key "${ic.key}" is not a key name the app knows`]);
     else if (inv.lastReadAt) items.push(['ok', `Inventory read at ${clock(inv.lastReadAt)}: ${inv.recognised} item stacks recognised`]);
     else items.push(['', `Open your inventory in game (${ic.key}) to start reading it`]);
@@ -48,11 +50,11 @@
     if (st.hotkeys.priceCheckHeld && !st.hotkeys.priceCheck) items.push(['bad', `Price check key ${hk.priceCheck} is taken by another app or is not a key name`]);
     if (hk.snapshot && !st.hotkeys.snapshot) items.push(['bad', `Hotkey ${hk.snapshot} is taken by another app`]);
     const tc = state.config.trade;
-    if (tc && tc.enabled) {
-      if (tc.hotkeys.next && !st.hotkeys.tradeNext) items.push(['bad', `Trade key ${tc.hotkeys.next} is taken by another app`]);
-      if (tc.hotkeys.layout && !st.hotkeys.layout) items.push(['bad', `Layout key ${tc.hotkeys.layout} is taken by another app`]);
-      for (const k of st.hotkeys.tradeTaken || []) items.push(['bad', `Trade key ${k} is taken by another app or is not a key name`]);
-      if (tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) items.push(['bad', `Trade key ${tc.hotkeys.dismiss} is taken by another app`]);
+    if (tc) {
+      if (tc.hotkeys.layout && !st.hotkeys.layout) items.push(['bad', `Overlay key ${tc.hotkeys.layout} is taken by another app`]);
+      if (tc.enabled && tc.hotkeys.next && !st.hotkeys.tradeNext) items.push(['bad', `Trade key ${tc.hotkeys.next} is taken by another app`]);
+      for (const k of st.hotkeys.tradeTaken || []) items.push(['bad', `Key ${k} is taken by another app or is not a key name`]);
+      if (tc.enabled && tc.hotkeys.dismiss && !st.hotkeys.tradeDismiss) items.push(['bad', `Trade key ${tc.hotkeys.dismiss} is taken by another app`]);
     }
     if (state.summary.divine > 0) items.push(['', `1 Divine = ${Math.round(state.summary.divine)}c`]);
     const up = st.update, btn = $('btn-side-update');
@@ -301,7 +303,7 @@
         ? 'Back from the map: open your stash or inventory now and the loot is counted. Keep the mouse off the inventory for a second.'
         : invC.onClick && invS.keyHook === 'ok'
           ? `Back from the map: open your inventory (${invC.key}) and stash as usual. Each click is followed by one read, so the loot is counted and the app sees what you take back in.`
-          : `Back from the map: press ${invC.key} before you stash anything, or the loot from this map is not counted. To have this happen by itself, turn on "Also check by itself" in Settings.`;
+          : `Back from the map: press ${invC.key} before you stash anything, or the loot from this map is not counted. To have this happen by itself, switch on "Also read it by itself" in Settings, under Loot counting.`;
     } else arr.hidden = true;
 
     const n = state.notice, note = $('notice');
@@ -651,23 +653,32 @@
   // ---- tools ----------------------------------------------------------------------
   function renderMapCheck() {
     const mc = state.mapCheck, hk = state.config.hotkeys;
-    const anyRule = state.config.mapRules.some((r) => r.enabled);
+    const rules = state.config.mapRules || [];
+    const anyRule = rules.some((r) => r.enabled);
+    // The mods your build cannot run are ticked right here, beside the verdict they decide.
+    const ticking = $('rules').contains(document.activeElement) ? document.activeElement.dataset.rule : null;
+    setHtml($('rules'), rules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}"${r.enabled ? ' checked' : ''}> ${esc(r.label)}</label>`).join(''));
+    if (ticking && !$('rules').contains(document.activeElement)) { const again = $('rules').querySelector(`[data-rule="${ticking}"]`); if (again) again.focus(); }
     let html;
     if (!mc) {
       html = `<p class="hint">Hover a map in game and press ${esc(hk.clipboard)}. The mods your build cannot run are flagged here.</p>
-        ${anyRule ? '' : '<p class="notice">No mods are marked as dangerous yet. Pick them in Settings.</p>'}
+        ${anyRule ? '' : '<p class="notice">No mods are ticked yet, so every map counts as safe. Tick the ones your build cannot run.</p>'}
         <button type="button" data-act="readClipboard">Check the copied item now</button>`;
     } else {
       const stats = [mc.tier ? `Tier ${mc.tier}` : '', mc.quantity != null ? `${mc.quantity}% quantity` : '', mc.packSize != null ? `${mc.packSize}% pack size` : '', mc.corrupted ? 'corrupted' : '']
         .filter(Boolean).join(', ');
       const verdict = mc.unidentified ? '<div class="verdict danger">Unidentified: mods are hidden</div>'
         : mc.dangerCount ? `<div class="verdict danger">Do not run: ${mc.dangerCount} dangerous ${mc.dangerCount === 1 ? 'mod' : 'mods'}</div>`
-          : `<div class="verdict safe">${anyRule ? 'Safe to run' : 'No dangerous mods are set up'}</div>`;
+          : `<div class="verdict safe">${anyRule ? 'Safe to run' : 'No mods are ticked as dangerous'}</div>`;
       html = `${verdict}<div class="map-meta">${esc(mc.name)}${stats ? `. ${esc(stats)}` : ''}</div>
         <ul class="mods">${mc.mods.map((m) => `<li class="${m.dangerous ? 'danger' : ''}">${esc(m.mod)}${m.dangerous ? `<small>${esc(m.labels.join(', '))}</small>` : ''}</li>`).join('')}</ul>`;
     }
-    $('mapcheck-body').innerHTML = html;
+    setHtml($('mapcheck-body'), html);
   }
+  $('rules').addEventListener('change', () => {
+    const on = new Set([...$('rules').querySelectorAll('[data-rule]')].filter((x) => x.checked).map((x) => x.dataset.rule));
+    api.setConfig({ mapRules: state.config.mapRules.map((r) => ({ ...r, enabled: on.has(r.id) })) });
+  });
 
   function costRow(c, attrs) {
     const fixed = c.chaos != null && c.chaos !== '';
@@ -773,9 +784,7 @@
       box.innerHTML = `<div class="tc-head"><h2 class="pagetitle">${esc(f.ok ? f.title : 'Trade search')}</h2>
           <button type="button" data-act="tradeClose">Back to the price lists</button></div>
         ${f.ok ? `<div class="tc-cols"><form id="tc-form" autocomplete="off"><h3>Search for</h3>${tradeFormHtml(f)}
-            <div class="tc-go"><button type="submit" class="primary" id="tc-search">Search</button>
-              <label class="tc-tick"><input type="checkbox" id="tc-auto" ${(state.config.priceSearch || {}).auto !== false ? 'checked' : ''}> <span>Search straight away when I check an item</span></label>
-              <label class="tc-tick"><input type="checkbox" id="tc-overlay" ${(state.config.priceSearch || {}).overlay !== false ? 'checked' : ''}> <span>Show the search on top of the game</span></label></div>
+            <div class="tc-go"><button type="submit" class="primary" id="tc-search">Search</button></div>
           </form><section id="tc-result" aria-live="polite"></section></div>`
     : `<p class="notice">${esc(f.why)}</p>`}`;
     }
@@ -818,10 +827,6 @@
       if (name in set) c.checked = !!set[name];
     }
     for (const x of $('tc-form').querySelectorAll('[data-tc-mode]')) x.setAttribute('aria-pressed', String(x === b));
-  });
-  $('trade-check').addEventListener('change', (e) => {
-    if (e.target.id === 'tc-auto') api.setConfig({ priceSearch: { auto: e.target.checked } });
-    if (e.target.id === 'tc-overlay') api.setConfig({ priceSearch: { overlay: e.target.checked } });
   });
 
   // ---- inventory tab ------------------------------------------------------------------
@@ -974,25 +979,17 @@
 
     const warn = $('trade-warn');
     const problems = [];
-    if (!cfg.enabled) problems.push('Trade offers are switched off. Turn them on under Trade settings.');
+    if (!cfg.enabled) problems.push('Trade offers are switched off. Switch them on under Trade settings.');
     else if (!t.canSend) problems.push(`The buttons cannot type in the game: ${t.sendProblem || 'something is missing'}. Offers are still listed.`);
     if (t.afk) problems.push('You are marked AFK in game, so buyers get your auto-reply.');
     warn.hidden = !problems.length;
     warn.textContent = problems.join(' ');
     const hk = cfg.hotkeys;
-    $('trade-hint').textContent = `Whispers from the trade site show up here${cfg.overlay ? ' and on top of the game' : ''}. The gold button is the next step${hk.next ? `; ${hk.next} presses it for the oldest offer` : ''}${hk.dismiss ? `, ${hk.dismiss} dismisses it` : ''}.${hk.layout ? ` ${hk.layout} opens layout mode, where you drag the overlay to a new spot.` : ''}`;
+    $('trade-hint').textContent = `Whispers from the trade site show up here${cfg.overlay ? ' and on top of the game' : ''}. The gold button is the next step${hk.next ? `; ${hk.next} presses it for the oldest offer` : ''}${hk.dismiss ? `, ${hk.dismiss} dismisses it` : ''}.`;
     const seen = t.seen || { whispers: 0, offers: 0 };
     $('trade-seen').textContent = !state.status.log.ok ? 'The game log is not connected, so no whispers can be read.'
       : seen.whispers ? `Since the app started: ${seen.whispers} ${seen.whispers === 1 ? 'whisper' : 'whispers'} read from the game log, ${seen.offers} of them trade offers. Last one at ${clock(seen.lastWhisperAt)}.`
         : 'No whispers read from the game log since the app started.';
-    // Why the overlay is or is not on screen right now, so a problem can be told apart.
-    const oi = t.overlayInfo || {}, hkOk = state.status.hotkeys;
-    const keyState = (name, ok) => (name ? `${name} ${ok ? 'ready' : 'NOT available (another program or another copy of this app has it)'}` : '');
-    const keysLine = [keyState(hk.next, hkOk.tradeNext), keyState(hk.dismiss, hkOk.tradeDismiss), keyState(hk.layout, hkOk.layout)].filter(Boolean).join(', ');
-    $('trade-overlay-info').textContent = !cfg.enabled ? '' : `Overlay: ${!oi.on ? 'switched off in Trade settings'
-      : oi.layoutOpen ? 'layout mode is open'
-        : !oi.helper ? 'shown whenever there are offers (the app cannot tell which window is in front)'
-          : oi.allowed ? `ready, window in front is "${oi.front}"` : `hidden, because the window in front is "${oi.front}" and not the game`}. Keys: ${keysLine || 'none set'}.`;
     $('btn-trade-clear').hidden = !t.offers.length;
 
     const box = $('trade-offers');
@@ -1021,7 +1018,7 @@
   function render() {
     if (!state) return;
     renderTrade();
-    renderStatus(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount();
+    renderStatus(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderSettings();
   }
 
   function setState(s) {
@@ -1100,11 +1097,14 @@
   $('learned-filter').addEventListener('input', () => renderItems());
 
   function showTab(name) {
+    if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
     for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
-    for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
+    if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
+    for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'settings']) $(`tab-${id}`).hidden = id !== name;
     if (name === 'inventory') renderInventory(true);
     if (name === 'items') { refreshKnown(); renderKnown(); }
     if (name === 'prices') renderPrices(true);
+    if (name === 'settings') renderSettings();
   }
 
   // ---- events ---------------------------------------------------------------------
@@ -1112,8 +1112,8 @@
     const tb = e.target.closest('[data-trade]');
     if (tb) { act(tb.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
     if (e.target.closest('[data-open-account]')) { $('btn-account').click(); return; }
-    const os = e.target.closest('[data-open-settings]');
-    if (os) { $('btn-settings').click(); const f = $('settings-form').elements[os.dataset.openSettings]; if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); } return; }
+    const go = e.target.closest('[data-settings]');
+    if (go) { showTab('settings'); showSettings(go.dataset.settings); return; }
     const fx = e.target.closest('[data-fix]');
     if (fx) { e.stopPropagation(); openFix(fx.dataset.fix, fx.dataset.run); return; }
     const b = e.target.closest('[data-act]');
@@ -1150,7 +1150,6 @@
     await act({ type: 'checkUpdate' });
     setTimeout(() => { if (state) renderStatus(); }, 8200); // lets "Up to date" fall back to the normal label
   });
-  $('btn-diagnostic').addEventListener('click', () => { act({ type: 'saveDiagnostic' }); dlg.close(); });
 
   // ---- game log check -----------------------------------------------------------------
   // Shows whether the log file is being written to, the area lines that arrived and what the
@@ -1164,7 +1163,7 @@
     const s = d.stats;
     const areaLines = d.trace.filter((t) => t.type === 'area');
     let verdict, bad = true;
-    if (!d.path) verdict = 'No game log file is chosen. Pick Client.txt in Settings.';
+    if (!d.path) verdict = 'No game log file was found. Pick Client.txt in Settings, under General.';
     else if (!d.ok || !s) verdict = `The file cannot be read: ${d.error || 'unknown reason'}.`;
     else if (!s.lastGrowthAt) verdict = 'Nothing has been added to this file since the app started. Either the game is not running, or this is not the file the game writes to (an old or second install).';
     else if (!areaLines.length) verdict = 'The game is writing to this file, but no area line has arrived yet. Go through a door or portal in game and watch this window.';
@@ -1186,7 +1185,6 @@
     logText = `Map Companion game log check\n${verdict}\n${facts.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n${d.trace.map((t) => `${new Date(t.at).toLocaleTimeString()} | ${t.raw} | ${t.did || ''}`).join('\n')}`;
   }
   $('btn-logcheck').addEventListener('click', () => {
-    dlg.close();
     logDlg.showModal();
     renderLogCheck();
     clearInterval(logTimer);
@@ -1195,7 +1193,6 @@
   logDlg.addEventListener('close', () => clearInterval(logTimer));
   $('btn-logcheck-close').addEventListener('click', () => logDlg.close());
   $('btn-logcheck-copy').addEventListener('click', () => act({ type: 'copyText', text: logText }));
-  $('btn-shortcut').addEventListener('click', () => { act({ type: 'makeShortcut' }); dlg.close(); });
   $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));
   $('btn-new-session').addEventListener('click', () => {
     if (!state.summary.runs.length || window.confirm('Start a new session? The current one is saved and stays in the row of sessions above the map list.')) act({ type: 'newSession' });
@@ -1365,58 +1362,199 @@
   });
 
   // ---- settings ---------------------------------------------------------------------
-  const dlg = $('settings');
-  const form = $('settings-form');
-  $('btn-settings').addEventListener('click', () => {
-    const c = state.config, el = form.elements;
+  // One page with its sections on the left. Nothing waits for a Save button: a change goes to
+  // the app as it is made, and the page always shows what the app holds.
+  const setPage = $('tab-settings');
+  const getPath = (o, path) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
+  const patchOf = (path, value) => path.split('.').reduceRight((v, k) => ({ [k]: v }), value);
+  // Switches that are on unless they were switched off: settings saved before they existed hold nothing for them.
+  const ON_UNLESS_OFF = new Set(['checkToast', 'inventory.alerts', 'priceSearch.auto', 'priceSearch.overlay']);
+  // Fields shown in another unit than they are kept in, or kept within limits.
+  const FIELDS = {
+    'inventory.intervalMs': { show: (v) => (Number(v) || 1000) / 1000, read: (el) => Math.max(500, Math.min(30000, Math.round((Number(el.value) || 1) * 1000))) },
+    'trade.auto.closeBoughtSec': { show: (v) => Number(v) || 0, read: (el) => Math.max(0, Math.min(600, Math.round(Number(el.value) || 0))) },
+    'inventory.displayId': { show: (v) => (v == null ? '' : v), read: (el) => el.value || null },
+  };
+  let savedTimer = null;
+  function saveSetting(path, value) {
+    api.setConfig(patchOf(path, value));
+    $('set-saved').hidden = false;
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => { $('set-saved').hidden = true; }, 1500);
+  }
+  setPage.addEventListener('change', (e) => {
+    const el = e.target.closest('[data-cfg]');
+    if (!el) return;
+    const path = el.dataset.cfg, field = FIELDS[path];
+    if (el.type === 'checkbox') { saveSetting(path, el.checked); return; }
+    const value = field ? field.read(el) : el.value.trim();
+    if (field && el.tagName === 'INPUT') el.value = field.show(value); // what was typed, brought within its limits
+    saveSetting(path, value);
+  });
+
+  let setSec = 'general';
+  function showSettings(sec) {
+    if (sec && $(`set-${sec}`)) setSec = sec;
+    stopListening();
+    for (const b of $('set-nav').querySelectorAll('[data-set]')) b.setAttribute('aria-pressed', String(b.dataset.set === setSec));
+    for (const x of setPage.querySelectorAll('.set-sec')) x.hidden = x.id !== `set-${setSec}`;
+    $('set-main').scrollTop = 0;
+    renderSettings();
+  }
+  $('set-nav').addEventListener('click', (e) => { const b = e.target.closest('[data-set]'); if (b) showSettings(b.dataset.set); });
+
+  const keyText = (v) => (v ? Keys.pretty(v) : 'no key set');
+  function renderSettings() {
+    if (!state || setPage.hidden) return;
+    const c = state.config, st = state.status;
+    // The lists to choose from come first, so that the choice can be shown in them.
     const leagues = state.leagues.length ? state.leagues : (c.league ? [{ id: c.league, name: c.league }] : []);
-    el.league.innerHTML = leagues.map((l) => `<option value="${esc(l.id)}" ${l.id === c.league ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
-    el.characterName.value = c.characterName || '';
-    el.logPath.value = c.logPath || '';
-    el.logPath.placeholder = state.status.log.path || 'Found automatically when empty';
-    el.hkClip.value = c.hotkeys.clipboard;
-    el.hkSnap.value = c.hotkeys.snapshot || '';
-    el.hkPrice.value = c.hotkeys.priceCheck || '';
-    el.autoCopy.checked = !!c.inventory.autoCopy;
-    el.checkToast.checked = c.checkToast !== false;
-    el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.inventory.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
-    el.invKey.value = c.inventory.key || 'Tab';
-    el.onKey.checked = !!c.inventory.onKey;
-    el.onClick.checked = !!c.inventory.onClick;
-    el.invAlerts.checked = c.inventory.alerts !== false;
-    el.timed.checked = !!c.inventory.timed;
-    el.intervalSec.value = (c.inventory.intervalMs || 1000) / 1000;
-    $('rules').innerHTML = c.mapRules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled ? 'checked' : ''}> ${esc(r.label)}</label>`).join('');
-    const sh = state.status.shared;
-    $('shared-line').textContent = `${sh.count} pictures in the shared database.`
-      + (sh.canUpload ? ` What you name is shared as ${sh.by}${sh.uploaded ? `: ${sh.uploaded} sent this session` : ''}${sh.waiting ? `, ${sh.waiting} waiting` : ''}.` : ' Log in (bottom of the sidebar) to share what you name with everyone.')
-      + (sh.error ? ` Problem: ${sh.error}` : '');
-    dlg.showModal();
+    setHtml(setPage.querySelector('[data-cfg="league"]'), leagues.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join(''));
+    setHtml(setPage.querySelector('[data-cfg="inventory.displayId"]'), `<option value="">Main screen</option>${(state.displays || []).map((d) => `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join('')}`);
+    for (const el of setPage.querySelectorAll('[data-cfg]')) {
+      const path = el.dataset.cfg, v = getPath(c, path);
+      if (el.type === 'checkbox') { el.checked = ON_UNLESS_OFF.has(path) ? v !== false : !!v; continue; }
+      if (el === document.activeElement && el.tagName === 'INPUT') continue; // being typed in
+      const shown = String(FIELDS[path] ? FIELDS[path].show(v) : (v == null ? '' : v));
+      if (el.value !== shown) el.value = shown;
+    }
+    const pr = st.prices;
+    $('set-prices-line').textContent = pr.loading ? 'Loading prices from poe.ninja…'
+      : pr.count > 1 ? `${pr.count.toLocaleString()} prices from poe.ninja for ${pr.league}, updated at ${clock(pr.updatedAt)}. They are refreshed every half hour.`
+        : (pr.errors[0] || 'No prices loaded yet.');
+    $('btn-refresh-prices').disabled = !!pr.loading;
+    $('set-log-line').textContent = st.log.ok ? 'Connected. The map timer, deaths and trade whispers are read from this file.' : (st.log.error || 'Not connected.');
+    $('set-log-line').classList.toggle('bad', !st.log.ok);
+    setPage.querySelector('[data-cfg="logPath"]').placeholder = st.log.path || 'Found automatically';
+    $('set-interval-row').hidden = !c.inventory.timed;
+    $('set-trade-off').hidden = !!c.trade.enabled;
+    $('set-shortcut-row').hidden = !!state.packaged; // the installer already made the shortcuts
+    for (const el of setPage.querySelectorAll('[data-keyname]')) el.textContent = keyText(getPath(c, el.dataset.keyname));
+    // An emptied message falls back on the app's own wording, shown in the empty field.
+    const fallback = (state.trade && state.trade.defaultMessages) || {};
+    for (const el of setPage.querySelectorAll('[data-cfg^="trade.messages."]')) el.placeholder = fallback[el.dataset.cfg.split('.').pop()] || '';
+    // Why the overlay is or is not on screen right now, so a problem can be told apart.
+    const oi = (state.trade && state.trade.overlayInfo) || null;
+    $('overlay-info').textContent = !oi ? '' : `Right now: ${oi.layoutOpen ? 'layout mode is open'
+      : !oi.helper ? 'the app cannot tell which window is in front on this PC, so the overlay shows whenever there is something to show'
+        : oi.allowed ? `the overlay can show; the window in front is "${oi.front}"` : `the overlay is hidden, because the window in front is "${oi.front}" and not the game`}.`;
+    renderKeys();
+  }
+
+  // Every key the app uses, in one list. id: where the key is kept in the settings.
+  // needed: cannot be left without a key. game: a key of the game itself that the app only
+  // listens for. bad(status, key): the key could not be taken; without it, the list of taken keys says.
+  const KEY_GROUPS = [
+    { title: 'Checking items', keys: [
+      { id: 'hotkeys.priceCheck', name: 'Price check', hint: 'Hover an item in game and press it to see what the item is worth. Gear is looked up on the trade site. Only held while the game is the window in front.',
+        bad: (st) => st.hotkeys.priceCheckHeld && !st.hotkeys.priceCheck },
+      { id: 'hotkeys.clipboard', name: 'Check and count', needed: true, hint: 'The same check, and more: over your inventory it also counts the item as loot, or names one the app did not recognise. On a map it checks the mods.',
+        bad: (st) => !st.hotkeys.clipboard },
+      { id: 'inventory.key', name: 'Your inventory key in game', needed: true, game: true, hint: 'The key that opens your inventory in the game. The app only listens for it, to read your inventory once each time you press it.',
+        bad: (st) => st.inventory.keyHook === 'badkey' },
+    ] },
+    { title: 'Overlay', keys: [
+      { id: 'trade.hotkeys.layout', name: 'Move the overlay', hint: 'Dims the game and shows a box for each part of the overlay, to drag where you want it.', bad: (st) => !st.hotkeys.layout },
+    ] },
+    { title: 'Trade offers', off: (c) => !c.trade.enabled, keys: [
+      { id: 'trade.hotkeys.next', name: 'Next step for the oldest offer', hint: 'Presses its gold button: invite, trade, thanks, kick.', bad: (st) => !st.hotkeys.tradeNext },
+      { id: 'trade.hotkeys.dismiss', name: 'Dismiss the oldest offer', bad: (st) => !st.hotkeys.tradeDismiss },
+      { id: 'trade.hotkeys.invite', name: 'Invite the newest buyer' },
+      { id: 'trade.hotkeys.trade', name: 'Trade with the newest buyer' },
+      { id: 'trade.hotkeys.busy', name: 'Tell the newest buyer you are busy' },
+      { id: 'trade.hotkeys.still', name: 'Ask the newest buyer if they are still interested' },
+      { id: 'trade.hotkeys.whisper', name: 'Start a whisper to the newest buyer', hint: 'Opens the chat with their name filled in, for you to finish.' },
+    ] },
+    { title: 'Chat commands', keys: [
+      { id: 'trade.hotkeys.hideout', name: 'Go to my hideout', hint: 'Types /hideout. Only held while the game is the window in front.' },
+      { id: 'trade.hotkeys.remaining', name: 'Show remaining monsters', hint: 'Types /remaining. Only held while the game is the window in front.' },
+    ] },
+    { title: 'Help', keys: [
+      { id: 'hotkeys.snapshot', name: 'Send a report', hint: 'Sends what the app sees in your inventory to the Map Companion server, to get a reading problem fixed.', bad: (st) => !st.hotkeys.snapshot },
+    ] },
+  ];
+  const KEY_LIST = KEY_GROUPS.flatMap((g) => g.keys);
+  const takenKey = (st, key) => (st.hotkeys.tradeTaken || []).some((k) => Keys.sameKey(k, key));
+
+  let listening = null; // id of the key being chosen right now
+  let heldKeys = '';    // Ctrl, Alt and Shift held so far while choosing
+  let keyMsg = null;    // { id, text }: why the last key pressed was not taken
+  let listenTimer = null;
+
+  function renderKeys() {
+    const c = state.config, st = state.status;
+    const html = KEY_GROUPS.map((g) => {
+      const off = !!(g.off && g.off(c));
+      const rows = g.keys.map((k) => {
+        const v = getPath(c, k.id) || '', on = listening === k.id;
+        const bad = !on && !off && v && (k.bad ? k.bad(st, v) : takenKey(st, v));
+        const why = keyMsg && keyMsg.id === k.id ? keyMsg.text
+          : bad ? (k.game ? `"${v}" is not a key the app can listen for. Choose the key again.` : `${Keys.pretty(v)} is held by another program, so it does nothing here. Choose another key, or free it in that program.`) : '';
+        return `<div class="set-row${on ? ' listening' : ''}">
+          <span class="set-what"><b>${esc(k.name)}</b>${k.hint ? `<small>${esc(k.hint)}</small>` : ''}${why ? `<small class="key-msg" role="alert">${esc(why)}</small>` : ''}</span>
+          <span class="set-ctl">${v && !k.needed && !on ? `<button type="button" class="link key-clear" data-key-clear="${k.id}" aria-label="Remove the key for ${esc(k.name)}">Clear</button>` : ''}
+            <button type="button" class="keycap${v ? '' : ' unset'}${on ? ' listening' : ''}${bad ? ' bad' : ''}" data-key="${k.id}" aria-label="${esc(k.name)}: ${v ? esc(Keys.pretty(v)) : 'no key'}. Press to choose a key.">${on ? esc(heldKeys ? `${heldKeys}+…` : 'Press a key…') : (v ? esc(Keys.pretty(v)) : 'Not set')}</button></span></div>`;
+      }).join('');
+      return `<h3>${esc(g.title)}</h3>${off ? '<p class="set-off">Trade offers are switched off (see Trade), so these keys do nothing for now.</p>' : ''}<div class="set-list">${rows}</div>`;
+    }).join('');
+    const box = $('set-keys-list');
+    const at = box.contains(document.activeElement) ? (document.activeElement.dataset.key || document.activeElement.dataset.keyClear) : null;
+    setHtml(box, html);
+    // The list was drawn again: the keyboard stays on the key that was being set.
+    if (at && !box.contains(document.activeElement)) { const b = box.querySelector(`[data-key="${at}"]`); if (b) b.focus(); }
+  }
+
+  // Choosing a key: click it, press the new one. Meanwhile the app lets go of its own keys, or
+  // the key being pressed would do its job instead of reaching this page.
+  function listenFor(id) {
+    if (listening === id) { stopListening(); return; }
+    listening = id; heldKeys = ''; keyMsg = null;
+    act({ type: 'keysPause' });
+    clearTimeout(listenTimer);
+    listenTimer = setTimeout(stopListening, 15000);
+    renderKeys();
+  }
+  function stopListening() {
+    if (!listening) return;
+    listening = null; heldKeys = '';
+    clearTimeout(listenTimer);
+    act({ type: 'keysResume' });
+    if (state) renderKeys();
+  }
+  setPage.addEventListener('click', (e) => {
+    const cap = e.target.closest('[data-key]');
+    if (cap) { listenFor(cap.dataset.key); return; }
+    const clear = e.target.closest('[data-key-clear]');
+    if (clear) { keyMsg = null; saveSetting(clear.dataset.keyClear, ''); }
   });
-  $('btn-browse').addEventListener('click', async () => { await act({ type: 'browseLog' }); form.elements.logPath.value = state.config.logPath || ''; });
-  $('btn-refresh-prices').addEventListener('click', () => act({ type: 'refreshPrices' }));
-  form.addEventListener('submit', () => {
-    const el = form.elements, c = state.config;
-    const enabled = new Set([...document.querySelectorAll('[data-rule]')].filter((x) => x.checked).map((x) => x.dataset.rule));
-    api.setConfig({
-      league: el.league.value || c.league,
-      characterName: el.characterName.value.trim(),
-      checkToast: el.checkToast.checked,
-      logPath: el.logPath.value.trim(),
-      hotkeys: { clipboard: el.hkClip.value.trim() || 'F8', snapshot: el.hkSnap.value.trim(), priceCheck: el.hkPrice.value.trim() },
-      inventory: {
-        displayId: el.displayId.value || null,
-        key: el.invKey.value.trim() || 'Tab',
-        onKey: el.onKey.checked,
-        onClick: el.onClick.checked,
-        alerts: el.invAlerts.checked,
-        autoCopy: el.autoCopy.checked,
-        timed: el.timed.checked,
-        intervalMs: Math.max(500, Math.round((Number(el.intervalSec.value) || 1) * 1000)),
-      },
-      mapRules: c.mapRules.map((r) => ({ ...r, enabled: enabled.has(r.id) })),
-    });
-  });
+  document.addEventListener('keydown', (e) => {
+    if (!listening) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.repeat) return;
+    if (e.code === 'Escape') { keyMsg = null; stopListening(); return; }
+    const k = KEY_LIST.find((x) => x.id === listening);
+    const got = k.game ? Keys.gameKeyFromEvent(e) : Keys.hotkeyFromEvent(e);
+    if (got.held !== undefined) { heldKeys = got.held; renderKeys(); return; }
+    heldKeys = '';
+    if (got.problem) { keyMsg = { id: k.id, text: got.problem }; renderKeys(); return; }
+    // Two jobs on one key would leave one of them dead. The inventory key is only listened for, so it may be shared.
+    const other = k.game ? null : Keys.clash(KEY_LIST.filter((x) => !x.game).map((x) => ({ id: x.id, name: x.name, key: getPath(state.config, x.id) })), k.id, got.key);
+    if (other) { keyMsg = { id: k.id, text: `${Keys.pretty(got.key)} is already the key for "${other.name}". Clear that one first, or press another key.` }; renderKeys(); return; }
+    keyMsg = null;
+    if (getPath(state.config, k.id) !== got.key) saveSetting(k.id, got.key);
+    stopListening();
+  }, true);
+  document.addEventListener('keyup', (e) => {
+    if (!listening) return;
+    e.preventDefault(); e.stopPropagation();
+    const held = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Super'].filter(Boolean).join('+');
+    if (held !== heldKeys) { heldKeys = held; renderKeys(); }
+  }, true);
+  // A click anywhere else, or switching to another program, leaves the key as it was. This is
+  // done on the click itself, before it reaches what was clicked: on the press of the mouse
+  // button the list would be drawn again under the mouse and the click would be lost.
+  document.addEventListener('click', (e) => { if (listening && !e.target.closest(`[data-key="${listening}"]`)) stopListening(); }, true);
+  window.addEventListener('blur', stopListening);
 
   // ---- account -------------------------------------------------------------------------
   // Registering is asked for once each time the app starts, until there is an account.
@@ -1481,31 +1619,6 @@
     if (!r.error) { f.parentElement.open = false; accMode = 'register'; accView(); }
   });
 
-  // ---- trade settings -----------------------------------------------------------------
-  const tradeForm = $('trade-form');
-  const HOTKEY_FIELDS = [['hkInvite', 'invite'], ['hkTrade', 'trade'], ['hkBusy', 'busy'], ['hkStill', 'still'], ['hkWhisper', 'whisper'], ['hkHideout', 'hideout'], ['hkRemaining', 'remaining']];
-  const AUTO_FIELDS = [['autoThankSold', 'thankSold'], ['autoKickSold', 'kickSold'], ['autoThankBought', 'thankBought'], ['autoLeaveBought', 'leaveBought'], ['autoHomeBought', 'homeBought'], ['autoJoinHideout', 'joinHideout'], ['autoIgnoreSold', 'ignoreSold']];
-  $('trade-settings').addEventListener('toggle', (e) => {
-    if (!e.target.open) return;
-    const c = state.config.trade, el = tradeForm.elements;
-    el.enabled.checked = !!c.enabled; el.overlay.checked = !!c.overlay; el.sound.checked = !!c.sound;
-    el.hkNext.value = c.hotkeys.next || ''; el.hkDismiss.value = c.hotkeys.dismiss || ''; el.hkLayout.value = c.hotkeys.layout || '';
-    for (const [field, key] of HOTKEY_FIELDS) el[field].value = c.hotkeys[key] || '';
-    for (const [field, key] of AUTO_FIELDS) el[field].checked = !!(c.auto || {})[key];
-    el.autoCloseSec.value = (c.auto || {}).closeBoughtSec || 0;
-    el.msgThanks.value = c.messages.thanks; el.msgBusy.value = c.messages.busy; el.msgSold.value = c.messages.sold; el.msgStill.value = c.messages.still;
-  });
-  tradeForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const el = tradeForm.elements;
-    api.setConfig({ trade: {
-      enabled: el.enabled.checked, overlay: el.overlay.checked, sound: el.sound.checked,
-      hotkeys: { next: el.hkNext.value.trim(), dismiss: el.hkDismiss.value.trim(), layout: el.hkLayout.value.trim(), ...Object.fromEntries(HOTKEY_FIELDS.map(([field, key]) => [key, el[field].value.trim()])) },
-      auto: { ...Object.fromEntries(AUTO_FIELDS.map(([field, key]) => [key, el[field].checked])), closeBoughtSec: Math.max(0, Math.min(600, Number(el.autoCloseSec.value) || 0)) },
-      messages: { thanks: el.msgThanks.value.trim(), busy: el.msgBusy.value.trim(), sold: el.msgSold.value.trim(), still: el.msgStill.value.trim() },
-    } });
-    $('trade-settings').open = false;
-  });
   setInterval(() => TradeCard.tick($('trade-offers')), 1000);
 
   // ---- go -------------------------------------------------------------------------------

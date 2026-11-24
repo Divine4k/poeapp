@@ -52,8 +52,8 @@ input::placeholder { color: #6f7a86; }
 .navi { position: relative; display: flex; align-items: center; gap: 11px; width: 100%; min-height: 42px; padding: 0 10px 0 13px; border: 0; border-radius: 8px; background: transparent; color: var(--ash); font-size: 14px; font-weight: 600; text-align: left; white-space: nowrap; }
 .navi:hover { background: rgba(233, 226, 211, 0.06); color: var(--bone); border: 0; }
 .navi svg { flex: 0 0 auto; }
-.navi[aria-selected=true] { background: rgba(209, 173, 98, 0.18); color: var(--bone); }
-.navi[aria-selected=true]::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--gold); }
+.navi[aria-selected=true], .navi[aria-current=page] { background: rgba(209, 173, 98, 0.18); color: var(--bone); }
+.navi[aria-selected=true]::before, .navi[aria-current=page]::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--gold); }
 .navi:focus-visible { outline-offset: -2px; }
 .sidenav .navi { cursor: grab; }
 .sidenav .navi.dragging { opacity: 0.4; }
@@ -245,24 +245,15 @@ tr.detail .costline, tr.detail .none-yet { margin: 8px 0 0; font-size: 12px; }
 tr.detail .snap figcaption { margin-top: 2px; }
 .snaps { margin-bottom: 6px; }
 
-/* trade page: open offers on the left, totals, settings and history on the right */
+/* trade page: open offers on the left, totals and history on the right */
 #tab-trade { padding: 0; overflow: hidden; }
 .trade { height: 100%; display: grid; gap: 1px; background: var(--seam); grid-template-columns: minmax(380px, 5fr) 6fr; }
 .trade > section { background: var(--stone); padding: 18px 22px; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .trade-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.trade-head .row { flex: 0 0 auto; }
 .trade-offers { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .trade-offers .tc { max-width: 620px; }
 .trade-totals { grid-template-columns: repeat(2, 1fr); }
-.trade-settings { border: 1px solid var(--seam); border-radius: 4px; padding: 8px 12px; }
-.trade-settings summary { cursor: pointer; color: var(--bone); }
-.trade-settings form { margin-top: 12px; }
-.trade-settings label.check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.trade-settings .settings-grid { margin-top: 12px; }
-.trade-settings .row label { flex: 1; }
-.trade-settings .row.wide { grid-column: 1 / -1; }
-.trade-settings fieldset { margin-top: 14px; }
-.trade-settings fieldset input[type=number] { width: 110px; }
-.trade-settings input:not([type=checkbox]), .trade-settings select { width: 100%; }
 .trade-side .table-wrap { flex: 1 1 200px; }
 /* sold per day: one series, so no legend; the caption names it */
 .sales { position: relative; margin: 0 0 14px; }
@@ -290,6 +281,13 @@ tr.detail .snap figcaption { margin-top: 2px; }
 .verdict { font-family: var(--display); font-size: 24px; font-stretch: 85%; }
 .verdict.safe { color: var(--moss); }
 .verdict.danger { color: var(--blood); }
+.mapcheck { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); gap: 28px; align-items: start; }
+.maprules { padding: 14px 16px 16px; border: 1px solid var(--seam); border-radius: 8px; background: var(--slab); }
+.maprules h2 { margin: 0 0 6px; font-size: 16px; color: var(--bone); }
+.maprules .hint { margin: 0 0 12px; }
+.rules { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px 18px; }
+.rules label { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.rules input { flex: 0 0 auto; width: 16px; height: 16px; padding: 0; accent-color: var(--gold); }
 .mods { margin-top: 10px; columns: 2; column-gap: 28px; }
 .mods li { padding: 4px 0 4px 10px; border-left: 3px solid var(--seam); margin-bottom: 4px; break-inside: avoid; }
 .mods li.danger { border-left-color: var(--blood); background: rgba(224, 101, 90, 0.12); }
@@ -371,7 +369,6 @@ tr.detail .snap figcaption { margin-top: 2px; }
 .tc-rows input[type=number] { width: 74px; padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums; }
 .tc-go { position: sticky; bottom: 0; display: flex; align-items: center; gap: 16px; padding: 12px 0 2px; margin-top: auto; background: var(--stone); }
 .tc-go .primary { padding: 8px 26px; font-size: 16px; }
-.tc-go .tc-tick { font-size: 13px; color: var(--ash); }
 .tc-sum { margin: 0 0 10px; font-size: 16px; }
 .tc-sum b { color: var(--gold); font-family: var(--display); font-size: 19px; }
 .tc-sum a, #tc-result > a { color: var(--portal); margin-left: 8px; white-space: nowrap; }
@@ -395,23 +392,16 @@ tr.detail .snap figcaption { margin-top: 2px; }
 .logcheck-table th { padding-left: 8px; }
 .mono { font-family: Consolas, "Courier New", monospace; word-break: break-word; }
 
-/* settings */
+/* dialogs */
 dialog { background: var(--slab); color: var(--bone); border: 1px solid var(--seam); border-radius: 6px; width: min(760px, 92vw); max-height: 90vh; padding: 22px; }
 dialog::backdrop { background: rgba(10, 12, 15, 0.7); }
 dialog h2 { font-size: 20px; color: var(--bone); margin: 0 0 14px; }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
-.settings-grid label, fieldset label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ash); }
+.settings-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ash); }
 .settings-grid .wide { grid-column: 1 / -1; }
 .row { display: flex; gap: 6px; }
 .row input { flex: 1; }
-fieldset { border: 1px solid var(--seam); border-radius: 4px; margin: 16px 0 0; padding: 12px 14px; }
-legend { padding: 0 6px; color: var(--bone); }
-fieldset label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--bone); font-size: 15px; margin-bottom: 8px; }
-fieldset input[type=number], fieldset input[name=invKey] { width: 110px; }
-fieldset label { margin-bottom: 8px; }
 .warn { margin: 10px 0 0; padding: 8px 10px; border-left: 3px solid var(--blood); background: rgba(224, 101, 90, 0.1); font-size: 13px; }
-.rules { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
-.rules label { flex-direction: row; align-items: center; gap: 8px; color: var(--bone); font-size: 14px; }
 .fine { font-size: 12px; color: var(--ash); margin: 16px 0 0; }
 .dialog-actions { display: flex; justify-content: space-between; margin-top: 16px; }
 
@@ -436,7 +426,7 @@ fieldset label { margin-bottom: 8px; }
   .view.mapping > section { overflow: visible; }
   .big .timer { font-size: 56px; }
   .totals { grid-template-columns: repeat(2, 1fr); }
-  .cost-cols, .settings-grid, .rules, .trade { grid-template-columns: 1fr; }
+  .cost-cols, .settings-grid, .trade, .mapcheck { grid-template-columns: 1fr; }
   #tab-trade { overflow: auto; }
   .trade { height: auto; }
   .mods { columns: 1; }
@@ -579,3 +569,76 @@ tr.dbdetail td { padding: 14px 16px 18px; color: var(--bone); }
 .steps li { margin-bottom: 3px; }
 .steps b { color: var(--bone); }
 .steps a { color: var(--portal); }
+
+/* Settings page: its sections on the left, the chosen one on the right. Every setting is one
+   row: what it is and what it does, then the switch, field, key or button. */
+#tab-settings { padding: 0; overflow: hidden; }
+.set { height: 100%; display: grid; grid-template-columns: 230px minmax(0, 1fr); }
+.set-nav { display: flex; flex-direction: column; gap: 2px; padding: 18px 12px 18px 22px; border-right: 1px solid var(--seam); overflow-y: auto; }
+.set-nav .pagetitle { margin: 0 0 14px; }
+.set-nav button { width: 100%; min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: var(--bone); padding: 4px 12px; text-align: left; font-size: 15px; font-weight: 600; }
+.set-nav button:hover { background: rgba(233, 226, 211, 0.06); }
+.set-nav button[aria-pressed=true] { background: rgba(209, 173, 98, 0.18); box-shadow: inset 3px 0 0 var(--gold); }
+.set-note { margin: 18px 0 0; padding: 0 12px; font-size: 12px; color: var(--ash); }
+.set-note b { display: block; margin-top: 4px; color: var(--moss); font-weight: 600; }
+.set-note b[hidden] { display: block; visibility: hidden; }
+.set-main { min-width: 0; overflow-y: auto; padding: 18px 28px 48px; }
+.set-sec { max-width: 860px; }
+.set-sec[hidden] { display: none; }
+.set-sec > h2 { margin: 0 0 6px; font-size: 22px; font-stretch: 85%; font-weight: 600; color: var(--bone); }
+.set-sec h3 { margin: 24px 0 8px; font: 600 13px/1.3 var(--body); color: var(--ash); }
+.set-lead { margin: 0 0 16px; max-width: 74ch; font-size: 14px; color: var(--ash); }
+.set-foot { margin: 10px 0 0; max-width: 74ch; font-size: 13px; color: var(--ash); }
+.set-off { margin: 0 0 8px; font-size: 13px; color: var(--gold); }
+.set-lead .link, .set-foot .link { padding: 0; color: var(--portal); text-decoration: underline; }
+.set-lead .link:hover, .set-foot .link:hover { color: var(--bone); }
+.set-sec > .warn { margin-top: 12px; }
+.set-sec > .fine { max-width: 74ch; margin-top: 8px; }
+.keyname { color: var(--bone); font-weight: 600; white-space: nowrap; }
+.set-list { border: 1px solid var(--seam); border-radius: 8px; background: var(--slab); }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px 28px; min-height: 52px; padding: 10px 16px; border-top: 1px solid var(--seam); }
+.set-row:first-child { border-top: 0; }
+.set-row[hidden] { display: none; }
+label.set-row { cursor: pointer; }
+.set-row.stack { flex-direction: column; align-items: stretch; }
+.set-what { flex: 1 1 auto; min-width: 0; }
+.set-what b { display: block; font-size: 15px; font-weight: 600; color: var(--bone); }
+.set-what small { display: block; margin-top: 2px; max-width: 66ch; font-size: 13px; color: var(--ash); }
+.set-what small.bad, .set-what .key-msg { color: var(--blood); }
+.set-ctl { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.set-ctl.wide { flex: 1 1 auto; }
+/* a list of text fields: the names take one width, so the fields line up */
+.set-list.fields .set-what { flex: 0 0 150px; }
+.set-ctl input:not([type=checkbox]):not([type=number]) { width: 250px; }
+.set-ctl.wide input:not([type=checkbox]), .set-row.stack .set-ctl input:not([type=checkbox]) { flex: 1 1 auto; width: auto; min-width: 0; }
+.set-ctl input[type=number] { width: 92px; text-align: right; font-variant-numeric: tabular-nums; }
+.set-ctl select { min-width: 250px; max-width: 320px; }
+.set-ctl button:disabled { opacity: 0.6; cursor: default; }
+/* a switch: on is gold with the knob on the right */
+.set-row input[type=checkbox] { flex: 0 0 auto; appearance: none; -webkit-appearance: none; position: relative; width: 40px; height: 22px; margin: 0; padding: 0; border: 1px solid var(--seam); border-radius: 999px; background: var(--stone); cursor: pointer; transition: background-color 0.12s, border-color 0.12s; }
+.set-row input[type=checkbox]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ash); transition: transform 0.12s, background-color 0.12s; }
+.set-row input[type=checkbox]:hover { border-color: var(--ash); }
+.set-row input[type=checkbox]:checked { background: var(--gold); border-color: var(--gold); }
+.set-row input[type=checkbox]:checked::after { transform: translateX(18px); background: #1b1f24; }
+/* a key: click it, then press the new one */
+.keycap { min-width: 112px; min-height: 36px; padding: 6px 12px; border-bottom-width: 3px; border-radius: 6px; background: var(--stone); font-family: var(--display); font-size: 15px; font-weight: 600; text-align: center; white-space: nowrap; }
+.keycap.unset { color: var(--ash); font: 13px var(--body); }
+.keycap.bad { border-color: var(--blood); }
+.keycap.listening { border-color: var(--gold); color: var(--gold); font: 13px var(--body); }
+.set-row.listening { background: rgba(209, 173, 98, 0.07); }
+.key-clear { font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .set-row input[type=checkbox], .set-row input[type=checkbox]::after { transition: none; } }
+/* a narrow window: the sections become a row of buttons above the chosen one */
+@media (max-width: 900px) {
+  #tab-settings { overflow: auto; }
+  .set { display: block; height: auto; }
+  .set-nav { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; padding: 14px 18px; border-right: 0; border-bottom: 1px solid var(--seam); overflow: visible; }
+  .set-nav .pagetitle { flex: 1 0 100%; margin: 0 0 8px; }
+  .set-nav button { width: auto; }
+  .set-note { flex: 1 0 100%; margin: 8px 0 0; padding: 0; }
+  .set-note b { display: inline; margin: 0 0 0 6px; }
+  .set-note b[hidden] { display: inline; }
+  .set-main { overflow: visible; padding: 18px; }
+  .set-ctl input:not([type=checkbox]):not([type=number]), .set-ctl select { width: 200px; min-width: 0; }
+  .set-list.fields .set-what { flex-basis: 110px; }
+}

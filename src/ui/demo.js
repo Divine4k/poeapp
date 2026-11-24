@@ -22,22 +22,25 @@
   const totals = { maps: 4, deaths: 1, lootValue: 0, costValue: 0, net: 0, mapMs: 0 };
   for (const r of runs) { totals.lootValue += r.lootValue; totals.costValue += r.costValue; totals.net += r.net; totals.mapMs += r.durationMs; }
   totals.avgMapMs = totals.mapMs / 4; totals.netPerHour = totals.net / 0.4; totals.elapsedMs = 24 * 60000;
-  const rules = [['reflect-phys', 'Physical reflect', true], ['no-regen', 'No life or mana regeneration', true], ['no-leech', 'Cannot leech', false]]
-    .map(([id, label, enabled]) => ({ id, label, enabled, pattern: '' }));
+  const rules = [['reflect-phys', 'Physical reflect', true], ['reflect-ele', 'Elemental reflect'], ['no-regen', 'No life or mana regeneration', true], ['no-leech', 'Cannot leech'], ['less-recovery', 'Less recovery rate'],
+    ['max-res', 'Reduced maximum resistances'], ['curses', 'Players are cursed'], ['avoid-ailments', 'Monsters avoid ailments'], ['avoid-poison-bleed', 'Monsters avoid poison and bleeding'], ['less-defence', 'Less armour or block'],
+    ['less-accuracy', 'Less accuracy'], ['less-aoe', 'Less area of effect'], ['aura-effect', 'Reduced aura effect'], ['flask-charges', 'Reduced flask charges'], ['steal-charges', 'Monsters steal charges'], ['no-slow', 'Monsters cannot be slowed or stunned']]
+    .map(([id, label, enabled]) => ({ id, label, enabled: !!enabled, pattern: '' }));
   const state = {
     config: {
-      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+F' }, priceSearch: { auto: true, overlay: true },
-      inventory: { displayId: null, key: 'Tab', onKey: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
+      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
+      inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
       loadout: [{ name: 'Ambush Scarab of Containment', qty: 2, chaos: null }, { name: 'Map', qty: 1, chaos: 4 }],
     },
     status: {
       log: { ok: true, path: 'Client.txt' }, prices: { count: 5210, league: 'Demo', updatedAt: now, errors: [], loading: false },
-      inventory: { keyHook: 'ok', open: true, lastReadAt: now, recognised: 23, error: null, art: { known: 1480, done: 0, total: 0, failed: 0 } }, hotkeys: { clipboard: true, snapshot: true },
+      inventory: { keyHook: 'ok', open: true, lastReadAt: now, recognised: 23, error: null, art: { known: 1480, done: 0, total: 0, failed: 0 } }, hotkeys: { clipboard: true, snapshot: true, priceCheck: false, priceCheckHeld: false, tradeTaken: [] },
       shared: { count: 212, loadedAt: now, error: null, uploaded: 0, canUpload: false, waiting: 0 },
       cloud: (() => { const q = new URLSearchParams(location.search); return { enabled: q.has('account'), signedIn: q.get('account') === 'in', name: q.get('account') === 'in' ? 'Divine4k' : '', waiting: 0, busy: false, error: null, sentAt: now - 4 * 60000 }; })(),
       update: { current: { sha: 'abc1234def', message: 'Read loot from the inventory' }, latest: { sha: 'fff9999', message: 'Fix poe.ninja item list parsing' }, available: true, checking: false, applying: false, step: '', error: null, checkedAt: now },
     },
-    leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }],
+    leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }, { id: 2, label: 'Screen 2 (1920x1080)' }],
+    packaged: false,
     learned: ['Alchemy Shard', 'Chaos Orb', 'Legion Thread', '(ignored items)'], itemsRev: '1', doubts: [{ id: 'inv:3', name: 'Chaos Orb', qty: 8, image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==', options: ['Eldritch Chaos Orb'] }],
     notice: { text: 'Saved: Chaos Orb.', bad: false, at: now },
     unknown: [{ id: 1, qty: 3, at: now, here: true, guesses: [{ name: 'Vaal Orb', score: 78 }, { name: 'Orb of Fusing', score: 61 }, { name: 'Exalted Orb', score: 55 }], image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
@@ -97,10 +100,13 @@
     id, dir, player, item, qty, price, league: 'Demo', tab, left, top, note: '', at: now - id * 47000, lastAt: now, asks: 1,
     state: 'new', here: false, thanked: false, soldAlready: false, value: null, market: null, low: false, next: dir === 'in' ? 'invite' : 'hideout', nextLabel: '', waiting: '', grid: tab ? 12 : 0, ...more,
   });
-  state.config.trade = { enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2' }, auto: { thankSold: true, kickSold: true }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
+  const KEYS = { hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D' }, trade: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' } };
+  state.config.trade = { enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { ...KEYS.trade }, auto: { thankSold: true, kickSold: true, thankBought: false, leaveBought: false, homeBought: false, joinHideout: false, ignoreSold: false, closeBoughtSec: 0 }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
   state.status.hotkeys.layout = true; state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
   state.trade = {
     afk: false, divine: 212, canSend: true, seen: { whispers: 5, offers: 3, lastWhisperAt: now }, enabled: true, hotkeys: state.config.trade.hotkeys,
+    overlayInfo: { on: true, helper: true, front: 'PathOfExile', allowed: true, layoutOpen: false },
+    defaultMessages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now. I will invite you in a few minutes if you can wait.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' },
     labels: { invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party', busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?' },
     offers: [
       offer(3, 'in', 'Zana_Mapper', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, state: 'here', here: true, next: 'trade', waiting: 'In your hideout', grid: 24 }),
@@ -114,10 +120,21 @@
     ],
     totals: { soldToday: { count: 4, chaos: 1320, unpriced: 0 }, boughtToday: { count: 1, chaos: 212, unpriced: 0 }, soldAll: { count: 31, chaos: 20400, unpriced: 2 }, boughtAll: { count: 9, chaos: 3150, unpriced: 0 } },
   };
+  let listener = () => {};
+  const merge = (base, patch) => {
+    for (const [k, v] of Object.entries(patch)) base[k] = v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object' ? merge({ ...base[k] }, v) : v;
+    return base;
+  };
   window.api = {
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true }), 0), checkSize: () => {},
-    getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
+    // Settings changed in the preview are kept for as long as the page is open, as the app would keep them.
+    getState: async () => state, onState: (cb) => { listener = cb; },
+    setConfig: async (patch) => { merge(state.config, patch); listener(state); return true; },
+    action: async (a) => {
+      if (a && a.type === 'resetKeys') { merge(state.config, { hotkeys: { ...KEYS.hotkeys }, trade: { hotkeys: { ...KEYS.trade } }, inventory: { key: 'Tab' } }); listener(state); }
+      return true;
+    },
     // Open index.html?account to look at the registration window, ?account=in for a logged-in one.
     account: async (q) => {
       const c = state.status.cloud;

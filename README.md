@@ -10,9 +10,9 @@ Not affiliated with or endorsed by Grinding Gear Games. Prices and item pictures
 |---|---|
 | Map timer, maps run, deaths, session totals, profit per hour | Reads the game log (`Client.txt`) automatically |
 | Loot value per map | Reads your inventory from the screen whenever it is open |
-| Map mod check | Hover a map in game and press F8 |
-| Price check | Hover any item and press F8, or browse the Prices page |
-| Trade site search for rares, magic items and uniques | Hover the item and press Ctrl+F (or F8): a window opens on top of the game with its stats to tick and the cheapest listings on the official trade site |
+| Map mod check | Hover a map in game and press F8. The mods your build cannot run are ticked on the Map check page |
+| Price check | Hover any item and press Ctrl+D (or F8), or browse the Prices page |
+| Trade site search for rares, magic items and uniques | Hover the item and press Ctrl+D (or F8): a window opens on top of the game with its stats to tick and the cheapest listings on the official trade site |
 | Net profit | A cost loadout (scarabs, map, chisels) charged to every new map |
 | What was counted per map | The inventory picture from each map is kept and shown beside the timer and under the map's row |
 | Trade offers with an overlay on the game | Reads trade whispers from the game log; each button types one chat line |
@@ -42,19 +42,19 @@ When someone whispers you from the trade site, the offer appears on the **Trade*
 
 - **Buttons:** Invite, Trade, Thanks, Kick, Busy, "Interested?" and Sold for buyers; Hideout, Trade, Thanks and Leave when you are the buyer. The gold button is the next step.
 - **It follows the trade for you.** The log says when the buyer arrives and when the trade is accepted, so the gold button moves from Invite to Trade to Thanks to Kick by itself.
-- **Keys:** F2 presses the gold button of the oldest offer, F3 dismisses it. Change them under Trade settings; they must not be bound in game.
+- **Keys:** F2 presses the gold button of the oldest offer, F3 dismisses it. Change them in Settings, under Keys; they must not be bound in game.
 - **Repeat and late buyers:** the same buyer asking twice stays one offer ("Asked 2 times"). A buyer for something you just sold is marked, and the gold button tells them it is sold.
 - **Value check:** offers below 80% of the poe.ninja price, for items poe.ninja lists under the same name, are marked "Below market".
 - **Finished trades** are listed with totals for today and overall, once the game reports "Trade accepted".
 - **Away from the game nothing is drawn.** The overlay hides when another program is in front and comes back with the game.
-- **Done by itself, if you switch it on** (Trade settings, "Done by itself", all off to begin with): after a sale, whisper thanks and kick the buyer; after a purchase, whisper thanks, leave the party and go back to your hideout; go to a seller's hideout once their party invite is accepted; leave out buyers for an item sold in the last hour; close a finished purchase after a set time. These only type while the game is the window in front. If it is not, a notice says what was not sent and the buttons are still there.
-- **F5 takes you to your hideout** (types `/hideout`), as in Awakened PoE Trade. The key is only held while the game is the window in front, so F5 still refreshes a browser page. Change or clear it under Trade settings. If Awakened PoE Trade is running too, it already holds F5: pick another key in one of the two.
-- **More keys**, unset until you choose them: invite, trade with, tell busy, ask "still interested" and start a whisper to the newest buyer, and show remaining monsters.
+- **Done for you, if you switch it on** (Settings, Trade, "Done for me after a trade", all off to begin with): after a sale, whisper thanks and kick the buyer; after a purchase, whisper thanks, leave the party and go back to your hideout; go to a seller's hideout once their party invite is accepted; leave out buyers for an item sold in the last hour; close a finished purchase after a set time. These only type while the game is the window in front. If it is not, a notice says what was not sent and the buttons are still there.
+- **F5 takes you to your hideout** (types `/hideout`), as in Awakened PoE Trade. The key is only held while the game is the window in front, so F5 still refreshes a browser page. Change or clear it in Settings, under Keys. It works with trade offers switched off too. If Awakened PoE Trade is running too, it already holds F5: pick another key in one of the two.
+- **More keys**, unset until you choose them in Settings, under Keys: invite, trade with, tell busy, ask "still interested" and start a whisper to the newest buyer, and show remaining monsters.
 - **Ctrl+click on an offer's cross** dismisses every offer.
-- **Layout mode:** Shift+F2 dims the game and shows a box for each part of the overlay. Drag a box where you want it and press Save. The small strip with Save, Cancel and Default spots can be dragged out of the way too. A box left in the lower half of the screen grows upward, one in the upper half grows downward, and the spot is kept as a share of the screen, so it survives a change of resolution. Trade settings has a button for the same thing and one to go back to the default spot.
-- **Show a test offer** puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
+- **Layout mode:** Shift+F2 dims the game and shows a box for each part of the overlay. Drag a box where you want it and press Save. The small strip with Save, Cancel and Default spots can be dragged out of the way too. A box left in the lower half of the screen grows upward, one in the upper half grows downward, and the spot is kept as a share of the screen, so it survives a change of resolution. Settings, Overlay has a button for the same thing and one to go back to the default spots. The key works with trade offers switched off too.
+- **Show a test offer** (Settings, Overlay) puts a made-up offer on screen so you can place the overlay. Test offers never type anything in the game.
 
-The overlay sits on the screen chosen under Settings ("Screen the game runs on") and needs Windowed Fullscreen. Buttons on the overlay do not take the keyboard away from the game. Buttons on the Trade page switch to the game window first, which takes about half a second.
+The overlay sits on the screen chosen in Settings, under General ("Screen the game runs on") and needs Windowed Fullscreen. What is shown on it is chosen in Settings, under Overlay. Buttons on the overlay do not take the keyboard away from the game. Buttons on the Trade page switch to the game window first, which takes about half a second.
 
 **The app only types when Path of Exile is the window in front.** A small helper asks Windows which program is in front; if it is not the game and the game cannot be brought forward, nothing is typed and a red notice says so. If the helper cannot run on a PC, the buttons do not type at all.
 
@@ -66,15 +66,15 @@ Limits: the game itself must run in English, because arrivals, "Trade accepted" 
 
 ## Trade site search
 
-Gear has no poe.ninja price, so the app asks the official trade site instead, the way Awakened PoE Trade does. Hover a rare, magic or unique item (armour, weapons, jewellery, jewels, flasks) and press Ctrl+F or F8.
+Gear has no poe.ninja price, so the app asks the official trade site instead, the way Awakened PoE Trade does. Hover a rare, magic or unique item (armour, weapons, jewellery, jewels, flasks) and press Ctrl+D or F8.
 
-- **Two keys.** **Ctrl+F** is the price check key: it only checks the price and never names or counts anything. **F8** checks the price too and, over the inventory, also names or counts the item in that slot for the loot list. Ctrl+F is held only while the game is the window in front, so it still finds text in a browser. In game it replaces the game's own Ctrl+F (jump to the stash search box) while the app runs: change or clear the key in Settings if you use that.
+- **Two keys.** **Ctrl+D** is the price check key: it only checks the price and never names or counts anything. **F8** checks the price too and, over the inventory, also names or counts the item in that slot for the loot list. Ctrl+D is held only while the game is the window in front, so it keeps its own meaning in a browser. It is the key Awakened PoE Trade uses as well: if both run, change the key in one of them. Until version 0.24 the key was Ctrl+F, which took the game's own Ctrl+F (jump to the stash search box) away; a copy of the app that still had Ctrl+F saved moves to Ctrl+D by itself, once.
 - **The window in game.** The search opens on top of the game, left of the inventory for an item in the inventory and right of the stash for an item in the stash. It is part of the same overlay as the trade offers: in layout mode (Shift+F2) drag the "Price check" box to have it always open where you put it; "Back to the default spots" returns it to the side of the item. Under the item's name it gives the answer in large figures (cheapest, typical, how many listed). Below that are buttons for the kind of item, corrupted or not and the like (lit when they are part of the search), the stats with tick boxes and + and - (or the mouse wheel) to move a number, Search, the listings, and a link to the trade site. It never takes the keyboard, so the game keeps your keys while you click it; for the same reason numbers cannot be typed in it. Exact numbers and a highest value can be typed on the app's Prices page, which shows the same search.
-- **Closing it.** The cross closes it. It also closes when the mouse leaves it after you have used it, when you check another item, when you switch away from the game, and by itself after 15 seconds if the mouse never went to it. It needs Windowed Fullscreen, like the rest of the overlay. Untick "Show the search on top of the game" on the Prices page to use only that page.
+- **Closing it.** The cross closes it. It also closes when the mouse leaves it after you have used it, when you check another item, when you switch away from the game, and by itself after 15 seconds if the mouse never went to it. It needs Windowed Fullscreen, like the rest of the overlay. Switch off "Price check window" in Settings, under Overlay, to use only that page.
 
 - **What is searched for.** The Prices page lists everything read from the item with a tick box each. Ticked from the start: the kind of item, corrupted or not, total maximum Life and total Elemental Resistance (the trade site's own totals, so 40 fire and 30 cold counts the same as 70 cold), influences, fractured modifiers, six links, a weapon's higher damage per second, movement speed of 25% or more on boots, and a cluster jewel's size and notables. Everything else is listed unticked.
 - **Numbers.** Each stat starts a tenth below your item's value. Change the lowest and highest value in the boxes beside it.
-- **Searched straight away.** Ctrl+F searches as soon as you press it, with what is ticked from the start, so the prices and listings are there when the window opens. Change the ticks or numbers and press **Search** to search again. F8, which is also pressed just to count loot, searches straight away only for a rare or magic item with something ticked; a unique shows its poe.ninja price and waits for the button. Untick "Search straight away" on the Prices page to always wait for the button.
+- **Searched straight away.** Ctrl+D searches as soon as you press it, with what is ticked from the start, so the prices and listings are there when the window opens. Change the ticks or numbers and press **Search** to search again. F8, which is also pressed just to count loot, searches straight away only for a rare or magic item with something ticked; a unique shows its poe.ninja price and waits for the button. Switch off "Search the trade site straight away" in Settings, under Price check, to always wait for the button.
 - **What comes back.** The cheapest price, the typical price (the middle one of the cheapest ten, which a single underpriced item does not move) and how many are listed, then each listing: price, how long it has been listed, whether the seller is online or it is an instant buyout, and the seller. The window in game and the Prices page show the same; with the window switched off, a short message in game gives the totals. Listings marked "Instant buyout" are in a merchant's tab and are bought in the seller's hideout. A link opens the same search on the trade site.
 - **Limits of the trade site.** Each search is two web requests. The site allows only a few per minute and locks out anyone who goes over, so the app keeps count from the site's own answers, never sends two searches within two seconds, and refuses a search rather than queue it: it says how many seconds to wait. The same search within a minute is answered from memory.
 - **Uniques.** Every copy of a unique has the same modifiers, so what tells one from another is how they rolled. As in Awakened PoE Trade, the modifiers that can roll differently are ticked, each a tenth of its possible range below your roll (17 Strength out of 10 to 20 asks for 16). Life and resistances are searched as their totals. On a corrupted unique the modifiers that are normally fixed are ticked too, since a corruption can change them, and so is the corruption's own implicit. Modifiers that never change are listed unticked.
@@ -129,27 +129,45 @@ The updater installs whatever is on the `main` branch of `Divine4k/poeapp`, so a
 
 Only one copy of the app runs at a time. When it starts, it closes any copy of itself that was left running without a window (an interrupted restart can leave one behind, still holding the hotkeys) and says so in a notice.
 
+## Settings
+
+Everything is set in one place: **Settings**, at the bottom of the sidebar. A change is saved as you make it; there is no Save button.
+
+| Section | What is in it |
+|---|---|
+| General | League, character name, the game log file, the screen the game runs on |
+| Keys | Every key the app uses and what it does. Click a key, then press the new one; Esc leaves it as it was |
+| Loot counting | When your inventory is read: on your inventory key, after your clicks back from a map, by itself |
+| Price check | Whether the hovered item is copied for you, and whether gear is searched for straight away |
+| Overlay | What is shown on top of the game, moving it, and a test offer |
+| Trade | Reading offers, the sound, the messages, and what is done for you after a trade |
+| Help | The game log check, sending a report, and the version |
+
+The keys a fresh install starts with: **Ctrl+D** price check, **F8** check and count, **Shift+F2** move the overlay, **F2** next step for the oldest offer, **F3** dismiss it, **F5** hideout, **F9** send a report, and Tab as your inventory key in game. "Back to the default keys" under Keys returns to these. Two actions cannot share a key, and a plain letter, number or Space is only taken together with Ctrl or Alt, so that it stays free for typing.
+
+The mods your build cannot run are not a setting any more: they are ticked on the **Map check** page, beside the verdict they decide.
+
 ## Game settings
 
 - Run Path of Exile in **Windowed Fullscreen**. Exclusive fullscreen often captures as a black screen.
-- Ctrl+F is taken from the game for the price check while the app runs (see Trade site search).
-- F8 and F9 must not be bound to anything in game, and neither must the trade keys F2, F3 and Shift+F2. Change them in Settings (trade keys: Trade, Trade settings) if they are.
-- After F8, a short message shows in game for about two seconds: the item and its value, a map's verdict, or why nothing was read. It can be moved in layout mode (Shift+F2) and switched off in Settings.
+- The app's keys must not be bound to anything in game: Ctrl+D, F8, F9, the trade keys F2 and F3, and Shift+F2. Change them in Settings, under Keys, if they are.
+- After a check key, a short message shows in game for about two seconds: the item and its value, a map's verdict, or why nothing was read. It can be moved in layout mode (Shift+F2) and switched off in Settings, under Overlay.
 - F9 sends a report of what the app sees (the inventory slots, how each was read) to the Map Companion server, for troubleshooting. That needs you to be logged in; otherwise the report is kept in the app's own folder.
-- If your inventory key is not Tab, set it in Settings.
+- If your inventory key is not Tab, set it in Settings, under Keys.
 
 ## Rules and risk
 
 GGG's developer guidelines say an app may read the screen or clipboard **once per manual key press**, may send **one action to the game per manual key press**, may read the game log, and must not touch the game's memory or files.
 
 - The app never touches game memory or files.
-- **F8** and **Ctrl+F** send a single Ctrl+Alt+C to the game when you press them (with Alt the game copies its fuller item text, as Awakened PoE Trade asks for), then read the clipboard once. That is the same pattern price-check tools use. You can switch the copying off in Settings and press Ctrl+C yourself.
+- **F8** and **Ctrl+D** send a single Ctrl+Alt+C to the game when you press them (with Alt the game copies its fuller item text, as Awakened PoE Trade asks for), then read the clipboard once. That is the same pattern price-check tools use. You can switch the copying off in Settings, under Price check, and press Ctrl+C yourself.
 - **Reading on your inventory key** is one read per key press. The app listens for that one key without blocking it.
-- **The trade site search** sends nothing to the game beyond the one copy of the key press. It reads the clipboard once per press of Ctrl+F or F8, like the price check, and talks to the trade site's public search within the limits the site sets.
+- **Reading after your clicks**, back from a map, is one read per click of your own; a quick run of clicks gets one read at its end. It can be switched off in Settings, under Loot counting.
+- **The trade site search** sends nothing to the game beyond the one copy of the key press. It reads the clipboard once per press of Ctrl+D or F8, like the price check, and talks to the trade site's public search within the limits the site sets.
 - **Trade buttons and trade keys** type one chat line (such as `/invite Name`) per click or key press, the way PoE Lurker and Awakened PoE Trade do. Nothing is typed without a click or key press, and no button sends two lines.
-- **"Done by itself"** (Trade settings, off by default) types thanks, kick, leave and hideout lines after a trade without a key press, as PoE Lurker does. That is outside the one-action-per-key-press rule and is your own risk.
-- **"Also check by itself"** (Settings, off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
-- With "check by itself" off, press your inventory key once after arriving in the hideout, before you stash.
+- **"Done for me after a trade"** (Settings, Trade; off by default) types thanks, kick, leave and hideout lines after a trade without a key press, as PoE Lurker does. That is outside the one-action-per-key-press rule and is your own risk.
+- **"Also read it by itself"** (Settings, Loot counting; off by default) reads the screen about once a second without a key press. That breaks the rule and is your own risk. It is what catches the inventory when you open the stash with a click.
+- With "Also read it by itself" off, open your inventory with its key once after arriving in the hideout, before you stash.
 - GGG has never officially approved any local third-party tool, so no tool is guaranteed safe.
 
 ## What has and has not been tested
@@ -158,6 +176,7 @@ GGG's developer guidelines say an app may read the screen or clipboard **once pe
 - Rescaled copies of those captures (900p, 1440p, 4K) also read correctly, but real captures at those sizes have not been tried.
 - **Trading:** the whisper reading, the steps of a trade and the overlay windows were run on Linux against a made-up log. The helper that tells which window is in front, switching to the game window, and hiding on alt-tab are Windows-only and have not been run by the author.
 - **Trade site search:** reading items, matching their stats, building the search and keeping to the site's limits were run against made-up items and a stand-in for the trade site. No search has been sent to the real trade site by the author, so the first real one may show a problem. The window in game was looked at in a browser and its placement and closing rules were tested, but it has not been run on top of the game.
+- **Settings page and keys:** run in the real app on Linux, against a throwaway settings folder: every switch and field reaches the settings file on its own, the keys the app holds are let go while one is being chosen and taken back after, a saved Ctrl+F moves to Ctrl+D once, and the overlay and hideout keys stay with trade offers switched off. Not run on Windows by the author, where the keys are held through a different part of the system.
 - **Not tested:** the app running against the live game, matching against downloaded item pictures, the key listener, and poe.ninja's live data. Expect to report problems on first use.
 
 ## Development

@@ -38,6 +38,7 @@ const { checkPanelBounds } = require('./core/checkPanel');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize } = require('./core/tradeQuery');
 const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tradeApi');
+const { movedDefault } = require('./ui/keys');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -50,7 +51,7 @@ const DEFAULT_CONFIG = {
   characterName: '',
   // clipboard: check the hovered item and, over the inventory, name or count its slot.
   // priceCheck: only check its price; nothing is named or counted. Held only while the game is in front.
-  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+F' },
+  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D' },
   checkToast: true, // after the check key, say in game for a moment what was read
   // auto: checking an item searches the trade site straight away (two web requests).
   // overlay: show the search on top of the game, beside the inventory or stash.
@@ -69,7 +70,8 @@ const DEFAULT_CONFIG = {
   navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
   // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
   // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat
-  // line per press); hotkeys.dismiss removes the oldest offer.
+  // line per press); hotkeys.dismiss removes the oldest offer. hotkeys.layout opens layout mode
+  // for the whole overlay; it is kept here because that is where settings saved so far have it.
   trade: {
     enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
     // invite, trade, busy, still and whisper act on the newest buyer and are unset until you
@@ -176,6 +178,17 @@ function loadConfig() {
     if (!hk.hideout && !used) config.trade = { ...config.trade, hotkeys: { ...hk, hideout: 'F5' } };
     config.hideoutKeyGiven = true;
   }
+  // The price check key was Ctrl+F until 0.24, which took the game's own Ctrl+F (jump to the
+  // stash search box) away from it. It is Ctrl+D now, as in Awakened PoE Trade. A key still
+  // saved as the old default follows once; a key you chose yourself is kept, and so is
+  // clearing the key afterwards.
+  if (!saved.priceKeyMoved) {
+    const others = [config.hotkeys.clipboard, config.hotkeys.snapshot, ...Object.values(config.trade.hotkeys)];
+    const key = movedDefault(config.hotkeys.priceCheck, 'Ctrl+F', DEFAULT_CONFIG.hotkeys.priceCheck, others);
+    if (key !== config.hotkeys.priceCheck) say(`The price check key is now ${key} instead of Ctrl+F. You can change it in Settings, under Keys.`);
+    config.hotkeys = { ...config.hotkeys, priceCheck: key };
+    config.priceKeyMoved = true;
+  }
   if (!Array.isArray(config.strategies) || !config.strategies.length) config.strategies = DEFAULT_CONFIG.strategies;
   if (!config.strategies.some((x) => x.id === config.activeStrategy)) config.activeStrategy = config.strategies[0].id;
   // Keep the user's rule choices but pick up rules added in newer versions.
@@ -184,6 +197,8 @@ function loadConfig() {
     ...DEFAULT_RULES.map((r) => ({ ...r, ...(byId.get(r.id) || {}) })),
     ...(saved.mapRules || []).filter((r) => !DEFAULT_RULES.some((d) => d.id === r.id)),
   ];
+  // A key that was moved or filled in above is saved at once, so that it happens one time only.
+  if (!saved.priceKeyMoved || !saved.hideoutKeyGiven) writeJson('config.json', config);
 }
 
 function scheduleSave() {
@@ -200,6 +215,7 @@ function buildState() {
   if (cloud) status.cloud = cloud.status;
   return {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
+    packaged: app.isPackaged, // the installed program already has its shortcuts
     inventoryRev: lastInventory.rev,
     unknown: backlog.items.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses, at: u.at, here: !!u.here })),
     // Slots of the latest reading where look-alikes could not be told apart, one per item.
@@ -279,7 +295,7 @@ function startLog() {
   if (logTail) { logTail.stop(); logTail = null; }
   const p = config.logPath || findLogPath();
   if (!p) {
-    status.log = { ok: false, path: '', error: 'Client.txt not found. Choose it in Settings.' };
+    status.log = { ok: false, path: '', error: 'Client.txt not found. Choose it in Settings, under General.' };
     return;
   }
   status.log = { ok: false, path: p, error: 'Waiting for the file' };
@@ -753,10 +769,15 @@ function syncTimedWatch() {
 // and it lets the check hotkey send a single Ctrl+C to the game.
 let clickTimer = null;
 const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape', enter: 'Enter', backquote: 'Backquote', '`': 'Backquote' };
+// The helper is also what types chat lines: for trade offers, and for the /hideout and
+// /remaining keys, which work with trade offers switched off too.
+const hookWanted = () => !!(config.inventory.onKey || config.inventory.onClick || config.inventory.autoCopy || config.trade.enabled || config.trade.hotkeys.hideout || config.trade.hotkeys.remaining);
+// What the helper is set up from. It is only started again when one of these changes.
+const hookSetup = () => JSON.stringify([hookWanted(), !!config.inventory.onKey, config.inventory.key, !!config.inventory.onClick]);
 function syncKeyHook() {
   if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.removeAllListeners('mouseup'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
   status.inventory.keyHook = 'off';
-  if (!config.inventory.onKey && !config.inventory.onClick && !config.inventory.autoCopy && !config.trade.enabled) return;
+  if (!hookWanted()) return;
   let lib;
   try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; }
   if (config.inventory.onKey) {
@@ -1234,14 +1255,16 @@ function showToast(message, always = false) {
   toast.show(overlayBounds(overlay.display(), 112, toastPlacement()), message, message.bad ? 6000 : 2500);
 }
 
-let gameKeysOn = false; // the hideout and remaining keys are held right now
-let gameKeysTaken = []; // those of them another app already holds
+let gameKeysOn = false; // the keys that only mean something in the game are held right now
+let gameKeysTaken = []; // those of the chat command keys another app already holds
+let keysPaused = null; // a timer while a key is being chosen in Settings: the app holds none of its keys then
 function registerHotkeys() {
+  if (keysPaused) return; // they are taken again when the choice has been made
   globalShortcut.unregisterAll();
   gameKeysOn = false;
   status.hotkeys = { clipboard: false, snapshot: false, priceCheck: false, tradeNext: false, tradeDismiss: false, layout: false };
   // Keys that only mean something in the game are held only while the game is in front.
-  // Anywhere else they stay with the program you are in (Ctrl+F finds text, F5 refreshes).
+  // Anywhere else they stay with the program you are in (Ctrl+D bookmarks, F5 refreshes).
   gameKeysOn = watch.gameInFront();
   const reg = (key, accel, fn) => {
     if (!accel) return;
@@ -1252,31 +1275,48 @@ function registerHotkeys() {
   // The price check key: the same check without naming or counting anything.
   status.hotkeys.priceCheckHeld = gameKeysOn && !!config.hotkeys.priceCheck;
   if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { checkHovered({ count: false }); });
+  const hk = config.trade.hotkeys, taken = [];
+  const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, fn)) taken.push(accel); } catch (_) { taken.push(accel); } };
+  // Layout mode places every part of the overlay (the price check window and the check message
+  // as well as the trade offers), so its key does not wait for trade offers to be switched on.
+  reg('layout', hk.layout, () => toggleLayout());
   if (config.trade.enabled) {
-    reg('tradeNext', config.trade.hotkeys.next, () => { const o = book.firstActionable(); if (o) tradeDo(o.id, 'next').then(changed); });
-    reg('layout', config.trade.hotkeys.layout, () => toggleLayout());
-    const hk = config.trade.hotkeys, taken = [];
-    const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, fn)) taken.push(accel); } catch (_) { taken.push(accel); } };
+    reg('tradeNext', hk.next, () => { const o = book.firstActionable(); if (o) tradeDo(o.id, 'next').then(changed); });
     for (const action of ['invite', 'trade', 'busy', 'still', 'whisper']) {
       extra(hk[action], () => { const o = book.latestIncoming(); if (o) tradeDo(o.id, action).then(changed); else { say('No buyer to act on.'); changed(); } });
     }
-    const mine = [hk.hideout, hk.remaining].filter(Boolean);
-    if (gameKeysOn) {
-      const before = taken.length;
-      extra(hk.hideout, () => sendChat('/hideout').then(changed));
-      extra(hk.remaining, () => sendChat('/remaining').then(changed));
-      gameKeysTaken = taken.splice(before);
-    }
-    gameKeysTaken = gameKeysTaken.filter((k) => mine.includes(k)); // remembered while you are away from the game
-    status.hotkeys.tradeTaken = [...taken, ...gameKeysTaken];
-    reg('tradeDismiss', config.trade.hotkeys.dismiss, () => { const o = book.offers[0]; if (o) { book.remove(o.id); saveTradesSoon(); changed(); } });
+    reg('tradeDismiss', hk.dismiss, () => { const o = book.offers[0]; if (o) { book.remove(o.id); saveTradesSoon(); changed(); } });
   }
+  // /hideout and /remaining are plain chat commands, so they work whether or not trade offers
+  // are read. They are only held while the game is in front, so F5 still refreshes a browser page.
+  const mine = [hk.hideout, hk.remaining].filter(Boolean);
+  if (gameKeysOn) {
+    const before = taken.length;
+    extra(hk.hideout, () => sendChat('/hideout').then(changed));
+    extra(hk.remaining, () => sendChat('/remaining').then(changed));
+    gameKeysTaken = taken.splice(before);
+  }
+  gameKeysTaken = gameKeysTaken.filter((k) => mine.includes(k)); // remembered while you are away from the game
+  status.hotkeys.tradeTaken = [...taken, ...gameKeysTaken];
+}
+
+// While a key is being chosen in Settings, the app lets go of its own keys, so that the key
+// being pressed reaches the window instead of doing its job, and the window's own menu keys
+// (Ctrl+R, Ctrl+W, F11) are left alone for the same reason. Everything is taken back when the
+// choice has been made, and by itself after a while in case the window never says so.
+const KEYS_PAUSE_MS = 20000;
+function pauseKeys(on) {
+  clearTimeout(keysPaused);
+  keysPaused = on ? setTimeout(() => pauseKeys(false), KEYS_PAUSE_MS) : null;
+  try { if (win && !win.isDestroyed()) win.webContents.setIgnoreMenuShortcuts(!!on); } catch (_) { /* the keys still come back below */ }
+  if (on) { try { globalShortcut.unregisterAll(); } catch (_) { /* nothing was held */ } }
+  else { registerHotkeys(); push(); }
 }
 
 // ---- trade offers ---------------------------------------------------------------
 function tradeState() {
   const s = book.summary(prices);
-  return { ...s, divine: prices.divine, labels: LABELS,
+  return { ...s, divine: prices.divine, labels: LABELS, defaultMessages: DEFAULT_MESSAGES,
     overlayInfo: { on: !!config.trade.overlay, helper: watch.running, front: watch.running ? watch.name : '', allowed: overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() }), layoutOpen: !!layoutWin },
     canSend: !!hook && watch.running, sendProblem: !hook ? 'the keyboard helper is not installed' : (watch.running ? '' : 'the app cannot tell which window is in front on this PC'), hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
 }
@@ -1425,7 +1465,7 @@ async function tradeDo(id, what) {
     return;
   }
   const text = chatCommand(action, offer, { messages: config.trade.messages, characterName: config.characterName });
-  if (!text) { say('That message is empty. Set its text under Trade, Settings.', true); return; }
+  if (!text) { say('That message is empty. Set its text in Settings, under Trade.', true); return; }
   if (action === 'whisper') { await sendChat(text, { send: false }); return; }
   if (await sendChat(text)) { book.applied(id, action); saveTradesSoon(); }
 }
@@ -1460,7 +1500,7 @@ function createWindow() {
 
 // ---- IPC -----------------------------------------------------------------------
 function applyConfig(patch) {
-  const leagueBefore = config.league, logBefore = config.logPath;
+  const leagueBefore = config.league, logBefore = config.logPath, hookBefore = hookSetup();
   if (patch.trade) patch = { ...patch, trade: mergeTrade(config.trade, patch.trade) };
   config = {
     ...config, ...patch,
@@ -1469,14 +1509,20 @@ function applyConfig(patch) {
     priceSearch: { ...config.priceSearch, ...(patch.priceSearch || {}) },
   };
   writeJson('config.json', config);
-  if (patch.priceSearch && config.priceSearch.overlay === false && checkPanel) checkPanel.hide();
+  if (patch.priceSearch && config.priceSearch.overlay === false && checkPanel) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; }
   if (patch.customPrices) { prices.setCustom(config.customPrices); itemsRev++; }
   if (patch.ignoredItems) { reader.ignoreNames = new Set(config.ignoredItems); reader.forgetCells(); itemsRev++; }
+  // The map last checked is judged again by the mods ticked now, so its verdict follows the ticks.
+  if (patch.mapRules && mapCheck) {
+    const mods = checkMods(mapCheck.mods.map((m) => m.mod), config.mapRules);
+    mapCheck = { ...mapCheck, mods, dangerCount: mods.filter((m) => m.dangerous).length };
+  }
   if (patch.hotkeys || patch.trade) registerHotkeys();
-  if (patch.trade) { syncKeyHook(); if (!config.trade.enabled) book.clearTests(); }
+  if (patch.trade && !config.trade.enabled) book.clearTests();
   if (config.logPath !== logBefore) startLog();
   if (config.league !== leagueBefore) refreshPrices();
-  if (patch.inventory) { syncTimedWatch(); syncKeyHook(); }
+  if (patch.inventory) syncTimedWatch();
+  if (hookSetup() !== hookBefore) syncKeyHook();
   push();
 }
 
@@ -1688,7 +1734,19 @@ const actions = {
   },
   layoutCancel: () => { if (layoutWin) layoutWin.close(); },
   layoutReset: () => applyConfig({ overlayLayout: {}, trade: { position: 'bottom', offsetX: 0, offsetY: 0 } }),
-  tradeTest: () => addTestOffer(),
+  // Choosing a key in Settings: see pauseKeys.
+  keysPause: () => pauseKeys(true),
+  keysResume: () => { if (keysPaused) pauseKeys(false); },
+  // Every key back to what a fresh install has.
+  resetKeys: () => {
+    applyConfig({ hotkeys: { ...DEFAULT_CONFIG.hotkeys }, trade: { hotkeys: { ...DEFAULT_CONFIG.trade.hotkeys } }, inventory: { key: DEFAULT_CONFIG.inventory.key } });
+    say('Every key is back to its default.');
+  },
+  tradeTest: () => {
+    addTestOffer();
+    const onGame = config.trade.enabled && config.trade.overlay;
+    say(`A test offer is on the Trade page${onGame ? ', and on top of the game while the game is the window in front' : ''}. Test offers never type anything in the game.`);
+  },
   tradeDismissAll: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeClear: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeForget: (a) => { book.removeHistory(String(a.id || '')); saveTradesSoon(); },

@@ -23,7 +23,7 @@
   <div class="side-foot">
     <button type="button" class="navi" id="btn-side-update"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span class="lbl" id="side-update-label">Check for updates</span></button>
     <button type="button" class="navi" id="btn-account" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="lbl" id="account-label">Log in</span><span class="navdot" id="account-dot" hidden></span></button>
-    <button type="button" class="navi" id="btn-settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 18h10"/><path d="M18 18h2"/><circle cx="16" cy="18" r="2"/></svg><span class="lbl">Settings</span></button>
+    <button type="button" class="navi" id="btn-settings" data-tab="settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 18h10"/><path d="M18 18h2"/><circle cx="16" cy="18" r="2"/></svg><span class="lbl">Settings</span></button>
   </div>
 </aside>
 
@@ -125,61 +125,20 @@
     <section class="trade-live" aria-label="Open offers">
       <div class="trade-head">
         <h2 class="pagetitle">Trade</h2>
-        <span class="row"><button type="button" data-act="tradeTest">Show a test offer</button><button type="button" id="btn-trade-clear" data-act="tradeClear" data-confirm="Dismiss every open offer?">Dismiss all</button></span>
+        <span class="row"><button type="button" id="btn-trade-clear" data-act="tradeClear" data-confirm="Dismiss every open offer?">Dismiss all</button><button type="button" data-settings="trade">Trade settings</button></span>
       </div>
       <p class="notice bad" id="trade-warn" hidden></p>
       <p class="map-meta" id="trade-hint"></p>
       <p class="map-meta" id="trade-seen"></p>
-      <p class="map-meta" id="trade-overlay-info"></p>
       <div class="trade-offers" id="trade-offers"></div>
     </section>
-    <section class="trade-side" aria-label="Trade history and settings">
+    <section class="trade-side" aria-label="Trade history">
       <div class="totals trade-totals" id="trade-totals"></div>
       <figure class="sales" id="sales">
         <figcaption><b>Sold per day</b><span id="sales-sub"></span></figcaption>
         <div class="sales-plot" id="sales-plot"></div>
         <div class="sales-tip" id="sales-tip" hidden></div>
       </figure>
-      <details class="trade-settings" id="trade-settings">
-        <summary>Trade settings</summary>
-        <form id="trade-form" autocomplete="off">
-          <label class="check"><input type="checkbox" name="enabled"> Read trade offers from whispers</label>
-          <label class="check"><input type="checkbox" name="overlay"> Show offers on top of the game</label>
-          <label class="check"><input type="checkbox" name="sound"> Play a sound for a new buyer</label>
-          <div class="settings-grid">
-            <span class="row wide"><button type="button" data-act="layoutToggle">Move the overlay on the game screen</button><button type="button" data-act="layoutReset">Back to the default spot</button></span>
-            <label class="wide">Key: open layout mode, to drag the overlay where you want it <input name="hkLayout" placeholder="Shift+F2"></label>
-            <label>Key: next step for the oldest offer <input name="hkNext" placeholder="F2"></label>
-            <label>Key: dismiss the oldest offer <input name="hkDismiss" placeholder="F3"></label>
-            <label>Key: invite the newest buyer <input name="hkInvite" placeholder="not set"></label>
-            <label>Key: trade with the newest buyer <input name="hkTrade" placeholder="not set"></label>
-            <label>Key: tell the newest buyer you are busy <input name="hkBusy" placeholder="not set"></label>
-            <label>Key: ask the newest buyer if still interested <input name="hkStill" placeholder="not set"></label>
-            <label>Key: start a whisper to the newest buyer <input name="hkWhisper" placeholder="not set"></label>
-            <label>Key: go to my hideout <input name="hkHideout" placeholder="F5"></label>
-            <label>Key: show remaining monsters <input name="hkRemaining" placeholder="not set"></label>
-            <span></span>
-            <label class="wide">Thanks message <input name="msgThanks"></label>
-            <label class="wide">Busy message <input name="msgBusy"></label>
-            <label class="wide">Sold message <input name="msgSold"></label>
-            <label class="wide">Still interested message <input name="msgStill"></label>
-          </div>
-          <fieldset>
-            <legend>Done by itself</legend>
-            <label class="check"><input type="checkbox" name="autoThankSold"> After I sell: whisper the thanks message</label>
-            <label class="check"><input type="checkbox" name="autoKickSold"> After I sell: kick the buyer from the party</label>
-            <label class="check"><input type="checkbox" name="autoThankBought"> After I buy: whisper the thanks message</label>
-            <label class="check"><input type="checkbox" name="autoLeaveBought"> After I buy: leave the party</label>
-            <label class="check"><input type="checkbox" name="autoHomeBought"> After I buy: go back to my hideout</label>
-            <label class="check"><input type="checkbox" name="autoJoinHideout"> When a seller's party invite is accepted: go to their hideout</label>
-            <label class="check"><input type="checkbox" name="autoIgnoreSold"> Do not list buyers for an item I sold in the last hour</label>
-            <label>Close a finished purchase after this many seconds (0 = keep it) <input name="autoCloseSec" type="number" min="0" max="600" step="5"></label>
-            <p class="warn">These type in the game without a key press from you, as PoE Lurker does. GGG's rule is one action per key press or click, so the first six are outside it and are your own risk. They are off until you tick them. They only ever type while the game is the window in front.</p>
-          </fieldset>
-          <p class="fine">In messages, {item} and {price} are filled in from the offer. Every button and key press types one chat line in the game, never more. Nothing is sent without a click or key press from you unless you tick something under "Done by itself". Ctrl+click on an offer's cross dismisses every offer.</p>
-          <div class="dialog-actions"><span></span><button type="submit" class="primary">Save trade settings</button></div>
-        </form>
-      </details>
       <h2>Finished trades</h2>
       <div class="table-wrap">
         <table>
@@ -193,7 +152,14 @@
 
 <main class="view" id="tab-mapcheck" role="tabpanel" hidden>
   <h2 class="pagetitle">Map check</h2>
-  <div id="mapcheck-body"></div>
+  <div class="mapcheck">
+    <div id="mapcheck-body"></div>
+    <aside class="maprules" aria-labelledby="maprules-title">
+      <h2 id="maprules-title">Mods my build cannot run</h2>
+      <p class="hint small">Tick the ones your build cannot run. A map with any of them is marked "Do not run", here and in the message in game.</p>
+      <div class="rules" id="rules"></div>
+    </aside>
+  </div>
 </main>
 
 <main class="view" id="tab-costs" role="tabpanel" hidden>
@@ -246,55 +212,198 @@
     </div>
   </div>
 </main>
+
+<main class="view" id="tab-settings" role="tabpanel" hidden>
+  <div class="set">
+    <nav class="set-nav" id="set-nav" aria-label="Settings sections">
+      <h2 class="pagetitle">Settings</h2>
+      <button type="button" data-set="general" aria-pressed="true">General</button>
+      <button type="button" data-set="keys" aria-pressed="false">Keys</button>
+      <button type="button" data-set="loot" aria-pressed="false">Loot counting</button>
+      <button type="button" data-set="check" aria-pressed="false">Price check</button>
+      <button type="button" data-set="overlay" aria-pressed="false">Overlay</button>
+      <button type="button" data-set="trade" aria-pressed="false">Trade</button>
+      <button type="button" data-set="help" aria-pressed="false">Help</button>
+      <p class="set-note">Every change is saved straight away. <b id="set-saved" role="status" hidden>Saved.</b></p>
+    </nav>
+    <div class="set-main" id="set-main">
+
+      <section class="set-sec" id="set-general" aria-label="General">
+        <h2>General</h2>
+        <p class="set-lead">Your league, your character, and where the app reads the game from.</p>
+        <div class="set-list">
+          <div class="set-row">
+            <span class="set-what"><b>League</b><small id="set-prices-line"></small></span>
+            <span class="set-ctl"><select data-cfg="league" aria-label="League"></select><button type="button" id="btn-refresh-prices" data-act="refreshPrices">Refresh prices</button></span>
+          </div>
+          <div class="set-row">
+            <span class="set-what"><b>Character name</b><small>Only this character's deaths are counted. Leave it empty to count every death.</small></span>
+            <span class="set-ctl"><input data-cfg="characterName" placeholder="Every character" aria-label="Character name" spellcheck="false" autocomplete="off"></span>
+          </div>
+          <div class="set-row stack">
+            <span class="set-what"><b>Game log file (Client.txt)</b><small id="set-log-line"></small></span>
+            <span class="set-ctl"><input data-cfg="logPath" placeholder="Found automatically" aria-label="Path of the game log file" spellcheck="false" autocomplete="off"><button type="button" data-act="browseLog">Browse</button></span>
+          </div>
+          <div class="set-row">
+            <span class="set-what"><b>Screen the game runs on</b><small>Your inventory is read from this screen, and the overlay is drawn on it. The game has to run in Windowed Fullscreen.</small></span>
+            <span class="set-ctl"><select data-cfg="inventory.displayId" aria-label="Screen the game runs on"></select></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="set-sec" id="set-keys" aria-label="Keys" hidden>
+        <h2>Keys</h2>
+        <p class="set-lead">Every key the app uses and what it does. Click a key, then press the new one; Esc leaves it as it was. Do not pick a key that is bound to something in the game.</p>
+        <div id="set-keys-list"></div>
+        <p class="set-foot"><button type="button" data-act="resetKeys" data-confirm="Set every key back to its default?">Back to the default keys</button></p>
+      </section>
+
+      <section class="set-sec" id="set-loot" aria-label="Loot counting" hidden>
+        <h2>Loot counting</h2>
+        <p class="set-lead">Loot is counted by reading your inventory from the screen while it is open in game.</p>
+        <div class="set-list">
+          <label class="set-row">
+            <span class="set-what"><b>Read my inventory when I press my inventory key</b><small>One read for each press of <span class="keyname" data-keyname="inventory.key"></span>, the key that opens your inventory in game. If yours is a different key, set it under Keys.</small></span>
+            <input type="checkbox" data-cfg="inventory.onKey">
+          </label>
+          <label class="set-row">
+            <span class="set-what"><b>Read it after each of my clicks, back from a map</b><small>While you stash, each click is followed by one read. Your loot is counted, and a second trip into the same map knows what you really took back in.</small></span>
+            <input type="checkbox" data-cfg="inventory.onClick">
+          </label>
+          <label class="set-row">
+            <span class="set-what"><b>Also read it by itself</b><small>Looks at the screen again and again without a key press or click, as often as set below. This catches your inventory even when you open the stash with a click and never press your inventory key.</small></span>
+            <input type="checkbox" data-cfg="inventory.timed">
+          </label>
+          <label class="set-row" id="set-interval-row">
+            <span class="set-what"><b>Seconds between reads</b></span>
+            <span class="set-ctl"><input type="number" data-cfg="inventory.intervalMs" min="0.5" max="30" step="0.5"></span>
+          </label>
+        </div>
+        <p class="warn">GGG's rules allow one screen read per key press or click of your own. Reading on your inventory key, or after your own click, stays within that. Reading by itself does not: it is off until you switch it on, and it is your own risk.</p>
+      </section>
+
+      <section class="set-sec" id="set-check" aria-label="Price check" hidden>
+        <h2>Price check</h2>
+        <p class="set-lead">Hover an item in game and press a check key to see what it is worth. Price check: <span class="keyname" data-keyname="hotkeys.priceCheck"></span>. Check and count: <span class="keyname" data-keyname="hotkeys.clipboard"></span>. <button type="button" class="link" data-settings="keys">Change the keys</button></p>
+        <div class="set-list">
+          <label class="set-row">
+            <span class="set-what"><b>Copy the hovered item for me</b><small>Each press of a check key sends one Ctrl+Alt+C to the game and reads the clipboard once, as other price check tools do. Off: press Ctrl+C on the item yourself, then the key.</small></span>
+            <input type="checkbox" data-cfg="inventory.autoCopy">
+          </label>
+          <label class="set-row">
+            <span class="set-what"><b>Search the trade site straight away</b><small>Gear has no poe.ninja price, so rares, magic items and uniques are looked up on the official trade site. Off: the search waits for you to press its Search button.</small></span>
+            <input type="checkbox" data-cfg="priceSearch.auto">
+          </label>
+        </div>
+        <p class="set-foot">Whether the answer shows on top of the game or on the Prices page is set under <button type="button" class="link" data-settings="overlay">Overlay</button>.</p>
+      </section>
+
+      <section class="set-sec" id="set-overlay" aria-label="Overlay" hidden>
+        <h2>Overlay</h2>
+        <p class="set-lead">What the app draws on top of the game, and where. The game has to run in Windowed Fullscreen. Nothing is drawn while another program is in front.</p>
+        <h3>Shown on top of the game</h3>
+        <div class="set-list">
+          <label class="set-row">
+            <span class="set-what"><b>Trade offers</b><small>One line for each open offer, with the button for its next step.</small></span>
+            <input type="checkbox" data-cfg="trade.overlay">
+          </label>
+          <label class="set-row">
+            <span class="set-what"><b>Price check window</b><small>The trade site search for gear, beside your inventory or stash. Off: it opens on the Prices page instead.</small></span>
+            <input type="checkbox" data-cfg="priceSearch.overlay">
+          </label>
+          <label class="set-row">
+            <span class="set-what"><b>Message after a check</b><small>For a couple of seconds: the item and its value, a map's verdict, or why nothing was read. Off: the app turns to its Prices or Map check page instead.</small></span>
+            <input type="checkbox" data-cfg="checkToast">
+          </label>
+          <label class="set-row">
+            <span class="set-what"><b>Reading alerts</b><small>Tells you when something in your inventory was not recognised, or when a read was uncertain.</small></span>
+            <input type="checkbox" data-cfg="inventory.alerts">
+          </label>
+        </div>
+        <h3>Where it sits</h3>
+        <div class="set-list">
+          <div class="set-row">
+            <span class="set-what"><b>Layout mode</b><small>Dims the game and shows a box for each part of the overlay. Drag the boxes where you want them and press Save. Key in game: <span class="keyname" data-keyname="trade.hotkeys.layout"></span>.</small></span>
+            <span class="set-ctl"><button type="button" data-act="layoutToggle">Move the overlay</button></span>
+          </div>
+          <div class="set-row">
+            <span class="set-what"><b>Default spots</b><small>Puts every part of the overlay back where it started.</small></span>
+            <span class="set-ctl"><button type="button" data-act="layoutReset" data-confirm="Put every part of the overlay back in its default spot?">Back to the default spots</button></span>
+          </div>
+          <div class="set-row">
+            <span class="set-what"><b>Test offer</b><small>Puts a made-up trade offer on screen, to see and place the overlay. Test offers never type anything in the game.</small></span>
+            <span class="set-ctl"><button type="button" data-act="tradeTest">Show a test offer</button></span>
+          </div>
+        </div>
+        <p class="set-foot" id="overlay-info"></p>
+      </section>
+
+      <section class="set-sec" id="set-trade" aria-label="Trade" hidden>
+        <h2>Trade</h2>
+        <p class="set-lead">Offers are read from whispers in the game log and listed on the Trade page. Every button and key press types one chat line in the game, never more.</p>
+        <p class="notice" id="set-trade-off" hidden>Trade offers are switched off, so the rest of this page and the trade keys do nothing for now.</p>
+        <div class="set-list">
+          <label class="set-row">
+            <span class="set-what"><b>Read trade offers from whispers</b><small>Buyers who whisper you from the trade site, and your own whispers to sellers.</small></span>
+            <input type="checkbox" data-cfg="trade.enabled">
+          </label>
+          <label class="set-row">
+            <span class="set-what"><b>Sound for a new buyer</b><small>Two short notes when someone asks for one of your items.</small></span>
+            <input type="checkbox" data-cfg="trade.sound">
+          </label>
+        </div>
+        <h3>Messages</h3>
+        <div class="set-list fields">
+          <label class="set-row"><span class="set-what"><b>Thanks</b></span><span class="set-ctl wide"><input data-cfg="trade.messages.thanks" autocomplete="off"></span></label>
+          <label class="set-row"><span class="set-what"><b>Busy</b></span><span class="set-ctl wide"><input data-cfg="trade.messages.busy" autocomplete="off"></span></label>
+          <label class="set-row"><span class="set-what"><b>Sold</b></span><span class="set-ctl wide"><input data-cfg="trade.messages.sold" autocomplete="off"></span></label>
+          <label class="set-row"><span class="set-what"><b>Still interested?</b></span><span class="set-ctl wide"><input data-cfg="trade.messages.still" autocomplete="off"></span></label>
+        </div>
+        <p class="set-foot">{item} and {price} are filled in from the offer.</p>
+        <h3>Done for me after a trade</h3>
+        <div class="set-list">
+          <label class="set-row"><span class="set-what"><b>After I sell: whisper the thanks message</b></span><input type="checkbox" data-cfg="trade.auto.thankSold"></label>
+          <label class="set-row"><span class="set-what"><b>After I sell: kick the buyer from the party</b></span><input type="checkbox" data-cfg="trade.auto.kickSold"></label>
+          <label class="set-row"><span class="set-what"><b>After I buy: whisper the thanks message</b></span><input type="checkbox" data-cfg="trade.auto.thankBought"></label>
+          <label class="set-row"><span class="set-what"><b>After I buy: leave the party</b></span><input type="checkbox" data-cfg="trade.auto.leaveBought"></label>
+          <label class="set-row"><span class="set-what"><b>After I buy: go back to my hideout</b></span><input type="checkbox" data-cfg="trade.auto.homeBought"></label>
+          <label class="set-row"><span class="set-what"><b>When a seller's party invite is accepted: go to their hideout</b></span><input type="checkbox" data-cfg="trade.auto.joinHideout"></label>
+        </div>
+        <p class="warn">These type in the game without a key press from you, as PoE Lurker does. GGG's rule is one action per key press or click, so they are outside it and your own risk. They are off until you switch them on, and they only ever type while the game is the window in front.</p>
+        <h3>Keeping the list short</h3>
+        <div class="set-list">
+          <label class="set-row"><span class="set-what"><b>Leave out buyers for an item I sold in the last hour</b></span><input type="checkbox" data-cfg="trade.auto.ignoreSold"></label>
+          <label class="set-row"><span class="set-what"><b>Close a finished purchase after this many seconds</b><small>0 keeps it until you dismiss it.</small></span><span class="set-ctl"><input type="number" data-cfg="trade.auto.closeBoughtSec" min="0" max="600" step="5"></span></label>
+        </div>
+        <p class="set-foot">Ctrl+click on an offer's cross dismisses every offer. Keys: next step <span class="keyname" data-keyname="trade.hotkeys.next"></span>, dismiss <span class="keyname" data-keyname="trade.hotkeys.dismiss"></span>. <button type="button" class="link" data-settings="keys">All trade keys</button></p>
+      </section>
+
+      <section class="set-sec" id="set-help" aria-label="Help" hidden>
+        <h2>Help</h2>
+        <p class="set-lead">For when something is not read the way it should be.</p>
+        <div class="set-list">
+          <div class="set-row">
+            <span class="set-what"><b>A map does not start, or the timer does not stop</b><small>Shows whether the game is writing to its log, the areas you entered and what the app did with each.</small></span>
+            <span class="set-ctl"><button type="button" id="btn-logcheck">Check the game log</button></span>
+          </div>
+          <div class="set-row">
+            <span class="set-what"><b>An item is read wrong</b><small>Sends what the app sees in your inventory right now, with the pictures it compared it against, to the Map Companion server. Nothing else from your screen is sent. When you are not logged in, the report is kept on this PC instead. Key in game for a quick one: <span class="keyname" data-keyname="hotkeys.snapshot"></span>.</small></span>
+            <span class="set-ctl"><button type="button" data-act="saveDiagnostic">Send a report</button></span>
+          </div>
+          <div class="set-row" id="set-shortcut-row" hidden>
+            <span class="set-what"><b>Desktop shortcut</b><small>Starts the app directly, without the command window of start.bat.</small></span>
+            <span class="set-ctl"><button type="button" data-act="makeShortcut">Add a Desktop shortcut</button></span>
+          </div>
+        </div>
+        <h3>About</h3>
+        <p class="fine" id="version-line"></p>
+        <p class="fine">This app reads the game log, the clipboard and the screen. It only sends something to the game when you press a key or click a button: one Ctrl+Alt+C on a check key, if copying is switched on, and one chat line for each trade button or trade key. The steps under "Done for me after a trade" are the one exception, and only when you switch them on. It never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
+      </section>
+
+    </div>
+  </div>
+</main>
 </div>
-
-<dialog id="settings">
-  <form method="dialog" id="settings-form">
-    <h2>Settings</h2>
-    <div class="settings-grid">
-      <label>League <select name="league"></select></label>
-      <label>Character name (only your deaths are counted) <input name="characterName" placeholder="Leave empty to count every death"></label>
-      <label class="wide">Game log file (Client.txt)
-        <span class="row"><input name="logPath" placeholder="Found automatically when empty"><button type="button" id="btn-browse">Browse</button></span>
-      </label>
-      <label>Check or count the hovered item <input name="hkClip" placeholder="F8"></label>
-      <label>Price check only: nothing is named or counted (held only while the game is in front; leave empty for none) <input name="hkPrice" placeholder="Ctrl+F"></label>
-      <label>Send a report of what the app sees <input name="hkSnap" placeholder="F9"></label>
-      <label>Screen the game runs on <select name="displayId"></select></label>
-    </div>
-
-    <fieldset>
-      <legend>Reading your inventory</legend>
-      <label>Key that opens your inventory in game <input name="invKey" placeholder="Tab"></label>
-      <label class="check"><input type="checkbox" name="onKey"> Read the inventory once each time I press that key</label>
-      <label class="check"><input type="checkbox" name="onClick"> Back from a map, read the inventory once after each of my clicks (stashing), so a second trip into the same map knows what you really took back in</label>
-      <label class="check"><input type="checkbox" name="checkToast"> After the check key, show in game for a moment what was read (when off, the app switches to the Map check or Prices page instead)</label>
-      <label class="check"><input type="checkbox" name="invAlerts"> Tell me in game when an item is not recognised or a read is uncertain</label>
-      <label class="check"><input type="checkbox" name="autoCopy"> The check key copies the hovered item for me (sends one Ctrl+Alt+C to the game per press)</label>
-      <label class="check"><input type="checkbox" name="timed"> Also check by itself (needed to count loot when you open the stash with a click)</label>
-      <label>Seconds between checks <input name="intervalSec" type="number" min="0.5" max="30" step="0.5"></label>
-      <p class="warn">GGG's rules allow one screen read, and one action sent to the game, per manual key press. Reading on your inventory key or after your own click, and the single Ctrl+C on the check key stay within that. Checking by itself reads without a key press, so it breaks that rule and is your own risk. Without it, press your inventory key once after arriving in the hideout, before you stash.</p>
-    </fieldset>
-
-    <fieldset>
-      <legend>Item database</legend>
-      <p class="fine" id="shared-line"></p>
-      <p class="fine">Everyone gets the item database, logged in or not. What you name is added to it under your account name when you are logged in. Reports (F9) go to the same server; they hold the inventory slots as the app saw them, nothing else from your screen. You can rename or remove the pictures you added yourself; the owner of the list can change any.</p>
-    </fieldset>
-
-    <fieldset>
-      <legend>Map mods my build cannot run</legend>
-      <div class="rules" id="rules"></div>
-    </fieldset>
-
-    <p class="fine">This app reads the game log, the clipboard and the screen. It only sends something to the game when you press a key or click a button: one Ctrl+C on the check key, if that option is on, and one chat line for each trade button or trade key. It never touches game memory or files. It is not affiliated with or endorsed by Grinding Gear Games. Prices come from poe.ninja.</p>
-    <p class="fine" id="version-line"></p>
-    <div class="dialog-actions">
-      <span class="row"><button type="button" id="btn-refresh-prices">Refresh prices now</button><button type="button" id="btn-logcheck">Check the game log</button><button type="button" id="btn-diagnostic">Send a full report</button><button type="button" id="btn-shortcut">Add a Desktop shortcut</button></span>
-      <button type="submit" class="primary" value="save">Save settings</button>
-    </div>
-  </form>
-</dialog>
 
 <dialog id="account">
   <form id="account-form" autocomplete="off" hidden>
@@ -380,6 +489,7 @@
 </dialog>
 
 <script src="demo.js"></script>
+<script src="keys.js"></script>
 <script src="tradecard.js"></script>
 <script src="app.js"></script>
 </body>

@@ -1,7 +1,6 @@
 'use strict';
 // Map mod warnings. Each rule is a case-insensitive regular expression tested against every mod line.
-// All rules start switched off; turn on the ones your build cannot run. Wording changes between
-// patches, so rules are editable in Settings.
+// All rules start switched off; the ones your build cannot run are ticked on the Map check page.
 
 const DEFAULT_RULES = [
   { id: 'reflect-phys', label: 'Physical reflect', pattern: 'reflect \\d+% of Physical', enabled: false },
