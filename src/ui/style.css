@@ -144,6 +144,7 @@ input::placeholder { color: #6f7a86; }
   background: rgba(16, 19, 23, 0.62);
 }
 .xkey { color: var(--bone); font-weight: 600; }
+.snap figcaption .stale { display: block; color: var(--gold); }
 .snap figcaption { margin-top: 4px; font-size: 12px; color: var(--ash); }
 .snaps { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; }
 .snaps .snap { flex: 1 1 240px; max-width: 420px; }

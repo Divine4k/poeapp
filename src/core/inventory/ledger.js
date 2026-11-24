@@ -21,6 +21,7 @@ class LootLedger {
     this.pendingArrival = false;
     this.arrival = new Map();   // cell -> { name, qty } | null (first seen empty)
     this.hideout = null;        // counts from the latest hideout reading
+    this.seen = null;           // counts from the latest map reading
   }
 
   enterMap() {
@@ -29,6 +30,7 @@ class LootLedger {
       this.credited = new Map();
     }
     this.hideout = null;
+    this.seen = null;
     this.arrival = new Map();
     this.inMap = true;
     this.pendingArrival = false;
@@ -57,7 +59,7 @@ class LootLedger {
       if (!this.inMap) this.hideout = new Map(counts);
       return [];
     }
-    if (this.inMap) return this.credit(counts);
+    if (this.inMap) { this.seen = new Map(counts); return this.credit(counts); }
 
     let gains = [];
     if (this.pendingArrival) {
@@ -72,6 +74,30 @@ class LootLedger {
     }
     this.hideout = new Map(counts);
     return gains;
+  }
+
+  // What is in the inventory now as far as loot goes: the latest map reading, or back in the
+  // hideout the first sightings since arriving.
+  visible(name) {
+    if (this.inMap) return this.seen ? this.seen.get(name) || 0 : null;
+    if (!this.pendingArrival) return null;
+    let n = 0;
+    for (const v of this.arrival.values()) if (v && v.name === name) n += v.qty;
+    return n;
+  }
+
+  // You said n of an item that was taken to be in the inventory before the map are loot after
+  // all (they were added by hand). Usually the inventory was not seen after it was stashed, so
+  // the last trip's loot looked like it went into the map again. Everything of it in view now
+  // counts as already credited, so the next reading neither adds it again nor holds back new loot.
+  markLoot(name, n) {
+    if (!this.baseline || !(n > 0)) return;
+    const seen = this.visible(name);
+    if (seen === null) return;
+    const base = Math.max(0, (this.baseline.get(name) || 0) - n);
+    if (base) this.baseline.set(name, base); else this.baseline.delete(name);
+    const done = Math.max(0, seen - base);
+    if (done) this.credited.set(name, done); else this.credited.delete(name);
   }
 
   // An item turned out to be something else (a wrong name was corrected, or an item that was not

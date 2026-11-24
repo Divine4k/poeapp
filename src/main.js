@@ -58,7 +58,7 @@ const DEFAULT_CONFIG = {
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
   // autoCopy: the check hotkey presses Ctrl+Alt+C in the game for you (one copy per key press).
-  inventory: { displayId: null, key: 'Tab', onKey: true, timed: false, intervalMs: 1000, autoCopy: true },
+  inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: false, intervalMs: 1000, autoCopy: true },
   mapRules: DEFAULT_RULES,
   loadout: [],
   // What you are farming: each has a name and an atlas tree link, and its own sessions.
@@ -105,7 +105,8 @@ let notice = null; // { text, bad, at }
 let lastInventory = { rev: 0, at: 0, cells: [] };
 const logTrace = []; // the last area lines from the game log and what the tracker did with each
 let singlesBaseline = 0;  // single (unnumbered) items in the inventory when the map was entered
-let carriedIn = null; // { runId, trip, cells } the inventory as it was when this trip into the map began
+let carriedIn = null; // { runId, trip, cells, stale } the inventory as it was when this trip into the map began
+let leftMapAt = 0;    // when the map was last left for the hideout, to tell if the inventory was seen since
 let lastSingles = 0; // what the last clean read saw, for the Inventory tab
 // Items the reader could not name, kept until named, ignored or dismissed: [{ id, qty, print, image, guesses, at, here }]
 const backlog = new Backlog({ similar: (a, b) => similarity(a, b) > 0.95 });
@@ -253,12 +254,25 @@ function syncLedger() {
     if (!ledger.inMap) {
       singlesBaseline = lastSingles;
       session.nextTrip(cur.id);
+      // Back into the same map without the inventory being seen since you left it: what the
+      // app last saw is the full inventory of the trip before, stashed or not.
+      const stale = cur.trip > 1 && leftMapAt > 0 && !(lastInventory.at > leftMapAt);
       // Whatever the last reading showed is what goes into the map with you.
-      carriedIn = { runId: cur.id, trip: cur.trip, cells: lastInventory.cells.map((c) => ({ cell: c.cell, name: c.name || null, qty: c.qty || 0, print: c.print || null })) };
-      writeJson('carried.json', { ...carriedIn, cells: carriedIn.cells.map((c) => ({ ...c, print: c.print ? encodePrint(c.print) : null })) });
+      carriedIn = { runId: cur.id, trip: cur.trip, stale, cells: lastInventory.cells.map((c) => ({ cell: c.cell, name: c.name || null, qty: c.qty || 0, print: c.print || null })) };
+      saveCarried();
+      if (stale) {
+        showToast({ title: 'Your inventory was not seen after you stashed', detail: 'Loot like last trip\'s may be taken as brought in. Click a dimmed slot on the Mapping page to count it.', bad: true }, true);
+        say('Your inventory was not seen in the hideout after the last trip, so items like the ones you stashed may show as taken in with you. Click a dimmed slot in this map\'s picture to count it as loot. Opening your inventory once before going back in avoids this.', true);
+      }
     }
     ledger.enterMap();
-  } else ledger.leaveMap();
+  } else {
+    if (ledger.inMap) leftMapAt = Date.now();
+    ledger.leaveMap();
+  }
+}
+function saveCarried() {
+  if (carriedIn) writeJson('carried.json', { ...carriedIn, cells: carriedIn.cells.map((c) => ({ ...c, print: c.print ? encodePrint(c.print) : null })) });
 }
 
 function startLog() {
@@ -655,8 +669,9 @@ function keepSnapshot(result) {
   const cells = markCarried(result.cells.filter((c) => c.status !== 'covered'), base, (a, b) => similarity(a, b) > 0.9)
     .map((c) => ({ ...c, score: c.score ? Math.round(c.score * 100) : null, near: nearList(c.near), packed: c.print ? packPrint(c.print) : null }));
   const growing = ledger.inMap;
+  const stale = !!(carriedIn && carriedIn.stale && base === carriedIn.cells);
   if (!snapshots.wants(run.id, trip, cells, growing)) return;
-  if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing })) session.markSnapshot(run.id);
+  if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing, stale })) session.markSnapshot(run.id);
 }
 
 function updateUnknown(found) {
@@ -736,11 +751,12 @@ function syncTimedWatch() {
 // The keyboard helper does two things, each only on your own key press:
 // it notices your inventory key (without blocking it) so the inventory is read once per press,
 // and it lets the check hotkey send a single Ctrl+C to the game.
+let clickTimer = null;
 const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape', enter: 'Enter', backquote: 'Backquote', '`': 'Backquote' };
 function syncKeyHook() {
-  if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
+  if (hook) { try { hook.uIOhook.removeAllListeners('keydown'); hook.uIOhook.removeAllListeners('mouseup'); hook.uIOhook.stop(); } catch (_) { /* already stopped */ } hook = null; }
   status.inventory.keyHook = 'off';
-  if (!config.inventory.onKey && !config.inventory.autoCopy && !config.trade.enabled) return;
+  if (!config.inventory.onKey && !config.inventory.onClick && !config.inventory.autoCopy && !config.trade.enabled) return;
   let lib;
   try { lib = require('uiohook-napi'); } catch (_) { status.inventory.keyHook = 'missing'; return; }
   if (config.inventory.onKey) {
@@ -749,6 +765,15 @@ function syncKeyHook() {
     const code = lib.UiohookKey[name];
     if (code === undefined) status.inventory.keyHook = 'badkey';
     else lib.uIOhook.on('keydown', (e) => { if (e.keycode === code) setTimeout(readInventory, 200); });
+  }
+  // Back from a map, each of your clicks (moving loot to the stash) is followed by one read, so
+  // the app sees the inventory as you leave it. A quick run of clicks gets one read at its end.
+  if (config.inventory.onClick) {
+    lib.uIOhook.on('mouseup', () => {
+      if (ledger.inMap || !ledger.pendingArrival || !watch.gameInFront()) return;
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(readInventory, 300);
+    });
   }
   try { lib.uIOhook.start(); hook = lib; if (status.inventory.keyHook !== 'badkey') status.inventory.keyHook = 'ok'; } catch (_) { status.inventory.keyHook = 'missing'; }
 }
@@ -1501,6 +1526,27 @@ const actions = {
     session.addLoot([{ name: a.name, qty: a.qty }], 'manual', a.runId || session.currentId);
   },
   removeLoot: (a) => session.removeLoot(a.runId, a.lootId),
+  // A slot taken to be in the inventory before the map is loot after all. id: snap:<trip>:<cell>.
+  markLoot: (a) => {
+    const [, tripNo, cellNo] = String(a.id || '').split(':');
+    const run = session.runs.find((r) => r.id === a.runId);
+    const trip = run && snapshots ? snapshots.get(run.id).trips.find((t) => t.trip === Number(tripNo)) : null;
+    const c = trip && trip.cells.find((q) => q.cell === Number(cellNo));
+    if (!c || !(c.carriedQty > 0)) { say('That slot is no longer there or is already counted.', true); return; }
+    const n = c.carriedQty;
+    c.carried = false; c.carriedQty = 0;
+    snapshots.rewrite(run.id);
+    session.markSnapshot(run.id);
+    // Later reads of this trip must not dim it again.
+    if (carriedIn && carriedIn.runId === run.id && carriedIn.trip === trip.trip) {
+      const b = carriedIn.cells.find((x) => x.cell === c.cell);
+      if (b) { b.name = null; b.qty = 0; b.print = null; saveCarried(); }
+    }
+    if (!c.name) { say('Counted as loot. It has no stack number or name, so it adds nothing to the value.'); return; }
+    session.addLoot([{ name: c.name, qty: n }], 'manual', run.id);
+    if (run.id === session.currentId && trip.trip === (run.trip || 1) && (ledger.inMap || ledger.pendingArrival)) ledger.markLoot(c.name, n);
+    say(`Counted ${n} ${c.name} as loot from this map.`);
+  },
   removeLootName: (a) => session.removeLootName(a.runId, a.name),
   addCost: (a) => session.addCost(a.runId, a.cost),
   removeCost: (a) => session.removeCost(a.runId, a.costId),
@@ -1692,7 +1738,7 @@ function setupIpc() {
     return {
       cols: COLS, rows: ROWS,
       trips: data.trips.map((t) => ({
-        trip: t.trip, at: t.at, image: t.image,
+        trip: t.trip, at: t.at, image: t.image, stale: !!t.stale,
         cells: t.cells.map((c) => { const each = c.name ? prices.chaosOf(c.name) : 0; return { ...c, packed: undefined, each, total: each * (c.qty || 0) }; }),
       })),
     };

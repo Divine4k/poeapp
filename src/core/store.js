@@ -45,11 +45,11 @@ class SnapshotStore {
   }
 
   // cells: [{ cell, status, name, qty }]. image: a data URL of the whole grid.
-  record(runId, trip, { at, cells, image, growing = true }) {
+  record(runId, trip, { at, cells, image, growing = true, stale = false }) {
     if (!this.wants(runId, trip, cells, growing)) return false;
     const data = this.get(runId);
     const entry = {
-      trip, at, filled: cells.length, sig: signature(cells), image,
+      trip, at, filled: cells.length, sig: signature(cells), image, ...(stale ? { stale: true } : {}),
       cells: cells.map((c) => {
         const o = { cell: c.cell, status: c.status, name: c.name || null, qty: c.qty || 0, source: c.source || null, carried: !!c.carried, carriedQty: c.carriedQty || 0 };
         // How the slot was read (score in percent, closest names, exact fingerprint), kept so a

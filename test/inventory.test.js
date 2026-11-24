@@ -203,6 +203,38 @@ test('ledger: several maps on one inventory, and repeat trips to one map', () =>
   assert.deepEqual(l.reading(obs({ chaos: 8 })), [{ name: 'chaos', qty: 2 }]);
 });
 
+test('ledger: loot that looked carried in can be counted after all', () => {
+  // Trip 1 finds 10 chaos. The inventory is stashed but never seen empty, so trip 2 starts
+  // from the old baseline and its 6 chaos look like the same 10.
+  const l = new LootLedger();
+  l.reading(obs({ portal: 40 }));
+  l.enterMap();
+  assert.deepEqual(l.reading(obs({ portal: 40, chaos: 10 })), [{ name: 'chaos', qty: 10 }]);
+  l.leaveMap();
+  l.enterMap(); // no hideout reading in between
+  assert.deepEqual(l.reading(obs({ portal: 39, chaos: 6 })), []);
+  l.markLoot('chaos', 6); // added by hand
+  assert.deepEqual(l.reading(obs({ portal: 39, chaos: 6 })), []);
+  assert.deepEqual(l.reading(obs({ portal: 39, chaos: 14 })), [{ name: 'chaos', qty: 8 }]);
+  // Back in the hideout the same works on what was first seen there.
+  l.leaveMap();
+  assert.deepEqual(l.reading(obs({ portal: 39, chaos: 14 })), []);
+  l.markLoot('portal', 39); // a mistake on purpose: all 39 were really taken in
+  assert.deepEqual(l.reading(obs({ portal: 39, chaos: 14 })), []);
+
+  // A stack really brought in, marked as loot: it no longer holds back what grows on it.
+  const m = new LootLedger();
+  m.reading(obs({ chaos: 10 }));
+  m.enterMap();
+  assert.deepEqual(m.reading(obs({ chaos: 13 })), [{ name: 'chaos', qty: 3 }]);
+  m.markLoot('chaos', 10);
+  assert.deepEqual(m.reading(obs({ chaos: 20 })), [{ name: 'chaos', qty: 7 }]);
+  // Before any reading of the map there is nothing to go by.
+  const f = new LootLedger();
+  f.markLoot('chaos', 3);
+  assert.equal(f.baseline, null);
+});
+
 test('ledger: survives a restart, also in the middle of a map', () => {
   const l = new LootLedger();
   l.reading(obs({ portal: 40 }));

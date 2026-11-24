@@ -112,7 +112,7 @@
     return parts.length ? ` ${parts.join('. ')}.` : '';
   }
   function snapTip(c, divine) {
-    if (c.carried) return `${c.name ? `${c.name} ×${c.qty}` : 'Single item'}: taken into the map with you, not loot`;
+    if (c.carried) return `${c.name ? `${c.name} ×${c.qty}` : 'Single item'}: taken into the map with you, not loot. Click if it is loot from this map.`;
     if (c.status === 'item' || c.status === 'remembered') return `${c.name} ×${c.qty}${c.each ? `: ${fmtValue(c.total, divine)}` : ', no price'}${c.carriedQty ? `. ${c.carriedQty} of these were taken into the map with you` : ''}.${readNote(c)}`;
     if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}.${readNote(c)}`;
     if (c.status === 'ignored') return 'Ignored by you';
@@ -131,6 +131,12 @@
       for (let k = 0; k < data.cols * data.rows; k++) {
         const c = by.get(k);
         const fixable = c && c.qty > 0 && ['item', 'remembered', 'unknown'].includes(c.status) && c.source !== 'pinned' && c.source !== 'map' && data.runId;
+        if (c && c.carried && data.runId) {
+          // Dimmed: one click counts it as loot after all.
+          const what = c.name ? `${c.carriedQty > 1 ? `${c.carriedQty} ` : ''}${c.name}` : 'this item';
+          cells += `<i class="${esc(c.status)} carried fixable" data-act="markLoot" data-id="snap:${t.trip}:${c.cell}" data-run="${esc(data.runId)}" data-confirm="${esc(`Count ${what} as loot from this map?`)}" title="${esc(snapTip(c, divine))}"></i>`;
+          continue;
+        }
         cells += c ? `<i class="${esc(c.status)}${c.carried ? ' carried' : ''}${fixable ? ' fixable' : ''}"${fixable ? ` data-fix="snap:${t.trip}:${c.cell}" data-run="${esc(data.runId)}"` : ''} title="${esc(snapTip(c, divine))}${fixable ? ' Click to correct.' : ''}"></i>` : '<i></i>';
       }
       const brought = t.cells.some((c) => c.carried);
@@ -138,9 +144,10 @@
       // The explanation of the dimmed slots is given once, on the first picture shown.
       const legend = brought && (!compact || i === trips.findIndex((x) => x.t.cells.some((c) => c.carried)));
       // In a map's details the legend line explains the colours, so the caption stays short.
-      const caption = compact
+      const caption = (compact
         ? `${which}at ${clock(t.at)}.${legend ? ' <span class="xkey">Dimmed slots</span>: taken into the map with you, not loot.' : ''}`
-        : `${total > 1 ? `Inventory ${n} of ${total}, ` : ''}${clock(t.at)}`;
+        : `${total > 1 ? `Inventory ${n} of ${total}, ` : ''}${clock(t.at)}`)
+        + (t.stale && brought ? ' <span class="stale">Your inventory was not seen after the trip before, so some dimmed slots may be loot. Click one to count it.</span>' : '');
       return `<figure class="snap"><div class="snap-grid"><img src="${esc(t.image)}" alt="Inventory ${n} of ${total}"><div class="snap-cells">${cells}</div></div>
         <figcaption>${caption}</figcaption></figure>`;
     }).join('');
@@ -177,11 +184,13 @@
 
   // The dialog behind every "click to correct": a slot of the inventory, of a map's picture, or
   // a card above. target: what fixSlot or learn needs to find the picture again.
-  let fixTarget = null;
+  let fixTarget = null, lootTarget = null;
   function openFix(id, runId) {
     const [where, x, y] = id.split(':');
     let pic = '', now = '', options = [];
     $('fix-remove').hidden = true;
+    $('fix-loot').hidden = true;
+    lootTarget = null;
     if (where === 'db') {
       const hit = dbPics.get(`${x}:${y}`);
       if (!hit) return;
@@ -208,6 +217,12 @@
       options = (c.near || []).map((n) => n.name);
       if (c.name) options.unshift(c.name);
       fixTarget = { type: 'fixSlot', id, runId };
+      if (c.carriedQty > 0 && c.name) {
+        now += ` ${c.carriedQty} of them were taken to be in your inventory before the map.`;
+        lootTarget = { type: 'markLoot', id, runId };
+        $('fix-loot').textContent = `Count those ${c.carriedQty} as loot too`;
+        $('fix-loot').hidden = false;
+      }
     } else {
       const u = (state.unknown || []).find((q) => String(q.id) === x);
       if (!u) return;
@@ -227,6 +242,7 @@
   const sendFix = (name) => { if (fixTarget && name) act({ ...fixTarget, name }); fixTarget = null; $('fix').close(); };
   $('fix-form').addEventListener('submit', (e) => { e.preventDefault(); const name = $('fix-name').value.trim(); if (name) sendFix(name); });
   $('fix-cancel').addEventListener('click', () => { fixTarget = null; $('fix').close(); });
+  $('fix-loot').addEventListener('click', () => { if (lootTarget) act(lootTarget); lootTarget = null; fixTarget = null; $('fix').close(); });
   $('fix-remove').addEventListener('click', () => { if (fixTarget) act({ type: 'forgetItem', id: fixTarget.id }); fixTarget = null; $('fix').close(); });
   $('fix-options').addEventListener('click', (e) => { const b = e.target.closest('[data-fix-name]'); if (b) sendFix(b.dataset.fixName); });
 
@@ -283,7 +299,9 @@
       arr.hidden = false; arr.className = 'notice bad';
       arr.textContent = invC.timed
         ? 'Back from the map: open your stash or inventory now and the loot is counted. Keep the mouse off the inventory for a second.'
-        : `Back from the map: press ${invC.key} before you stash anything, or the loot from this map is not counted. To have this happen by itself, turn on "Also check by itself" in Settings.`;
+        : invC.onClick && invS.keyHook === 'ok'
+          ? `Back from the map: open your inventory (${invC.key}) and stash as usual. Each click is followed by one read, so the loot is counted and the app sees what you take back in.`
+          : `Back from the map: press ${invC.key} before you stash anything, or the loot from this map is not counted. To have this happen by itself, turn on "Also check by itself" in Settings.`;
     } else arr.hidden = true;
 
     const n = state.notice, note = $('notice');
@@ -1364,6 +1382,7 @@
     el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.inventory.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
     el.invKey.value = c.inventory.key || 'Tab';
     el.onKey.checked = !!c.inventory.onKey;
+    el.onClick.checked = !!c.inventory.onClick;
     el.invAlerts.checked = c.inventory.alerts !== false;
     el.timed.checked = !!c.inventory.timed;
     el.intervalSec.value = (c.inventory.intervalMs || 1000) / 1000;
@@ -1389,6 +1408,7 @@
         displayId: el.displayId.value || null,
         key: el.invKey.value.trim() || 'Tab',
         onKey: el.onKey.checked,
+        onClick: el.onClick.checked,
         alerts: el.invAlerts.checked,
         autoCopy: el.autoCopy.checked,
         timed: el.timed.checked,
