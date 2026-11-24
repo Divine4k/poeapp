@@ -85,11 +85,11 @@
     const rowsHtml = d.listings.map((l) => {
       const amount = l.price ? Math.round(l.price.amount * 100) / 100 : '';
       const coin = l.price ? esc(COIN_WORDS[l.price.currency] || l.price.currency) : 'no price';
-      const about = l.price && l.price.currency !== 'chaos' && l.chaos !== null ? `${Math.round(l.chaos).toLocaleString()}c` : '';
-      return `<li><span class="pc-price"><b>${amount}</b> ${coin}</span><span class="pc-about">${about}</span><span class="pc-age">${ago(l.listedAt)}</span>
+      const about = l.price && l.price.currency !== 'chaos' && l.chaos !== null ? ` <i class="pc-about">${Math.round(l.chaos).toLocaleString()}c</i>` : '';
+      return `<li><span class="pc-price"><b>${amount}</b> ${coin}${about}</span><span class="pc-age">${ago(l.listedAt)}</span>
         <span class="pc-st ${esc(l.status)}">${STATUS_WORDS[l.status] || ''}</span><span class="pc-seller">${esc(l.seller)}</span></li>`;
     }).join('');
-    return `<div class="pc-listings"><div class="pc-cols"><span class="pc-price">Price</span><span class="pc-about"></span><span class="pc-age">Listed</span><span class="pc-st">Seller</span><span class="pc-seller"></span></div>
+    return `<div class="pc-listings"><div class="pc-cols"><span class="pc-price">Price</span><span class="pc-age">Listed</span><span class="pc-st">Seller</span><span class="pc-seller"></span></div>
       <ul class="pc-list">${rowsHtml}</ul></div>`;
   }
 

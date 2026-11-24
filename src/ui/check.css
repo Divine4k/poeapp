@@ -60,21 +60,22 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-go .link { margin-left: auto; color: var(--portal); font-size: 12px; white-space: nowrap; }
 .pc-go .link:hover { color: var(--bone); }
 
-/* what is listed: one line each, in columns under their names */
-.pc-listings { border-top: 1px solid var(--seam); background: rgba(14, 16, 19, 0.55); padding: 7px 14px 9px; }
-.pc-cols, .pc-list li { display: flex; align-items: baseline; gap: 10px; }
+/* what is listed: one line each, in columns under their names. Each column is as wide as its
+   widest entry and no wider, and the seller's name gets whatever is left. */
+.pc-listings { border-top: 1px solid var(--seam); background: rgba(14, 16, 19, 0.55); padding: 7px 14px 9px; display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); column-gap: 12px; }
+.pc-cols, .pc-list, .pc-list li { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; }
 .pc-cols { font-size: 11px; color: var(--ash); padding-bottom: 3px; }
 .pc-list li { min-height: 24px; align-items: center; border-top: 1px solid rgba(53, 62, 73, 0.6); }
-.pc-price { flex: 0 0 96px; text-align: right; color: var(--ash); font-size: 12px; white-space: nowrap; }
+.pc-price { color: var(--ash); font-size: 12px; white-space: nowrap; }
 .pc-list .pc-price b { font-family: var(--display); font-size: 16px; color: var(--gold); font-variant-numeric: tabular-nums; }
-.pc-about { flex: 0 0 54px; font-size: 11px; color: var(--ash); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pc-age { flex: 0 0 48px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pc-about { margin-left: 4px; font-style: normal; font-size: 11px; color: var(--ash); font-variant-numeric: tabular-nums; }
+.pc-age { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pc-list .pc-age { color: var(--bone); }
-.pc-st { flex: 0 0 96px; white-space: nowrap; padding-left: 8px; }
+.pc-st { white-space: nowrap; }
 .pc-list .pc-st { color: var(--ash); }
 .pc-list .pc-st::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--seam); }
 .pc-list .pc-st.instant, .pc-list .pc-st.online { color: var(--moss); }
 .pc-list .pc-st.instant::before, .pc-list .pc-st.online::before { background: var(--moss); }
 .pc-list .pc-st.afk { color: var(--gold); }
 .pc-list .pc-st.afk::before { background: var(--gold); }
-.pc-seller { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ash); font-size: 12px; }
+.pc-seller { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ash); font-size: 12px; }
