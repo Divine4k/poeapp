@@ -155,6 +155,10 @@ class PriceTable {
     const k = normalize(name);
     return (this.custom && this.custom.get(k)) || this.byNorm.get(k) || null;
   }
+  // The downloaded entry for a name, whatever price of your own you may have set for it.
+  listed(name) { return this.byNorm.get(normalize(name)) || null; }
+  // Your own price for a name, or null.
+  ownPrice(name) { const e = this.custom && this.custom.get(normalize(name)); return e ? e.chaos : null; }
   chaosOf(name) { const e = this.get(name); return e ? e.chaos : 0; }
   get divine() { return this.chaosOf('Divine Orb'); }
 

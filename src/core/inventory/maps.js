@@ -66,4 +66,7 @@ function readMapTier(rgb) {
   return { tier: TEMPLATES[best].tier, name: TEMPLATES[best].name, score: scores[best], lead: scores[best] - second };
 }
 
-module.exports = { readMapTier, REGION: { X0, X1, Y0, Y1 } };
+// Every name the tier reader can give.
+const MAP_NAMES = TEMPLATES.map((t) => t.name);
+
+module.exports = { MAP_NAMES, readMapTier, REGION: { X0, X1, Y0, Y1 } };

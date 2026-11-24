@@ -20,6 +20,7 @@ const { IconIndex, similarity, fingerprint, encodePrint, decodePrint, printPixel
 const { readStack } = require('./core/inventory/digits');
 const { InventoryReader, SINGLE_ART_SCORE, learnable } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
+const { MAP_NAMES } = require('./core/inventory/maps');
 const { captureFrame, cursorInFrame, cursorOnDisplay } = require('./capture');
 const { ArtLoader } = require('./art');
 const { Updater } = require('./updater');
@@ -63,6 +64,7 @@ const DEFAULT_CONFIG = {
   strategies: [{ id: 'default', name: 'Default', atlasUrl: '' }],
   activeStrategy: 'default',
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
+  ignoredItems: [], // names of items never to count, whatever the picture
   navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
   shareToken: '', // GitHub token for uploading named items, stored encrypted
   shareName: '',  // the name your additions to the item database are signed with (empty: this PC's user name)
@@ -523,9 +525,27 @@ function shareName() {
   return (String(config.shareName || '').trim() || user || 'someone').slice(0, 40);
 }
 
-// The item database as the Items page shows it: every item the app can recognise, and under
-// each the pictures of it as seen in game with who named them. Pictures kept on this PC and
-// those in the shared database are one list; the same picture in both shows once.
+// When and how each item was last read from the inventory: name -> { at, source, score }.
+// This is what shows that the app reads an item, whether or not anyone ever named it.
+let seenItems = {};
+let seenTimer = null;
+function noteSeen(cells) {
+  const at = Date.now();
+  let fresh = false, any = false;
+  for (const c of cells) {
+    if (c.status !== 'item' || !c.name) continue;
+    if (!seenItems[c.name]) fresh = true;
+    seenItems[c.name] = { at, source: c.source || null, score: c.score ? Math.round(c.score * 100) : null };
+    any = true;
+  }
+  if (fresh) itemsRev++;
+  if (any && !seenTimer) seenTimer = setTimeout(() => { seenTimer = null; writeJson('seen.json', seenItems); }, 20000);
+}
+
+// The item database as the Items page shows it: every item the app can read, with how it is
+// recognised (official picture, pictures of it as seen in game and who named them, or the tier
+// numeral for maps), when it was last read, its price and whether it is counted. Pictures kept
+// on this PC and those in the shared database are one list; the same picture in both shows once.
 function itemDatabase() {
   const pics = [];
   learned.forEach((l, i) => {
@@ -538,22 +558,39 @@ function itemDatabase() {
     pics.push({ id: `shared:${i}`, name: e.name, print: e.print, image: null, auto: !!e.auto, local: false, shared: true, by: e.by || '', over: twin ? (twin.name || 'ignored') : null });
   });
   const downloaded = new Set(index.art.map((e) => e.name));
+  const off = new Set(config.ignoredItems || []);
   const rows = new Map();
-  const rowOf = (name) => {
+  const rowOf = (name, method = 'picture') => {
     if (!rows.has(name)) {
-      const entry = name ? prices.get(name) : null;
-      rows.set(name, { name, icon: (entry && entry.icon) || null, category: (entry && entry.category) || '', chaos: entry ? entry.chaos : null, official: downloaded.has(name), pictures: [] });
+      const listed = name ? prices.listed(name) : null;
+      const own = name ? prices.ownPrice(name) : null;
+      rows.set(name, {
+        name, method, icon: (listed && listed.icon) || null, category: (listed && listed.category) || (name ? 'Other' : 'Ignored'),
+        ninja: listed ? listed.chaos : null, own, chaos: own !== null ? own : (listed ? listed.chaos : null),
+        official: downloaded.has(name), counted: !off.has(name), seen: seenItems[name] || null, pictures: [],
+      });
     }
     return rows.get(name);
   };
   for (const e of prices.iconEntries()) rowOf(e.name);
+  for (const name of MAP_NAMES) rowOf(name, 'tier');
   for (const p of pics) {
     rowOf(p.name).pictures.push({
       id: p.id, seen: p.image || printPicture(p.print), sharp: !!p.image, by: p.by, auto: p.auto,
       onlyHere: p.local && !p.shared, over: p.over, doubt: looksLikeAnother(p.name, p.print),
     });
   }
-  return { me: shareName(), canUpload: !!(shared && shared.token), rows: [...rows.values()] };
+  // Items read some other way (counted by you for one slot) still belong in the list.
+  for (const name of Object.keys(seenItems)) if (!rows.has(name)) rowOf(name, 'slot');
+  const list = [...rows.values()];
+  const labels = new Map(CATEGORY_LABELS.flatMap(([, cats]) => cats));
+  labels.set('Other', 'Other names'); labels.set('Ignored', 'Ignored pictures');
+  const counts = new Map();
+  for (const r of list) counts.set(r.category, (counts.get(r.category) || 0) + 1);
+  const icons = prices.categoryIcons();
+  const categories = [...labels].filter(([id]) => counts.has(id)).map(([id, label]) => ({ id, label, count: counts.get(id), icon: icons[id] || null }));
+  for (const [id, n] of counts) if (!labels.has(id)) categories.push({ id, label: id, count: n, icon: icons[id] || null });
+  return { me: shareName(), canUpload: !!(shared && shared.token), named: learned.filter((l) => l.name && !l.auto).length, rows: list, categories };
 }
 
 // The closest names as kept with a slot: [{ name, score (percent), source }].
@@ -651,6 +688,7 @@ async function readInventory() {
     status.inventory.lastReadAt = Date.now();
     status.inventory.recognised = result.recognised;
     settlePendingNames();
+    noteSeen(result.cells);
     if (config.inventory.autoLearn !== false) autoLearn(result.cells);
     updateUnknown(result.unknown);
     try { alertReading(result.cells); } catch (e) { console.error('alert failed', e.message); }
@@ -904,6 +942,8 @@ function readToken() {
 function loadLearned() {
   backlog.load(readJson('unrecognised.json', []), decodePrint);
   learned = readJson('learned.json', []);
+  seenItems = readJson('seen.json', {}) || {};
+  reader.ignoreNames = new Set(config.ignoredItems || []);
   for (const l of learned) indexLearned(l);
 }
 
@@ -1362,7 +1402,8 @@ function applyConfig(patch) {
   };
   writeJson('config.json', config);
   if (patch.priceSearch && config.priceSearch.overlay === false && checkPanel) checkPanel.hide();
-  if (patch.customPrices) prices.setCustom(config.customPrices);
+  if (patch.customPrices) { prices.setCustom(config.customPrices); itemsRev++; }
+  if (patch.ignoredItems) { reader.ignoreNames = new Set(config.ignoredItems); reader.forgetCells(); itemsRev++; }
   if (patch.hotkeys || patch.trade) registerHotkeys();
   if (patch.trade) { syncKeyHook(); if (!config.trade.enabled) book.clearTests(); }
   if (config.logPath !== logBefore) startLog();
@@ -1471,6 +1512,28 @@ const actions = {
     const also = fixed.slots ? ` Corrected ${fixed.slots} ${fixed.slots === 1 ? 'slot' : 'slots'} in ${fixed.maps} ${fixed.maps === 1 ? 'map' : 'maps'} of this session.` : '';
     const where = shared && shared.token ? ', here and for everyone' : ' on this PC';
     say(t.entry ? `That picture now counts as ${t.name}${where}.${also}` : `Saved as "${t.name}", but no price is known under that name, so it counts as 0c.`, !t.entry);
+  },
+  // Whether an item is counted at all. qty 0: never count it, 1: count it again.
+  setCounted: (a) => {
+    const name = String(a.name || '');
+    if (!name) return;
+    const set = new Set(config.ignoredItems || []);
+    if (Number(a.qty)) set.delete(name); else set.add(name);
+    applyConfig({ ignoredItems: [...set] });
+    say(Number(a.qty) ? `${name} is counted again.` : `${name} is never counted from now on. Loot of it already listed stays; remove it there if you want.`);
+  },
+  // A clean slate: every name given by hand on this PC goes, here and (with a token) in the
+  // shared database. What the app learned by itself and the pictures you chose to ignore stay.
+  removeNamed: async () => {
+    const mine = learned.filter((l) => l.name && !l.auto);
+    if (!mine.length) { say('There are no names given by hand on this PC.'); return; }
+    const prints = [];
+    for (const l of mine) { try { prints.push(decodePrint(l.print)); } catch (_) { /* a broken entry */ } }
+    learned = learned.filter((l) => !l.name || l.auto);
+    relearn();
+    let gone = 0;
+    if (shared && shared.token) { gone = await shared.removeMany(prints); index.setShared(shared.items); itemsRev++; }
+    say(`Removed ${mine.length} ${mine.length === 1 ? 'name' : 'names'} given by hand on this PC${gone ? `, and ${gone} of them from the shared database` : ''}. The app reads those items by itself where it can and asks you about the rest.`);
   },
   forgetItem: async (a) => {
     const [list, n] = String(a.id || '').split(':');
@@ -1697,6 +1760,7 @@ app.on('will-quit', () => {
   writeJson('session.json', session.toJSON());
   writeJson('ledger.json', ledger.toJSON());
   writeJson('trades.json', book.toJSON());
+  writeJson('seen.json', seenItems);
 });
 // The overlay is a window too, so quitting hangs on the main window alone.
 app.on('window-all-closed', () => app.quit());

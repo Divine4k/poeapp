@@ -489,31 +489,66 @@ fieldset label { margin-bottom: 8px; }
 .fix-pic .crop img.r4 { top: -256px; }
 
 /* Items page: the item database */
-.items-cols { grid-template-columns: minmax(300px, 2fr) 3fr; }
-.db-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
-.db-filters button { font-size: 13px; padding: 4px 10px; }
+#tab-items { display: flex; flex-direction: column; }
+#tab-items[hidden] { display: none; }
+.db-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.db-top .link { font-size: 13px; color: var(--ash); }
+.db-top .link:hover { color: var(--blood); }
+.db-unknown { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--blood); border-radius: 6px; max-height: 38vh; overflow: auto; flex: 0 0 auto; }
+.db-unknown h2 { margin: 0 0 4px; font-size: 15px; }
+#tab-items .bigsearch { margin-bottom: 10px; }
+.db-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.db-filters button { font-size: 13px; padding: 5px 11px; border-radius: 999px; }
 .db-filters button span { color: var(--ash); margin-left: 4px; font-variant-numeric: tabular-nums; }
-.db-filters button[aria-selected="true"] { border-color: var(--gold); color: var(--bone); }
+.db-filters button[aria-selected="true"] { border-color: var(--gold); background: rgba(209, 173, 98, 0.14); color: var(--bone); }
 .db-filters button.check { color: var(--gold); }
-.db { list-style: none; margin: 0 0 12px; padding: 0; }
-.db li { display: grid; grid-template-columns: 30px minmax(120px, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--slab); }
-.db li.empty { display: block; color: var(--ash); font-size: 13px; }
-.db .official { width: 30px; height: 30px; object-fit: contain; }
-.db .official.none { display: inline-block; }
-.db .what { min-width: 0; display: flex; flex-direction: column; }
-.db .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.db small { color: var(--ash); font-size: 12px; }
-.db .pics { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.db .pic { display: grid; grid-template-columns: 38px 1fr; column-gap: 10px; align-items: center; }
-.db .pic .seen { grid-row: span 2; width: 38px; height: 38px; padding: 0; border: 1px solid var(--seam); background: #101317; cursor: pointer; border-radius: 0; }
-.db .pic .seen:hover { border-color: var(--bone); }
-.db .pic .seen img { width: 100%; height: 100%; display: block; }
-.db .pic.over { opacity: 0.6; }
-.db .pic .doubt { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--gold); }
-.db .pic .doubt b { font-weight: 600; }
-.db .pic .doubt button { font-size: 12px; padding: 1px 8px; }
-.db .mini { width: 18px; height: 18px; object-fit: contain; }
-.db li.doubtful .pic .seen { border-color: var(--gold); }
-.db small.none { font-style: normal; }
-#db-more { margin-bottom: 16px; }
-@media (max-width: 900px) { .items-cols { grid-template-columns: 1fr; } }
+.itemdb .price-cats button { min-height: 38px; font-size: 14px; }
+.itemdb .price-cats img, .itemdb .price-cats .noicon { width: 26px; height: 26px; flex: 0 0 26px; }
+.itemdb .price-cats .n { margin-left: auto; color: var(--ash); font-weight: 400; font-size: 12px; font-variant-numeric: tabular-nums; }
+.db-table th .sort { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.db-table th .sort:hover { color: var(--gold); }
+.db-table th .sort[data-dir="up"]::after { content: " \2191"; color: var(--gold); }
+.db-table th .sort[data-dir="down"]::after { content: " \2193"; color: var(--gold); }
+.db-table td { font-size: 15px; vertical-align: middle; }
+.db-table tr.dbrow { cursor: pointer; }
+.db-table tr.dbrow.open td { background: var(--slab); }
+.db-table tr.dbrow.off .pname, .db-table tr.dbrow.off .val { opacity: 0.5; }
+.db-table .picon { width: 32px; height: 32px; flex: 0 0 32px; object-fit: contain; }
+.db-table .picon.none { display: inline-block; }
+.db-table .pname { gap: 12px; }
+.db-table .val small, .db-table .when small, .db-table .how small { display: block; font: 12px var(--body); color: var(--ash); }
+.db-table .how { white-space: nowrap; }
+.db-table .how small { white-space: normal; }
+.db-table .thumbs { display: inline-flex; gap: 3px; vertical-align: middle; margin-right: 8px; }
+.db-table .thumb { width: 26px; height: 26px; border: 1px solid var(--seam); background: #101317; }
+.db-table .thumb.over { opacity: 0.45; }
+.db-table .when { white-space: nowrap; font-size: 14px; }
+.db-table .flags { text-align: right; white-space: nowrap; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--seam); border-radius: 999px; color: var(--ash); vertical-align: middle; }
+.tag.good { border-color: var(--moss); color: var(--moss); }
+.tag.warn { border-color: var(--gold); color: var(--gold); margin-left: 6px; }
+.tag.off { border-color: var(--blood); color: var(--blood); }
+.tag.dimmed { opacity: 0.6; }
+tr.dbdetail td { padding: 14px 16px 18px; color: var(--bone); }
+.dbd { display: grid; grid-template-columns: minmax(0, 3fr) minmax(220px, 2fr); gap: 28px; }
+.dbd h3 { margin: 0 0 8px; font: 600 13px/1.3 var(--body); color: var(--ash); }
+.dbd .fine { margin: 6px 0 0; font-size: 12px; color: var(--ash); }
+.dbpics { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dbpics li { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; }
+.dbpics li.over { opacity: 0.6; }
+.dbpics .official, .dbpics .seen { width: 40px; height: 40px; object-fit: contain; }
+.dbpics .seen { border: 1px solid var(--seam); background: #101317; }
+.dbpics .official.none { display: inline-block; }
+.dbpics b { display: block; font-weight: 600; font-size: 14px; }
+.dbpics small { display: block; font-size: 12px; color: var(--ash); }
+.dbpics .acts { display: flex; gap: 12px; align-items: center; }
+.dbpics .acts button { font-size: 13px; padding: 3px 10px; }
+.dbpics .doubt { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--gold); }
+.dbpics .doubt b { display: inline; font-size: 12px; }
+.dbpics .doubt button { font-size: 12px; padding: 1px 8px; }
+.dbpics .mini { width: 18px; height: 18px; object-fit: contain; }
+.dbd .check { display: flex; gap: 8px; align-items: center; font-size: 14px; margin-bottom: 10px; }
+.dbd .inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; }
+.dbd .inline-form input { width: 90px; }
+#db-more { margin: 12px 0 16px; }
+@media (max-width: 1000px) { .dbd { grid-template-columns: 1fr; } }

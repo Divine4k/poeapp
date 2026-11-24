@@ -297,6 +297,7 @@
   function renderItems() {
     const un = state.unknown || [];
     $('items-dot').hidden = !un.length;
+    $('unknown-box').hidden = !un.length;
     $('hk-name').textContent = state.config.hotkeys.clipboard;
     $('unknown-title').textContent = un.length ? `Not recognised: ${un.length}` : 'Not recognised';
     $('btn-unknown-clear').hidden = !un.length;
@@ -324,65 +325,152 @@
     renderKnown();
   }
 
-  // The item database: every item the app can recognise, and beside each the pictures of it
-  // as seen in game with who named them. One list, whether a picture is kept on this PC, in the
-  // shared database, or both. A picture is clicked to rename or remove it.
-  let known = null, knownRev = null, dbFilter = 'seen', dbLimit = 80;
-  const dbPics = new Map(); // picture id -> { row, picture }, for the dialog
+  // The item database: every item the app can read, in one table. Each row says how the app
+  // knows the item (official picture, pictures from the game and who named them, or the tier
+  // numeral for maps), when it was last read, its price and whether it is counted. A row opens
+  // to manage the item: rename or remove a picture, stop counting it, give it your own price.
+  let known = null, knownRev = null, dbFilter = 'all', dbCat = '', dbLimit = 100, dbOpen = null, dbSort = { key: 'name', dir: 1 };
+  const dbPics = new Map(); // picture id -> { row, p }, for the dialog
   function whoNamed(p) {
     const here = p.onlyHere ? ', only on this PC' : '';
     if (p.over) return `named ${p.by ? `by ${p.by}` : 'by someone'}; not used here, you named this picture ${p.over}`;
     if (p.auto) return `learned by the app${p.by ? ` (${p.by})` : ''}${here}`;
     return `named by ${p.by || (p.onlyHere ? 'you' : 'someone')}${here}`;
   }
+  const READ_BY = { art: 'official picture', learned: 'picture from the game', shared: 'picture from the game', pinned: 'your name for that slot', map: 'tier numeral' };
+  function whenRead(seen) {
+    if (!seen) return '<span class="dim">Not yet</span>';
+    const today = new Date().toDateString() === new Date(seen.at).toDateString();
+    return `${today ? 'Today' : esc(dayOf(seen.at))}, ${clock(seen.at)}<small>${esc(READ_BY[seen.source] || 'read')}${seen.score ? `, ${seen.score}%` : ''}</small>`;
+  }
+  function refreshKnown() {
+    if (!api.itemsList) return;
+    knownRev = state.itemsRev;
+    api.itemsList().then((d) => { known = d; renderKnown(); });
+  }
   function renderKnown() {
-    if (state.itemsRev !== knownRev && api.itemsList) {
-      knownRev = state.itemsRev;
-      api.itemsList().then((d) => { known = d; renderKnown(); });
-    }
+    if ($('tab-items').hidden) return;
+    if (state.itemsRev !== knownRev) refreshKnown();
     if (!known) return;
-    const rows = known.rows;
     const hasDoubt = (r) => r.pictures.some((p) => p.doubt && !p.over);
-    const sets = {
-      seen: rows.filter((r) => r.pictures.length),
-      people: rows.filter((r) => r.pictures.some((p) => !p.auto)),
-      check: rows.filter(hasDoubt),
-      all: rows,
+    const tests = {
+      all: () => true,
+      read: (r) => !!r.seen,
+      pics: (r) => r.pictures.length > 0,
+      people: (r) => r.pictures.some((p) => !p.auto),
+      check: hasDoubt,
+      off: (r) => !r.counted,
     };
-    if (dbFilter === 'check' && !sets.check.length) dbFilter = 'seen';
-    const labels = [['seen', 'Seen in game'], ['people', 'Named by people'], ['check', 'To check'], ['all', 'Every item']];
-    $('db-filters').innerHTML = labels.filter(([id]) => id !== 'check' || sets.check.length)
-      .map(([id, label]) => `<button type="button" role="tab" data-db-filter="${id}" aria-selected="${id === dbFilter}"${id === 'check' ? ' class="check"' : ''}>${label} <span>${sets[id].length}</span></button>`).join('');
-    $('db-title').textContent = `Item database: ${rows.length} items`;
-    $('db-hint').textContent = `Every item the app can recognise. An item is known by its official picture, and better still by a picture of how it looks in your game; those are shown on the right with who named them. Click a picture to rename or remove it. ${known.canUpload ? `What you name is added for everyone, signed ${known.me}.` : 'Without an upload token (Settings), what you name stays on this PC.'}`;
+    const inCat = known.rows.filter((r) => !dbCat || r.category === dbCat);
+    if (!tests[dbFilter] || (dbFilter !== 'all' && !inCat.some(tests[dbFilter]))) dbFilter = 'all';
+    const labels = [['all', 'Every item'], ['read', 'Read by the app'], ['pics', 'With a picture from the game'], ['people', 'Named by people'], ['check', 'To check'], ['off', 'Not counted']];
+    $('db-filters').innerHTML = labels.map(([id, label]) => [id, label, inCat.filter(tests[id]).length]).filter(([id, , n]) => id === 'all' || n)
+      .map(([id, label, n]) => `<button type="button" role="tab" data-db-filter="${id}" aria-selected="${id === dbFilter}"${id === 'check' ? ' class="check"' : ''}>${label} <span>${n}</span></button>`).join('');
+    const cats = $('db-cats');
+    const catHtml = `<button type="button" data-db-cat="" aria-pressed="${!dbCat}"><span class="noicon"></span><span class="cat-name">All categories</span><span class="n">${known.rows.length}</span></button>`
+      + known.categories.map((c) => `<button type="button" data-db-cat="${esc(c.id)}" aria-pressed="${c.id === dbCat}">${c.icon ? `<img src="${esc(c.icon)}" alt="" loading="lazy">` : '<span class="noicon"></span>'}<span class="cat-name">${esc(c.label)}</span><span class="n">${c.count}</span></button>`).join('');
+    if (cats.dataset.html !== catHtml) { cats.dataset.html = catHtml; cats.innerHTML = catHtml; }
+    $('db-title').textContent = 'Items';
+    const reset = $('db-reset');
+    reset.hidden = !known.named;
+    reset.textContent = `Remove all ${known.named} names given by hand`;
+    reset.dataset.confirm = `Remove all ${known.named} names given by hand on this PC?${known.canUpload ? ' They are also removed from the shared database.' : ''} What the app learned by itself stays. The app then reads those items by itself where it can, and asks you about the rest.`;
 
     const q = $('learned-filter').value.trim().toLowerCase();
-    const list = sets[dbFilter].filter((r) => !q || (r.name || 'ignored').toLowerCase().includes(q) || r.pictures.some((p) => (p.by || '').toLowerCase().includes(q)))
-      .sort((x, y) => (hasDoubt(y) ? 1 : 0) - (hasDoubt(x) ? 1 : 0) || (y.pictures.length ? 1 : 0) - (x.pictures.length ? 1 : 0) || (x.name || '').localeCompare(y.name || ''));
+    const list = inCat.filter(tests[dbFilter]).filter((r) => !q || (r.name || 'ignored').toLowerCase().includes(q) || r.pictures.some((p) => (p.by || '').toLowerCase().includes(q)));
+    const by = {
+      name: (x, y) => (x.name || '').localeCompare(y.name || ''),
+      price: (x, y) => (x.chaos || 0) - (y.chaos || 0),
+      read: (x, y) => ((x.seen || {}).at || 0) - ((y.seen || {}).at || 0),
+    }[dbSort.key];
+    list.sort((x, y) => (hasDoubt(y) ? 1 : 0) - (hasDoubt(x) ? 1 : 0) || dbSort.dir * by(x, y) || (x.name || '').localeCompare(y.name || ''));
+    for (const b of document.querySelectorAll('[data-db-sort]')) b.dataset.dir = b.dataset.dbSort === dbSort.key ? (dbSort.dir > 0 ? 'up' : 'down') : '';
+    $('db-hint').textContent = `${list.length} of ${known.rows.length} items. Click an item to manage it: its pictures, whether it is counted, and its price.`;
+
     dbPics.clear();
     const icon = (src, cls = 'official') => (src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy">` : `<span class="${cls} none"></span>`);
-    const html = list.slice(0, dbLimit).map((r) => {
+    const how = (r) => {
+      if (r.method === 'tier') return '<span class="tag">Tier numeral on the map</span>';
+      if (r.pictures.length) {
+        const shown = r.pictures.filter((p) => !p.over);
+        const thumbs = r.pictures.slice(0, 3).map((p) => `<img class="thumb${p.sharp ? '' : ' blur'}${p.over ? ' over' : ''}" src="${esc(p.seen)}" alt="">`).join('');
+        const who = shown.length === 1 ? whoNamed(shown[0]) : `${r.pictures.length} pictures`;
+        return `<span class="thumbs">${thumbs}</span><span class="tag good">Picture from the game</span><small>${esc(who)}</small>`;
+      }
+      if (r.method === 'slot') return '<span class="tag">Named by you for one slot</span>';
+      return r.official ? '<span class="tag">Official picture</span>' : '<span class="tag dimmed">Official picture not downloaded yet</span>';
+    };
+    const detail = (r) => {
+      const official = r.method === 'tier'
+        ? '<li><span class="official none"></span><div><b>Tier numeral</b><small>The Roman numeral on the map is compared with one reference picture per tier.</small></div></li>'
+        : `<li>${icon(r.icon)}<div><b>Official picture</b><small>${r.official ? 'From poe.ninja. A slot must look at least 82% like it.' : (r.icon ? 'Not downloaded yet. It is fetched in the background.' : 'There is none: poe.ninja does not list this name.')}</small></div></li>`;
       const pics = r.pictures.map((p) => {
         dbPics.set(p.id, { row: r, p });
-        const doubt = p.doubt && !p.over ? `<span class="doubt">looks more like ${icon(p.doubt.icon, 'mini')}<b>${esc(p.doubt.name)}</b>
-          <button type="button" data-act="renameItem" data-id="${esc(p.id)}" data-name="${esc(p.doubt.name)}">Rename</button></span>` : '';
-        return `<span class="pic${p.over ? ' over' : ''}"><button type="button" class="seen${p.sharp ? '' : ' blur'}" data-fix="db:${esc(p.id)}" title="${p.sharp ? 'As it looks in game' : 'As it looks in game (only a blur of this picture was kept)'}. Click to rename or remove."><img src="${esc(p.seen)}" alt=""></button>
-          <small>${esc(whoNamed(p))}</small>${doubt}</span>`;
+        const doubt = p.doubt && !p.over ? `<span class="doubt">Looks more like ${icon(p.doubt.icon, 'mini')}<b>${esc(p.doubt.name)}</b> <button type="button" data-act="renameItem" data-id="${esc(p.id)}" data-name="${esc(p.doubt.name)}">Rename to ${esc(p.doubt.name)}</button></span>` : '';
+        const canRemove = known.canUpload || p.id.startsWith('mine:');
+        return `<li class="${p.over ? 'over' : ''}"><img class="seen${p.sharp ? '' : ' blur'}" src="${esc(p.seen)}" alt="">
+          <div><b>Picture from the game</b><small>${esc(whoNamed(p))}${p.sharp ? '' : '. Only a blur of it was kept'}</small>${doubt}</div>
+          <span class="acts"><button type="button" data-fix="db:${esc(p.id)}">Rename</button>${canRemove ? `<button type="button" class="link" data-act="forgetItem" data-id="${esc(p.id)}" data-confirm="Remove this picture?${known.canUpload ? ' It is removed for everyone.' : ''}">Remove</button>` : ''}</span></li>`;
       }).join('');
-      const meta = [r.category, r.chaos === null ? 'no price known' : (r.chaos ? fmtValue(r.chaos) : '')].filter(Boolean).join(', ');
-      const none = r.official ? 'official picture only, not yet seen in game' : 'official picture not downloaded yet';
-      return `<li class="${hasDoubt(r) ? 'doubtful' : ''}">${icon(r.icon)}
-        <div class="what"><span class="nm">${r.name ? esc(r.name) : 'Ignored: never counted'}</span><small>${esc(meta)}</small></div>
-        <div class="pics">${pics || `<small class="none">${none}</small>`}</div></li>`;
-    }).join('') || `<li class="empty">${q ? 'No item matches that.' : (dbFilter === 'seen' ? 'No item has been seen in game yet. Open your inventory in game and the list fills by itself.' : 'Nothing here yet.')}</li>`;
+      const none = r.method === 'picture' && !r.pictures.length ? '<p class="fine">No picture from the game yet. The app saves one by itself after a clear read, and from then on recognises this item almost exactly.</p>' : '';
+      const price = r.name ? `<form class="inline-form" data-db-price="${esc(r.name)}" autocomplete="off">
+          <label>Your own price <input type="number" min="0" step="0.01" value="${r.own !== null ? r.own : ''}" placeholder="${r.ninja !== null ? r.ninja : 'none'}" aria-label="Your own price in chaos"> c</label>
+          <button type="submit">Save</button>${r.own !== null ? `<button type="button" class="link" data-db-price-clear="${esc(r.name)}">${r.ninja !== null ? 'Use the poe.ninja price' : 'Remove'}</button>` : ''}</form>
+          <p class="fine">${r.ninja !== null ? `poe.ninja: ${fmtValue(r.ninja)}.` : 'poe.ninja has no price for this name.'}${r.own !== null ? ' Your own price is the one used.' : ''}</p>` : '';
+      const count = r.name ? `<label class="check"><input type="checkbox" data-db-count="${esc(r.name)}"${r.counted ? ' checked' : ''}> Count this item as loot</label>` : '<p class="fine">Pictures you chose to ignore. Remove one and the app asks about it again.</p>';
+      return `<tr class="detail dbdetail"><td colspan="5"><div class="dbd">
+        <section><h3>How the app recognises it</h3><ul class="dbpics">${r.name ? official : ''}${pics}</ul>${none}</section>
+        <section><h3>Counting and price</h3>${count}${price}</section>
+      </div></td></tr>`;
+    };
+    const html = list.slice(0, dbLimit).map((r) => {
+      const key = r.name || '(ignored)';
+      const flags = `${r.counted ? '' : '<span class="tag off">Not counted</span>'}${hasDoubt(r) ? '<span class="tag warn">Check</span>' : ''}`;
+      const cat = (known.categories.find((c) => c.id === r.category) || {}).label || r.category;
+      return `<tr class="dbrow${dbOpen === key ? ' open' : ''}${r.counted ? '' : ' off'}" data-db-row="${esc(key)}">
+        <td><div class="pname">${icon(r.icon, 'picon')}<div>${r.name ? esc(r.name) : 'Ignored pictures'}<small>${esc(cat)}</small></div></div></td>
+        <td class="num val">${r.chaos === null ? '<span class="dim">none</span>' : fmtValue(r.chaos)}${r.own !== null ? '<small>your price</small>' : ''}</td>
+        <td class="how">${how(r)}</td>
+        <td class="when">${whenRead(r.seen)}</td>
+        <td class="flags">${flags}</td></tr>${dbOpen === key ? detail(r) : ''}`;
+    }).join('') || `<tr><td colspan="5" class="empty">${q ? 'No item matches that.' : 'Nothing here.'}</td></tr>`;
     const box = $('db-rows');
-    if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
+    const typing = box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'number';
+    if (box.dataset.html !== html && !typing) { box.dataset.html = html; box.innerHTML = html; }
     const more = $('db-more');
     more.hidden = list.length <= dbLimit;
     more.textContent = `Show more (${list.length - dbLimit} left)`;
   }
-  $('db-filters').addEventListener('click', (e) => { const b = e.target.closest('[data-db-filter]'); if (b) { dbFilter = b.dataset.dbFilter; dbLimit = 80; renderKnown(); } });
-  $('db-more').addEventListener('click', () => { dbLimit += 200; renderKnown(); });
+  const dbTop = () => { document.querySelector('#tab-items .table-wrap').scrollTop = 0; };
+  $('db-filters').addEventListener('click', (e) => { const b = e.target.closest('[data-db-filter]'); if (b) { dbFilter = b.dataset.dbFilter; dbLimit = 100; renderKnown(); dbTop(); } });
+  $('db-cats').addEventListener('click', (e) => { const b = e.target.closest('[data-db-cat]'); if (b) { dbCat = b.dataset.dbCat; dbLimit = 100; renderKnown(); dbTop(); } });
+  $('db-more').addEventListener('click', () => { dbLimit += 300; renderKnown(); });
+  document.querySelector('.db-table thead').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-db-sort]');
+    if (!b) return;
+    dbSort = { key: b.dataset.dbSort, dir: dbSort.key === b.dataset.dbSort ? -dbSort.dir : (b.dataset.dbSort === 'name' ? 1 : -1) };
+    renderKnown();
+  });
+  $('db-rows').addEventListener('click', (e) => {
+    if (e.target.closest('button, input, label, form, a')) {
+      const clear = e.target.closest('[data-db-price-clear]');
+      if (clear) act({ type: 'removeCustomPrice', name: clear.dataset.dbPriceClear });
+      return;
+    }
+    const row = e.target.closest('[data-db-row]');
+    if (!row) return;
+    dbOpen = dbOpen === row.dataset.dbRow ? null : row.dataset.dbRow;
+    renderKnown();
+  });
+  $('db-rows').addEventListener('change', (e) => { const c = e.target.closest('[data-db-count]'); if (c) act({ type: 'setCounted', name: c.dataset.dbCount, qty: c.checked ? 1 : 0 }); });
+  $('db-rows').addEventListener('submit', (e) => {
+    const f = e.target.closest('[data-db-price]');
+    if (!f) return;
+    e.preventDefault();
+    const input = f.querySelector('input'), v = input.value.trim();
+    input.blur();
+    if (v === '') act({ type: 'removeCustomPrice', name: f.dataset.dbPrice }); else act({ type: 'setCustomPrice', name: f.dataset.dbPrice, chaos: v });
+  });
 
   // ---- session ------------------------------------------------------------------
   const totalsHtml = (t, divine) => `
@@ -976,6 +1064,7 @@
     for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
     for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices']) $(`tab-${id}`).hidden = id !== name;
     if (name === 'inventory') renderInventory(true);
+    if (name === 'items') { refreshKnown(); renderKnown(); }
     if (name === 'prices') renderPrices(true);
   }
 

@@ -120,17 +120,26 @@
     itemsList: async () => {
       const seen = state.unknown[0].image;
       const pic = (id, extra = {}) => ({ id, seen, sharp: true, by: 'Divine', auto: false, onlyHere: false, over: null, doubt: null, ...extra });
-      const row = (name, category, chaos, pictures = [], official = true) => ({ name, icon: null, category, chaos, official, pictures });
-      return { me: 'Divine', canUpload: true, rows: [
-        row('Chaos Orb', 'Currency', 1, [pic('mine:0'), pic('shared:4', { by: 'Marek', sharp: false })]),
-        row('Eldritch Chaos Orb', 'Currency', 27, [pic('mine:1', { doubt: { name: 'Chaos Orb', icon: null } })]),
-        row('Ritual Thread', 'Thread', 3.2, [pic('mine:2', { auto: true })]),
-        row('Vaal Orb', 'Currency', 1.4, [pic('mine:5', { auto: true, onlyHere: true, by: '' })]),
-        row('Immortal Astrolabe', 'Fragment', 12, [pic('shared:0', { by: 'Marek', sharp: false })]),
-        row('Lesser Eldritch Ember', 'Currency', 0.4, [pic('shared:1', { by: 'Anna', sharp: false, over: 'Greater Eldritch Ember' })]),
-        row('', '', null, [pic('mine:3')], false),
-        row('Divine Orb', 'Currency', 212), row('Exalted Orb', 'Currency', 14), row('Orb of Fusing', 'Currency', 0.3), row('Stacked Deck', 'Currency', 2.1),
-      ] };
+      const row = (name, category, ninja, pictures = [], extra = {}) => ({ name, method: 'picture', icon: null, category, ninja, own: null, chaos: ninja, official: true, counted: true, seen: null, pictures, ...extra });
+      const read = (min, source, score) => ({ at: now - min * 60000, source, score });
+      const rows = [
+        row('Chaos Orb', 'Currency', 1, [pic('mine:0', { auto: true })], { seen: read(2, 'learned', 99) }),
+        row('Eldritch Chaos Orb', 'Currency', 27, [pic('mine:1', { doubt: { name: 'Chaos Orb', icon: null } })], { seen: read(40, 'learned', 97) }),
+        row('Divine Orb', 'Currency', 212, [], { seen: read(2, 'art', 91) }),
+        row('Exalted Orb', 'Currency', 14, [pic('shared:2', { by: 'Marek', sharp: false })], { seen: read(1500, 'shared', 98) }),
+        row('Orb of Fusing', 'Currency', 0.3, [], { seen: read(2, 'art', 88) }),
+        row('Portal Scroll', 'Currency', 0.01, [pic('mine:4', { auto: true, onlyHere: true, by: '' })], { counted: false, seen: read(2, 'learned', 99) }),
+        row('Stacked Deck', 'Currency', 2.1, [], { own: 3, chaos: 3 }),
+        row('Vaal Orb', 'Currency', 1.4, [], { official: false }),
+        row('Ritual Thread', 'Thread', 3.2, [pic('mine:2', { auto: true })], { seen: read(9, 'learned', 99) }),
+        row('Legion Thread', 'Thread', 6.5),
+        row('Immortal Astrolabe', 'Astrolabe', 12, [pic('shared:0', { by: 'Marek', sharp: false }), pic('shared:1', { by: 'Anna', sharp: false, over: 'Royal Astrolabe' })]),
+        row('Map (Tier 16)', 'Map', 4, [], { method: 'tier', official: false, seen: read(12, 'map', 93) }),
+        row('My League Thing', 'Other', null, [pic('mine:6', { onlyHere: true, by: '' })], { official: false }),
+      ];
+      const labels = { Currency: 'Currency', Thread: 'Threads', Astrolabe: 'Astrolabes', Map: 'Maps', Other: 'Other names' };
+      const categories = Object.keys(labels).map((id) => ({ id, label: labels[id], count: rows.filter((r) => r.category === id).length, icon: null }));
+      return { me: 'Divine', canUpload: true, named: 3, rows, categories };
     },
     runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },

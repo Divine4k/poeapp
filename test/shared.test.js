@@ -351,3 +351,55 @@ test('item database: every picture says who named it, and can be renamed or remo
   // Lists written before names were recorded still load.
   assert.equal(parse(JSON.stringify([{ name: 'Plain', print: packPrint(p1) }]))[0].by, '');
 });
+
+test('a family of look-alike downloaded pictures counts as its cheapest member, flagged', () => {
+  const p = at(map, 0, 4);
+  // Three tiers of one essence: nearly the same picture. Made by nudging one print slightly.
+  const nudge = (print, k, by) => { const out = Float32Array.from(print); out[k] += by; let e = 0; for (const v of out) e += v * v; e = Math.sqrt(e); return out.map((v) => v / e); };
+  const index = new IconIndex();
+  index.addArt('Screaming Essence', nudge(p, 3, 0.02));
+  index.addArt('Shrieking Essence', nudge(p, 9, 0.03));
+  index.addArt('Deafening Essence', nudge(p, 20, 0.04));
+  assert.equal(index.match(p), null); // no prices known: it cannot say which, so it refuses as before
+  index.priceOf = (n) => ({ 'Screaming Essence': 2, 'Shrieking Essence': 9, 'Deafening Essence': 40 }[n]);
+  const hit = index.match(p);
+  assert.equal(hit.name, 'Screaming Essence');
+  assert.equal(hit.doubt, true);
+  // A picture crowded by something that is not downloaded art is still refused.
+  const odd = new IconIndex({ learnedThreshold: 0.999 });
+  odd.priceOf = () => 1;
+  odd.addArt('Real Item', nudge(p, 3, 0.02));
+  odd.addLearned('Something Else', nudge(p, 9, 0.2)); // close, but below its own bar
+  assert.equal(odd.match(p), null);
+});
+
+test('an item you chose never to count is recognised and left out', () => {
+  const { sharpPrint } = require('../src/core/inventory/icons');
+  const { isEmptyCell } = require('../src/core/inventory/grid');
+  const index = new IconIndex({ artThreshold: 0.9 });
+  hide.forEach((rgb, i) => { if (!isEmptyCell(rgb)) index.addArt(`Item ${i}`, fingerprint(rgb), sharpPrint(rgb)); });
+  const reader = new InventoryReader(index);
+  const before = reader.read(loadFrame('inv_map'));
+  const name = [...before.counts.keys()][0];
+  reader.ignoreNames = new Set([name]);
+  reader.forgetCells();
+  const after = reader.read(loadFrame('inv_map'));
+  assert.ok(!after.counts.has(name));
+  assert.equal(after.counts.size, before.counts.size - 1);
+  assert.ok(after.cells.some((c) => c.status === 'ignored' && c.off === name));
+});
+
+test('item database: several pictures can be removed in one go', async () => {
+  const p1 = at(map, 0, 4), p2 = at(map, 3, 2), p3 = at(map, 4, 2);
+  let remote = serialise([{ name: 'A', print: p1, by: 'me' }, { name: 'B', print: p2, by: 'me' }, { name: 'C', print: p3, by: 'app', auto: true }]);
+  let puts = 0;
+  const fetchImpl = async (url, opts = {}) => {
+    if (opts.method === 'PUT') { puts++; remote = Buffer.from(JSON.parse(opts.body).content, 'base64').toString(); return { ok: true, status: 200 }; }
+    return opts.headers.Accept.includes('raw') ? { ok: true, status: 200, text: async () => remote } : { ok: true, status: 200, json: async () => ({ sha: 's' }) };
+  };
+  const s = new SharedItems({ fetchImpl, token: 'tok' });
+  assert.equal(await s.removeMany([p1, p2]), 2);
+  assert.equal(puts, 1);
+  assert.deepEqual(parse(remote).map((e) => e.name), ['C']);
+  assert.equal(await s.removeMany([]), 0);
+});

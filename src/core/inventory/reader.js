@@ -15,6 +15,7 @@ class InventoryReader {
     this.memory = new Array(COLS * ROWS).fill(null); // last known { name, qty } per cell
     this.prints = new Array(COLS * ROWS).fill(null); // picture fingerprint per filled cell, from the last clear view of it
     this.pins = new Array(COLS * ROWS).fill(null);   // items counted by hand for one slot: { name, qty, print }
+    this.ignoreNames = new Set();                    // items you chose never to count, by name
   }
 
   forgetCells() { this.memory.fill(null); this.pins.fill(null); }
@@ -113,6 +114,8 @@ class InventoryReader {
           const map = readMapTier(rgb);
           if (map) hit = { name: map.name, score: map.score, source: 'map' };
         }
+        // Recognised, but you chose never to count this item.
+        if (hit && this.ignoreNames.has(hit.name)) { this.memory[k] = null; info.status = 'ignored'; info.off = hit.name; continue; }
         if (hit) {
           this.memory[k] = { name: hit.name, qty: stack || 1 };
           info.status = 'item'; info.score = hit.score; info.source = hit.source;

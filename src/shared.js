@@ -138,9 +138,10 @@ class SharedItems {
     }
   }
 
-  // Takes a picture out of the database for everyone. Needs the token. Returns how many went.
-  async remove(print) {
-    if (!this.token || this.busy) return 0;
+  // Takes pictures out of the database for everyone. Needs the token. Returns how many went.
+  remove(print) { return this.removeMany([print]); }
+  async removeMany(prints) {
+    if (!this.token || this.busy || !prints.length) return 0;
     this.busy = true;
     try {
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -148,13 +149,13 @@ class SharedItems {
         if (!meta.ok) throw new Error(meta.status === 401 || meta.status === 403 ? 'GitHub refused the token. Check that it can write to the repository.' : `GitHub answered ${meta.status}`);
         const sha = (await meta.json()).sha;
         const list = await this.download();
-        const gone = list.filter((e) => similarity(e.print, print) > 0.97);
+        const gone = list.filter((e) => prints.some((p) => similarity(e.print, p) > 0.97));
         if (!gone.length) { this.items = list; return 0; }
         const keep = list.filter((e) => !gone.includes(e));
-        const body = { message: `Remove item: ${gone.map((e) => e.name).join(', ')}`.slice(0, 200), sha, content: Buffer.from(serialise(keep)).toString('base64') };
+        const body = { message: `Remove ${gone.length === 1 ? 'item' : `${gone.length} items`}: ${gone.map((e) => e.name).join(', ')}`.slice(0, 200), sha, content: Buffer.from(serialise(keep)).toString('base64') };
         const put = await this.fetch(URL_BASE, { method: 'PUT', headers: this.headers({ Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
         if (put.ok) { this.items = keep; this.status.count = keep.length; this.status.error = null; return gone.length; }
-        if (put.status !== 409 && put.status !== 422) throw new Error(put.status === 401 || put.status === 403 || put.status === 404 ? 'GitHub refused the upload. The token needs "Contents: read and write" on the item data repository.' : `GitHub answered ${put.status}`);
+        if (put.status !== 409 && put.status !== 422) throw new Error(put.status === 401 || put.status === 403 || put.status === 404 ? 'GitHub refused the upload. The token needs "Contents: read and write" on the item data repository (poeappitemdata).' : `GitHub answered ${put.status}`);
       }
       return 0;
     } catch (e) {

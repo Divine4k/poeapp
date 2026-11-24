@@ -263,9 +263,17 @@ class IconIndex {
     }
     // Downloaded art alone must beat every other picture clearly, passing or not.
     if (winner.source === 'art') {
-      let rival = -1;
-      for (const [name, sc] of all) if (name !== winner.name && sc > rival) rival = sc;
-      if (winner.score - rival < this.artMargin) return null;
+      const near = [...all].filter(([name, sc]) => name && name !== winner.name && sc > winner.score - this.artMargin);
+      if (near.length) {
+        // The ones that crowd it are all downloaded pictures that nearly pass themselves:
+        // a family of look-alikes (the tiers of one essence). It is one of them, so the
+        // cheapest is counted and the read is flagged for you to confirm with a click.
+        // Anything else that close means the picture cannot be trusted.
+        const family = near.every(([name, sc]) => artOf.get(name) === sc && sc >= this.artThreshold - this.artMargin);
+        if (!family || !this.priceOf) return null;
+        const priced = [winner, ...near.map(([name, sc]) => ({ name, score: sc, source: 'art' }))].map((c) => ({ ...c, price: Number(this.priceOf(c.name)) || 0 }));
+        return done(priced.reduce((m, c) => (c.price < m.price ? c : m)), { doubt: true });
+      }
     }
     return done(winner, { doubt: winner.source !== 'art' });
   }

@@ -86,20 +86,35 @@
 </main>
 
 <main class="view" id="tab-items" role="tabpanel" hidden>
-  <h2 class="pagetitle">Items</h2>
-  <div class="cost-cols items-cols">
-    <section>
-      <div class="list-head"><h2 id="unknown-title">Not recognised</h2><button type="button" class="link" id="btn-unknown-clear" data-act="clearUnknown" data-confirm="Clear the whole list? Items still in your inventory come back at the next read." hidden>Clear list</button></div>
-      <p class="hint small">Stacks that showed red in your inventory are kept here until you name them. While one is still in your inventory, the fastest way is to hover it in game and press <span id="hk-name">F8</span>.</p>
-      <ul class="unknown" id="unknown"></ul>
-    </section>
-    <section>
-      <div class="list-head"><h2 id="db-title">Item database</h2><input id="learned-filter" type="search" placeholder="Search items" aria-label="Search the item database"></div>
-      <p class="hint small" id="db-hint"></p>
-      <div class="db-filters" id="db-filters" role="tablist" aria-label="Which items to show"></div>
-      <ul class="db" id="db-rows"></ul>
-      <button type="button" id="db-more" hidden>Show more</button>
-    </section>
+  <div class="db-top">
+    <h2 class="pagetitle" id="db-title">Items</h2>
+    <button type="button" class="link" id="db-reset" data-act="removeNamed" hidden>Remove all names given by hand</button>
+  </div>
+  <section class="db-unknown" id="unknown-box" hidden>
+    <div class="list-head"><h2 id="unknown-title">Not recognised</h2><button type="button" class="link" id="btn-unknown-clear" data-act="clearUnknown" data-confirm="Clear the whole list? Items still in your inventory come back at the next read." hidden>Clear list</button></div>
+    <p class="hint small">Stacks the app could not read. Say what each one is and it is read from then on. While one is still in your inventory, you can also hover it in game and press <span id="hk-name">F8</span>.</p>
+    <ul class="unknown" id="unknown"></ul>
+  </section>
+  <input id="learned-filter" class="bigsearch" type="search" placeholder="Search items, or the name of who named them" aria-label="Search the item database" autocomplete="off">
+  <div class="db-filters" id="db-filters" role="tablist" aria-label="Which items to show"></div>
+  <div class="prices itemdb">
+    <nav class="price-cats" id="db-cats" aria-label="Item categories"></nav>
+    <div class="price-main">
+      <p class="map-meta" id="db-hint"></p>
+      <div class="table-wrap">
+        <table class="price-table db-table">
+          <thead><tr>
+            <th><button type="button" class="sort" data-db-sort="name">Item</button></th>
+            <th class="num"><button type="button" class="sort" data-db-sort="price">Price</button></th>
+            <th>How the app knows it</th>
+            <th><button type="button" class="sort" data-db-sort="read">Last read</button></th>
+            <th></th>
+          </tr></thead>
+          <tbody id="db-rows"></tbody>
+        </table>
+        <button type="button" id="db-more" hidden>Show more</button>
+      </div>
+    </div>
   </div>
 </main>
 
