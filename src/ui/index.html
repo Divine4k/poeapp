@@ -117,23 +117,26 @@
 </main>
 
 <main class="view" id="tab-items" role="tabpanel" hidden>
+  <!-- One row: title, search, whether sharing is on, refresh. Then the filters with the count. -->
   <div class="db-top">
     <h2 class="pagetitle" id="db-title">Items</h2>
-    <button type="button" class="refresh" id="btn-refresh-shared" data-act="refreshShared" title="Fetches the shared list of named items again"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span>Refresh shared list</span></button>
-    <button type="button" class="link" id="db-reset" data-act="removeNamed" hidden>Remove all names given by hand</button>
+    <input id="learned-filter" class="db-search" type="search" placeholder="Search items, or the name of who named them" aria-label="Search the item database" autocomplete="off">
+    <div class="db-share" id="db-share" hidden></div>
+    <button type="button" class="refresh" id="btn-refresh-shared" data-act="refreshShared" title="Fetches the shared list of named items again"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span>Refresh</span></button>
   </div>
-  <p class="db-share" id="db-share" hidden></p>
+  <div class="db-bar">
+    <div class="db-filters" id="db-filters" role="tablist" aria-label="Which items to show"></div>
+    <p class="map-meta" id="db-hint"></p>
+    <button type="button" class="link" id="db-reset" data-act="removeNamed" hidden>Remove names given by hand</button>
+  </div>
   <section class="db-unknown" id="unknown-box" hidden>
     <div class="list-head"><h2 id="unknown-title">Not recognised</h2><button type="button" class="link" id="btn-unknown-clear" data-act="clearUnknown" data-confirm="Clear the whole list? Items still in your inventory come back at the next read." hidden>Clear list</button></div>
     <p class="hint small">Stacks the app could not read. Say what each one is and it is read from then on. While one is still in your inventory, you can also hover it in game and press <span id="hk-name">F8</span>.</p>
     <ul class="unknown" id="unknown"></ul>
   </section>
-  <input id="learned-filter" class="bigsearch" type="search" placeholder="Search items, or the name of who named them" aria-label="Search the item database" autocomplete="off">
-  <div class="db-filters" id="db-filters" role="tablist" aria-label="Which items to show"></div>
   <div class="prices itemdb">
     <nav class="price-cats" id="db-cats" aria-label="Item categories"></nav>
     <div class="price-main">
-      <p class="map-meta" id="db-hint"></p>
       <div class="table-wrap">
         <table class="price-table db-table">
           <thead><tr>

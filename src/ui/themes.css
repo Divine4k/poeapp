@@ -232,7 +232,7 @@
 
 /* panels: a carved frame with a gem in each corner */
 /* :where() keeps the id in the list from outweighing the rules for chosen and highlighted panels */
-:root[data-theme=wraeclast] :where(.set-list, .maprules, dialog, .db-share, .theme-card, .toast, .totals > div, .session-strip button) {
+:root[data-theme=wraeclast] :where(.set-list, .maprules, dialog, .theme-card, .toast, .totals > div, .session-strip button) {
   position: relative; border-radius: 0; border: 1px solid #000; background: var(--panel); box-shadow: var(--frame);
 }
 :root[data-theme=wraeclast] :where(.set-list, .maprules, dialog, .theme-card.premium, .toast)::after {

@@ -84,26 +84,29 @@ function renderKnown() {
   // Whether what you name reaches everyone, said where you manage the items.
   const sh = state.status.shared || {}, share = $('db-share');
   const unsent = known.rows.reduce((n, r) => n + r.pictures.filter((p) => p.onlyHere && !p.auto).length, 0);
-  let shareHtml, shareCls;
+  // A short chip; the whole story is in its hover text.
+  let shareHtml, shareCls, shareTip;
   if (!sh.canUpload) {
     shareCls = 'off';
-    shareHtml = `<span><b>Sharing is off.</b> ${unsent ? `The ${unsent === 1 ? 'name' : `${unsent} names`} you gave ${unsent === 1 ? 'is' : 'are'}` : 'Names you give are'} kept on this PC only, because you are not logged in. Log in and everything is sent at once, for everyone.</span>
-        <button type="button" class="primary" data-open-account>Log in to share</button>`;
+    shareTip = `${unsent ? `The ${unsent === 1 ? 'name' : `${unsent} names`} you gave ${unsent === 1 ? 'is' : 'are'}` : 'Names you give are'} kept on this PC only, because you are not logged in. Log in and everything is sent at once, for everyone.`;
+    shareHtml = `<span class="dot"></span>Sharing off${unsent ? ` · ${unsent} waiting` : ''}<button type="button" class="small primary" data-open-account>Log in</button>`;
   } else if (sh.error) {
     shareCls = 'bad';
-    shareHtml = `<span><b>The item database did not take the last upload.</b> ${esc(sh.error)}${unsent ? ` ${unsent} ${unsent === 1 ? 'name is' : 'names are'} waiting on this PC.` : ''}</span>
-        <span class="row"><button type="button" data-act="uploadShared">Try again</button></span>`;
+    shareTip = `The item database did not take the last upload: ${sh.error}${unsent ? ` ${unsent} ${unsent === 1 ? 'name is' : 'names are'} waiting on this PC.` : ''}`;
+    shareHtml = `<span class="dot"></span>Upload failed<button type="button" class="small" data-act="uploadShared">Try again</button>`;
   } else {
     shareCls = 'on';
-    shareHtml = `<span>Sharing is on. What you name is sent to the item database as <b>${esc(sh.by || known.me)}</b> and every app has it at its next start, or when Refresh shared list is pressed. ${sh.count} ${sh.count === 1 ? 'picture' : 'pictures'} in the database.${unsent ? ` ${unsent} on this PC not sent yet.` : ''}</span>
-        ${unsent ? '<button type="button" data-act="uploadShared">Send now</button>' : ''}`;
+    shareTip = `Sharing is on. What you name is sent to the item database as ${sh.by || known.me}, and every app has it at its next start or when Refresh is pressed. ${sh.count} ${sh.count === 1 ? 'picture' : 'pictures'} in the database.${unsent ? ` ${unsent} on this PC not sent yet.` : ''}`;
+    shareHtml = `<span class="dot"></span>Sharing as <b>${esc(sh.by || known.me)}</b> · ${sh.count} pictures${unsent ? `<button type="button" class="small" data-act="uploadShared">Send ${unsent} now</button>` : ''}`;
   }
+  share.title = shareTip;
   share.hidden = false;
   share.className = `db-share ${shareCls}`;
   if (share.dataset.html !== shareHtml) { share.dataset.html = shareHtml; share.innerHTML = shareHtml; }
   const reset = $('db-reset');
   reset.hidden = !known.named;
-  reset.textContent = `Remove all ${known.named} names given by hand`;
+  reset.textContent = `Remove my ${known.named} ${known.named === 1 ? 'name' : 'names'}`;
+  reset.title = 'Removes every name given by hand on this PC';
   reset.dataset.confirm = `Remove all ${known.named} names given by hand on this PC?${known.canUpload ? ' They are also removed from the shared database.' : ''} What the app learned by itself stays. The app then reads those items by itself where it can, and asks you about the rest.`;
 
   const q = $('learned-filter').value.trim().toLowerCase();
@@ -115,7 +118,7 @@ function renderKnown() {
   }[dbSort.key];
   list.sort((x, y) => (hasDoubt(y) ? 1 : 0) - (hasDoubt(x) ? 1 : 0) || dbSort.dir * by(x, y) || (x.name || '').localeCompare(y.name || ''));
   for (const b of document.querySelectorAll('[data-db-sort]')) b.dataset.dir = b.dataset.dbSort === dbSort.key ? (dbSort.dir > 0 ? 'up' : 'down') : '';
-  $('db-hint').textContent = `${list.length} of ${known.rows.length} items. Click an item to manage it: its pictures, whether it is counted, and its price.`;
+  $('db-hint').textContent = `${list.length} of ${known.rows.length} items · click one to manage its pictures, counting and price`;
 
   dbPics.clear();
   const icon = (src, cls = 'official') => (src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy">` : `<span class="${cls} none"></span>`);

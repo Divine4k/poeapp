@@ -135,7 +135,7 @@ button.chip:hover { color: var(--bone); background: var(--well); box-shadow: ins
 button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 
 /* ---- pages ---- */
-.view { flex: 1; min-height: 0; overflow: auto; padding: 16px 22px 22px; }
+.view { flex: 1; min-height: 0; overflow: auto; padding: 4px 22px 22px; }
 .view[hidden] { display: none; }
 .pagetitle { font-size: 22px; color: var(--bone); font-weight: 680; letter-spacing: -0.02em; margin: 0 0 14px; }
 .neg { color: var(--blood) !important; }
@@ -637,13 +637,8 @@ dialog h2 { font-size: 20px; color: var(--bone); margin: 0 0 14px; }
 /* Items page: the item database */
 #tab-items { display: flex; flex-direction: column; }
 #tab-items[hidden] { display: none; }
-.db-top { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.db-top .link { font-size: 13px; color: var(--ash); }
-.db-top .link:hover { color: var(--blood); }
 .db-unknown { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--blood); border-radius: 6px; max-height: 38vh; overflow: auto; flex: 0 0 auto; }
 .db-unknown h2 { margin: 0 0 4px; font-size: 15px; }
-#tab-items .bigsearch { margin-bottom: 10px; }
-.db-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
 .db-filters button { font-size: 13px; padding: 5px 11px; border-radius: 999px; }
 .db-filters button span { color: var(--ash); margin-left: 4px; font-variant-numeric: tabular-nums; }
 .db-filters button[aria-selected="true"] { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); color: var(--bone); }
@@ -699,13 +694,25 @@ tr.dbdetail td { padding: 14px 16px 18px; color: var(--bone); }
 #db-more { margin: 12px 0 16px; }
 @media (max-width: 1000px) { .dbd { grid-template-columns: 1fr; } }
 
-/* Items page: whether what you name is shared */
-.db-share { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--seam); border-radius: 6px; font-size: 14px; color: var(--ash); flex: 0 0 auto; }
-.db-share b { color: var(--bone); font-weight: 600; }
-.db-share.off { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 7%, transparent); color: var(--bone); }
-.db-share.bad { border-color: var(--blood); color: var(--bone); }
-.db-share button { flex: 0 0 auto; }
-.db-share .row { display: flex; gap: 12px; align-items: center; flex: 0 0 auto; }
+/* Items page, top: title, search, sharing chip and refresh on one row; filters and count on the next */
+.db-top { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; }
+.db-top .pagetitle { margin: 0 6px 0 0; }
+.db-search { flex: 1 1 260px; min-width: 160px; max-width: 520px; height: 36px; padding: 0 12px; border-radius: var(--r-md); }
+.db-top .refresh { margin-left: 0; height: 34px; border-radius: var(--r-md); }
+.db-share { display: inline-flex; align-items: center; gap: 8px; height: 34px; margin-left: auto; padding: 0 4px 0 12px; border-radius: var(--r-md); background: var(--well); box-shadow: inset 0 0 0 1px var(--line); font-size: 12.5px; color: var(--soft); white-space: nowrap; flex: 0 0 auto; }
+.db-share[hidden] { display: none; }
+.db-share b { color: var(--bone); font-weight: 620; }
+.db-share .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--moss); box-shadow: 0 0 8px color-mix(in srgb, var(--moss) 70%, transparent); }
+.db-share.off .dot { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.db-share.bad { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blood) 45%, transparent); }
+.db-share.bad .dot { background: var(--blood); box-shadow: 0 0 8px var(--blood); }
+.db-share:not(:has(button)) { padding-right: 12px; }
+.db-share button { height: 26px; padding: 0 10px; border-radius: 8px; }
+.db-bar { display: flex; align-items: center; gap: 14px; margin: 0 0 12px; flex-wrap: wrap; }
+.db-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.db-bar .map-meta { margin: 0; font-size: 12.5px; color: var(--faint); }
+.db-bar .link { margin-left: auto; font-size: 12.5px; color: var(--ash); }
+.db-bar .link:hover { color: var(--blood); }
 .steps { margin: 6px 0 8px; padding-left: 20px; }
 .steps li { margin-bottom: 3px; }
 .steps b { color: var(--bone); }
