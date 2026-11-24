@@ -6,6 +6,7 @@ const { StatIndex, wordings } = require('../src/core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor } = require('../src/core/tradeQuery');
 const { TradeClient, parseLimits, readListing, searchUrl, currencyName } = require('../src/core/tradeApi');
 const { checkMessage, tradeMessage } = require('../src/core/checkMessage');
+const { checkPanelBounds, inside, shouldClose, PANEL_WIDTH, IDLE_MS, LEFT_MS } = require('../src/core/checkPanel');
 
 const index = StatIndex.load();
 
@@ -387,4 +388,31 @@ test('listings and the message in game', () => {
   const note = { at, text: 'Two-Stone Ring has no known price, so it is not counted.', bad: true };
   assert.deepEqual(checkMessage({ priceCheck: price, notice: note, tradeCheck: { at, state: 'searching', filters } }, 4000), { title: 'Doom Loop, Two-Stone Ring: searching the trade site', detail: '', bad: false });
   assert.deepEqual(checkMessage({ priceCheck: price, notice: note, tradeCheck: { at, state: 'error', error: 'A search is already running.', filters } }, 4000), { title: 'Doom Loop, Two-Stone Ring: not searched', detail: 'A search is already running.', bad: true });
+});
+
+test('price check window in game: beside the panel the item is in, and gone when no longer wanted', () => {
+  const screen = { x: 0, y: 0, width: 1920, height: 1080 };
+  // The game's inventory and stash panels are 666 points wide at 1080p.
+  const inv = checkPanelBounds(screen, 1600, 500);
+  assert.deepEqual(inv, { x: 1920 - 666 - PANEL_WIDTH, y: 76, width: PANEL_WIDTH, height: 500 });
+  const stash = checkPanelBounds(screen, 300, 500);
+  assert.deepEqual([stash.x, stash.y], [666, 76]);
+  // Never taller than most of the screen, and on a second screen it stays on that screen.
+  assert.equal(checkPanelBounds(screen, 300, 5000).height, 929);
+  const second = checkPanelBounds({ x: 1920, y: 0, width: 2560, height: 1440 }, 1920 + 2400, 400);
+  assert.deepEqual([second.x, second.y], [1920 + 2560 - 888 - PANEL_WIDTH, 101]);
+  // A narrow screen: the two game panels would leave no room, so the window sits in the middle.
+  const narrow = checkPanelBounds({ x: 0, y: 0, width: 1280, height: 1024 }, 1000, 400);
+  assert.ok(narrow.x >= 0 && narrow.x + narrow.width <= 1280);
+
+  const rect = { x: 100, y: 100, width: 460, height: 300 };
+  assert.deepEqual([inside(rect, { x: 100, y: 100 }), inside(rect, { x: 560, y: 200 }), inside(rect, { x: 565, y: 200 }, 12), inside(null, { x: 1, y: 1 })], [true, false, true, false]);
+
+  // Never touched: it goes by itself, but not while an answer is on its way.
+  assert.equal(shouldClose({ entered: false, sinceInside: 0, sinceNews: IDLE_MS - 1, busy: false }), false);
+  assert.equal(shouldClose({ entered: false, sinceInside: 0, sinceNews: IDLE_MS + 1, busy: false }), true);
+  assert.equal(shouldClose({ entered: false, sinceInside: 0, sinceNews: IDLE_MS + 1, busy: true }), false);
+  // Used: it stays for as long as the mouse is on it, and goes when the mouse has left.
+  assert.equal(shouldClose({ entered: true, sinceInside: 100, sinceNews: IDLE_MS * 10, busy: false }), false);
+  assert.equal(shouldClose({ entered: true, sinceInside: LEFT_MS + 1, sinceNews: 0, busy: true }), true);
 });

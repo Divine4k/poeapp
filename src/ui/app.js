@@ -45,6 +45,7 @@
     else if (!inv.art.known && st.prices.count > 1) items.push(['bad', 'Prices loaded but no item pictures came with them']);
     else if (inv.art.known) items.push(['ok', `${inv.art.known} item pictures known`]);
     if (!st.hotkeys.clipboard) items.push(['bad', `Hotkey ${hk.clipboard} is taken by another app`]);
+    if (st.hotkeys.priceCheckHeld && !st.hotkeys.priceCheck) items.push(['bad', `Price check key ${hk.priceCheck} is taken by another app or is not a key name`]);
     if (hk.snapshot && !st.hotkeys.snapshot) items.push(['bad', `Hotkey ${hk.snapshot} is taken by another app`]);
     const tc = state.config.trade;
     if (tc && tc.enabled) {
@@ -405,7 +406,7 @@
     if (m < 48 * 60) return `${Math.floor(m / 60)} h`;
     return `${Math.floor(m / 1440)} d`;
   }
-  let tradeFormFor = 0; // which check the tick boxes on screen belong to
+  let tradeFormFor = ''; // which check, and which round of its choices, the tick boxes on screen belong to
   let tradeRevShown = -1;
 
   function tradeFormHtml(f) {
@@ -456,17 +457,18 @@
     document.querySelector('#tab-prices .prices').hidden = !!tc;
     $('price-global').hidden = !!tc;
     box.hidden = !tc;
-    if (!tc) { tradeFormFor = 0; tradeRevShown = -1; box.innerHTML = ''; return; }
-    if (tradeFormFor !== tc.at) {
-      // A new item: draw the tick boxes once. Later updates only touch the results, so what
-      // you ticked and typed stays as it is.
-      tradeFormFor = tc.at; tradeRevShown = -1;
+    if (!tc) { tradeFormFor = ''; tradeRevShown = -1; box.innerHTML = ''; return; }
+    if (tradeFormFor !== `${tc.at}:${tc.filtersRev}`) {
+      // A new item, or a search sent from the window in game: draw the tick boxes. Other
+      // updates only touch the results, so what you ticked and typed stays as it is.
+      tradeFormFor = `${tc.at}:${tc.filtersRev}`; tradeRevShown = -1;
       const f = tc.filters;
       box.innerHTML = `<div class="tc-head"><h2 class="pagetitle">${esc(f.ok ? f.title : 'Trade search')}</h2>
           <button type="button" data-act="tradeClose">Back to the price lists</button></div>
         ${f.ok ? `<div class="tc-cols"><form id="tc-form" autocomplete="off"><h3>Search for</h3>${tradeFormHtml(f)}
             <div class="tc-go"><button type="submit" class="primary" id="tc-search">Search</button>
-              <label class="tc-tick"><input type="checkbox" id="tc-auto" ${(state.config.priceSearch || {}).auto !== false ? 'checked' : ''}> <span>Search by itself when I check a rare or magic item</span></label></div>
+              <label class="tc-tick"><input type="checkbox" id="tc-auto" ${(state.config.priceSearch || {}).auto !== false ? 'checked' : ''}> <span>Search by itself when I check a rare or magic item</span></label>
+              <label class="tc-tick"><input type="checkbox" id="tc-overlay" ${(state.config.priceSearch || {}).overlay !== false ? 'checked' : ''}> <span>Show the search on top of the game</span></label></div>
           </form><section id="tc-result" aria-live="polite"></section></div>`
     : `<p class="notice">${esc(f.why)}</p>`}`;
     }
@@ -501,6 +503,7 @@
   });
   $('trade-check').addEventListener('change', (e) => {
     if (e.target.id === 'tc-auto') api.setConfig({ priceSearch: { auto: e.target.checked } });
+    if (e.target.id === 'tc-overlay') api.setConfig({ priceSearch: { overlay: e.target.checked } });
   });
 
   // ---- inventory tab ------------------------------------------------------------------
@@ -714,8 +717,9 @@
       if (!first && s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
       else if (!first && s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
     }
-    // The listings of a trade search do not fit in the message in game, so their page is shown.
-    if (!first && s.tradeCheck && s.tradeCheck.at !== hadTrade) showTab('prices');
+    // Without its window in game, a trade search is shown on its page: the listings do not fit
+    // in the short message.
+    if (!first && s.tradeCheck && s.tradeCheck.at !== hadTrade && !s.tradeCheck.inGame) showTab('prices');
     render();
   }
 
@@ -1000,6 +1004,7 @@
     el.logPath.placeholder = state.status.log.path || 'Found automatically when empty';
     el.hkClip.value = c.hotkeys.clipboard;
     el.hkSnap.value = c.hotkeys.snapshot || '';
+    el.hkPrice.value = c.hotkeys.priceCheck || '';
     el.autoCopy.checked = !!c.inventory.autoCopy;
     el.checkToast.checked = c.checkToast !== false;
     el.displayId.innerHTML = `<option value="">Main screen</option>${state.displays.map((d) => `<option value="${d.id}" ${String(d.id) === String(c.inventory.displayId) ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}`;
@@ -1030,7 +1035,7 @@
       characterName: el.characterName.value.trim(),
       checkToast: el.checkToast.checked,
       logPath: el.logPath.value.trim(),
-      hotkeys: { clipboard: el.hkClip.value.trim() || 'F8', snapshot: el.hkSnap.value.trim() },
+      hotkeys: { clipboard: el.hkClip.value.trim() || 'F8', snapshot: el.hkSnap.value.trim(), priceCheck: el.hkPrice.value.trim() },
       inventory: {
         displayId: el.displayId.value || null,
         key: el.invKey.value.trim() || 'Tab',

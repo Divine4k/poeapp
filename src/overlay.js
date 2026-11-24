@@ -6,6 +6,7 @@ const path = require('path');
 const { BrowserWindow, screen } = require('electron');
 
 const { overlayBounds, OVERLAY_WIDTH: WIDTH } = require('./core/trade');
+const { checkPanelBounds, inside, shouldClose, PANEL_WIDTH } = require('./core/checkPanel');
 
 class Overlay {
   constructor({ preload, page }) {
@@ -119,4 +120,106 @@ class Toast {
   }
 }
 
-module.exports = { Overlay, Toast, overlayBounds, WIDTH };
+// The price check on top of the game: the item's stats with tick boxes, and what the trade
+// site lists like it. Like the trade overlay it never takes the keyboard, so the game keeps
+// your keys while you click it. It closes with its cross, when the mouse leaves it after
+// use, or by itself when it was never touched.
+class CheckPanel {
+  constructor({ preload, page, onClose }) {
+    this.preload = preload;
+    this.page = page;
+    this.onClose = onClose || (() => {});
+    this.win = null;
+    this.height = 0;
+    this.wanted = false;
+    this.last = null;
+    this.bounds = null;  // the game's screen
+    this.cursorX = 0;    // where the mouse was when the item was checked
+    this.rect = null;    // where the window is now
+    this.timer = null;
+    this.entered = false;
+    this.insideAt = 0;
+    this.newsAt = 0;
+    this.rev = null;
+  }
+
+  create() {
+    if (this.win && !this.win.isDestroyed()) return;
+    this.win = new BrowserWindow({
+      width: PANEL_WIDTH, height: 10, show: false, frame: false, transparent: true, backgroundColor: '#00000000',
+      resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+      focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: 'Map Companion price check',
+      webPreferences: { preload: this.preload, contextIsolation: true, nodeIntegration: false },
+    });
+    this.win.setAlwaysOnTop(true, 'screen-saver');
+    this.win.setMenuBarVisibility(false);
+    this.win.loadFile(this.page);
+    this.win.webContents.on('did-finish-load', () => { if (this.last) this.send(this.last); });
+    this.win.on('closed', () => { this.win = null; });
+  }
+
+  get visible() { return this.wanted; }
+
+  send(data) {
+    this.last = data;
+    if (this.win && !this.win.isDestroyed()) this.win.webContents.send('check', data);
+  }
+
+  // A newly checked item. bounds: the game's screen. cursor: the mouse, in screen points.
+  show(data, { bounds, cursor }) {
+    this.bounds = bounds;
+    this.cursorX = cursor ? cursor.x : bounds.x + bounds.width;
+    this.wanted = true;
+    this.entered = false;
+    this.newsAt = Date.now();
+    this.rev = data.rev;
+    this.height = 0; // the page reports the new item's height before the window shows
+    this.create();
+    this.send(data);
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.watch(), 150);
+  }
+
+  // The same item with news: a search started or its answer came.
+  update(data) {
+    if (!this.wanted) return;
+    if (data.rev !== this.rev) { this.rev = data.rev; this.newsAt = Date.now(); }
+    this.send(data);
+  }
+
+  setHeight(h) {
+    this.height = Math.max(0, Number(h) || 0);
+    this.place();
+  }
+
+  place() {
+    if (!this.win || this.win.isDestroyed() || !this.wanted || !this.bounds) return;
+    if (this.height < 2) return;
+    this.rect = checkPanelBounds(this.bounds, this.cursorX, this.height);
+    this.win.setBounds(this.rect);
+    if (!this.win.isVisible()) { this.win.showInactive(); this.win.setAlwaysOnTop(true, 'screen-saver'); }
+  }
+
+  watch() {
+    if (!this.wanted) return;
+    const now = Date.now();
+    if (this.rect && inside(this.rect, screen.getCursorScreenPoint(), 12)) { this.entered = true; this.insideAt = now; }
+    const busy = !!(this.last && this.last.state === 'searching');
+    if (shouldClose({ entered: this.entered, sinceInside: now - this.insideAt, sinceNews: now - this.newsAt, busy })) { this.hide(); this.onClose(); }
+  }
+
+  hide() {
+    this.wanted = false;
+    clearInterval(this.timer);
+    this.timer = null;
+    if (this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.hide();
+  }
+
+  destroy() {
+    clearInterval(this.timer);
+    if (this.win && !this.win.isDestroyed()) this.win.destroy();
+    this.win = null;
+  }
+}
+
+module.exports = { Overlay, Toast, CheckPanel, overlayBounds, WIDTH };

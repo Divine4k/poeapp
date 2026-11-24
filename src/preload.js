@@ -16,4 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   onTrade: (cb) => ipcRenderer.on('trade', (_e, data) => cb(data)),
   layout: () => ipcRenderer.invoke('layout-get'),
   overlaySize: (height) => ipcRenderer.send('overlay-size', height),
+  // the price check window on top of the game
+  onCheck: (cb) => ipcRenderer.on('check', (_e, data) => cb(data)),
+  checkSize: (height) => ipcRenderer.send('check-size', height),
 });

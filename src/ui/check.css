@@ -1,0 +1,44 @@
+/* The price check window on top of the game: see-through around the panel, nothing else. */
+html, body.check { height: auto; background: transparent; }
+body.check { display: block; overflow: hidden; user-select: none; font-size: 13px; line-height: 1.3; }
+#panel { max-height: 100vh; display: flex; flex-direction: column; background: rgba(27, 31, 36, 0.96); border: 1px solid var(--seam); border-top: 3px solid var(--gold); border-radius: 5px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6); overflow: hidden; }
+#panel:empty { display: none; }
+.pc-head { display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px 6px 11px; }
+.pc-head h1 { flex: 1; min-width: 0; font-size: 17px; line-height: 1.2; color: var(--gold); overflow-wrap: anywhere; }
+.pc-head small { display: block; font: 12px var(--body); color: var(--ash); margin-top: 1px; }
+.pc-x { flex: 0 0 auto; border: 0; background: none; color: var(--ash); padding: 0 5px; font-size: 20px; line-height: 1; }
+.pc-x:hover { color: var(--blood); }
+.pc-body { min-height: 0; overflow-y: auto; padding: 0 11px; }
+.pc-rows li { display: flex; align-items: center; gap: 6px; min-height: 25px; border-top: 1px solid var(--slab); }
+.pc-tick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.pc-tick input { flex: 0 0 auto; accent-color: var(--gold); margin: 0; }
+.pc-tick span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-tick small { margin-left: 4px; font-size: 10px; color: var(--ash); border: 1px solid var(--seam); border-radius: 3px; padding: 0 4px; }
+.pc-rows li.off .pc-tick span { color: var(--ash); }
+.pc-num { flex: 0 0 auto; display: flex; align-items: center; font-variant-numeric: tabular-nums; }
+.pc-num i { font-style: normal; color: var(--ash); margin-right: 3px; }
+.pc-num b { min-width: 34px; text-align: right; font-family: var(--display); font-size: 14px; }
+.pc-num button { border: 0; background: var(--slab); color: var(--bone); width: 20px; height: 20px; padding: 0; margin-left: 4px; border-radius: 3px; font-size: 14px; line-height: 1; }
+.pc-num button:hover { background: var(--seam); }
+.pc-rows li.off .pc-num { visibility: hidden; }
+.pc-note { margin: 6px 0 0; font-size: 11px; color: var(--ash); }
+.pc-go { display: flex; align-items: center; gap: 12px; padding: 8px 11px; border-top: 1px solid var(--seam); }
+.pc-go .primary { padding: 4px 20px; font-size: 14px; }
+.pc-go .link { margin-left: auto; color: var(--portal); font-size: 12px; white-space: nowrap; }
+.pc-go .link:hover { color: var(--bone); }
+.pc-go span { color: var(--ash); font-size: 12px; }
+.pc-result { padding: 7px 11px 9px; border-top: 1px solid var(--seam); background: rgba(20, 23, 27, 0.6); }
+.pc-result p { margin: 0; }
+.pc-result p.bad { color: var(--blood); }
+.pc-result p.dim { color: var(--ash); }
+.pc-sum b { color: var(--gold); font-family: var(--display); font-size: 16px; }
+.pc-list { margin-top: 5px; }
+.pc-list li { display: flex; align-items: center; gap: 8px; min-height: 24px; border-top: 1px solid var(--slab); }
+.pc-price { flex: 0 0 74px; text-align: right; font-family: var(--display); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pc-seller { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-st { flex: 0 0 auto; font-size: 11px; color: var(--ash); white-space: nowrap; }
+.pc-st.instant, .pc-st.online { color: var(--moss); }
+.pc-st.afk { color: var(--gold); }
+.pc-age { flex: 0 0 44px; text-align: right; font-size: 11px; color: var(--ash); white-space: nowrap; }
+.pc-list button { flex: 0 0 auto; padding: 1px 8px; font-size: 12px; }
+.pc-list .gap { flex: 0 0 62px; }

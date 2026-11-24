@@ -26,7 +26,7 @@
     .map(([id, label, enabled]) => ({ id, label, enabled, pattern: '' }));
   const state = {
     config: {
-      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9' },
+      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+F' }, priceSearch: { auto: true, overlay: true },
       inventory: { displayId: null, key: 'Tab', onKey: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
       loadout: [{ name: 'Ambush Scarab of Containment', qty: 2, chaos: null }, { name: 'Map', qty: 1, chaos: 4 }],
     },
@@ -42,7 +42,7 @@
     unknown: [{ id: 1, qty: 3, guesses: [{ name: 'Vaal Orb', score: 78 }, { name: 'Orb of Fusing', score: 61 }, { name: 'Exalted Orb', score: 55 }], image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
     priceCheck: null,
     tradeCheck: {
-      at: now, rev: 2, state: 'done', error: '', total: 37, searchedAt: now, url: 'https://www.pathofexile.com/trade/search/Demo/abc123',
+      at: now, rev: 2, filtersRev: 0, inGame: false, ninja: null, state: 'done', error: '', total: 37, searchedAt: now, url: 'https://www.pathofexile.com/trade/search/Demo/abc123',
       summary: { total: 37, low: 45, median: 120 },
       filters: {
         ok: true, rarity: 'Rare', title: 'Kraken Spark, Two-Toned Boots', name: '', offline: false,
@@ -111,6 +111,7 @@
   };
   window.api = {
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
+    onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true }), 0), checkSize: () => {},
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
     runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },

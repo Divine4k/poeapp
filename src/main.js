@@ -28,7 +28,7 @@ const { SnapshotStore, SessionArchive, markCarried } = require('./core/store');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat } = require('./chat');
-const { Overlay, Toast } = require('./overlay');
+const { Overlay, Toast, CheckPanel } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, restartCommand } = require('./leftovers');
 const { StatIndex } = require('./core/tradeStats');
@@ -43,10 +43,13 @@ const DEFAULT_CONFIG = {
   league: '',
   logPath: '',
   characterName: '',
-  hotkeys: { clipboard: 'F8', snapshot: 'F9' },
+  // clipboard: check the hovered item and, over the inventory, name or count its slot.
+  // priceCheck: only check its price; nothing is named or counted. Held only while the game is in front.
+  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+F' },
   checkToast: true, // after the check key, say in game for a moment what was read
   // auto: checking a magic or rare item searches the trade site straight away (two web requests).
-  priceSearch: { auto: true },
+  // overlay: show the search on top of the game, beside the inventory or stash.
+  priceSearch: { auto: true, overlay: true },
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
   // autoCopy: the check hotkey presses Ctrl+C in the game for you (one copy per key press).
@@ -108,6 +111,7 @@ const priceService = new PriceService({ fetchImpl: webFetch });
 const book = new TradeBook();
 let overlay = null;
 let toast = null; // the short message shown in game after the check key
+let checkPanel = null; // the price check window on top of the game
 let layoutWin = null; // the full-screen window for dragging overlay parts into place
 const watch = new GameWatch();
 let chatBusy = false;
@@ -149,6 +153,7 @@ function loadConfig() {
     ...DEFAULT_CONFIG, ...saved,
     hotkeys: { ...DEFAULT_CONFIG.hotkeys, ...(saved.hotkeys || {}) },
     inventory: { ...DEFAULT_CONFIG.inventory, ...(saved.inventory || {}) },
+    priceSearch: { ...DEFAULT_CONFIG.priceSearch, ...(saved.priceSearch || {}) },
     trade: mergeTrade(DEFAULT_CONFIG.trade, saved.trade),
   };
   // The hideout key used to be unset. Settings saved back then hold an empty key, which would
@@ -218,6 +223,7 @@ const cleanUrl = (u) => { const v = String(u || '').trim(); return /^https?:\/\/
 function push() {
   if (win && !win.isDestroyed()) win.webContents.send('state', buildState());
   syncOverlay();
+  if (checkPanel && checkPanel.visible && tradeCheck) checkPanel.update(checkPanelData());
 }
 function changed() { scheduleSave(); push(); }
 
@@ -681,7 +687,9 @@ async function applyUpdate() {
 }
 
 // ---- clipboard (read once per hotkey press or button click) --------------------
-function checkText(text) {
+// count: over the inventory, also name or count the item's slot (the check key does; the price
+// check key and nothing else does not).
+function checkText(text, { count = true } = {}) {
   const item = parseItemText(text);
   if (!item) { priceCheck = { error: 'The clipboard does not hold a Path of Exile item. Hover an item in game and press Ctrl+C first.', at: Date.now() }; return; }
   if (item.isMap) {
@@ -693,7 +701,7 @@ function checkText(text) {
     };
     const base = item.baseType || item.name;
     const mapEntry = (item.mapTier && prices.get(`${base} (T${item.mapTier})`)) || prices.get(base);
-    nameUnderCursor(item, base, mapEntry);
+    if (count) nameUnderCursor(item, base, mapEntry);
     return;
   }
   const name = priceName(item);
@@ -703,7 +711,7 @@ function checkText(text) {
     at: Date.now(), name, qty: item.stackSize, found: !!entry,
     each: entry ? entry.chaos : 0, total: entry ? entry.chaos * item.stackSize : 0,
   };
-  nameUnderCursor(item, entry ? entry.name : name, entry);
+  if (count) nameUnderCursor(item, entry ? entry.name : name, entry);
 }
 
 // ---- trade site search for gear (rares, magic items, rolled uniques) -------------------
@@ -723,7 +731,10 @@ function startTradeCheck(item) {
   } catch (e) {
     filters = { ok: false, why: `The list of trade stats could not be read: ${e.message || e}` };
   }
-  tradeCheck = { at: Date.now(), rev: ++tradeRev, filters, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0 };
+  tradeCheck = { at: Date.now(), rev: ++tradeRev, filtersRev: 0, filters, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, inGame: false };
+  const entry = prices.get(priceName(item));
+  tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques
+  if (filters.ok) showCheckPanel();
   // A unique has a poe.ninja price already, and an item with nothing ticked would only find the
   // cheapest of its kind: those searches wait for the button.
   if (filters.ok && item.rarity !== 'Unique' && isNarrow(filters) && (config.priceSearch || {}).auto !== false) runTradeSearch(true);
@@ -746,15 +757,25 @@ async function runTradeSearch(announce) {
   }
   tc.rev = ++tradeRev;
   if (tradeCheck !== tc) return; // another item was checked meanwhile
-  if (announce) showToast(tradeMessage(tc, prices.divine));
+  if (announce && !tc.inGame) showToast(tradeMessage(tc, prices.divine)); // the window in game says it itself
   push();
+}
+
+// The price check window on top of the game. It opens beside the game panel the mouse is over.
+const checkPanelData = () => ({ ...tradeCheck, divine: prices.divine, auto: config.priceSearch.auto !== false });
+function showCheckPanel() {
+  if (!checkPanel || !overlay || config.priceSearch.overlay === false || layoutWin) return;
+  if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
+  tradeCheck.inGame = true;
+  checkPanel.show(checkPanelData(), { bounds: overlay.display().bounds, cursor: screen.getCursorScreenPoint() });
 }
 
 // One press of the check hotkey: copy the hovered item (a single Ctrl+C sent to the game, the
 // same thing price-check tools do), then read the clipboard once.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function checkHovered() {
+async function checkHovered({ count = true } = {}) {
   const started = Date.now();
+  if (checkPanel) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; } // the last item's window goes; a new one opens if this is gear
   if (config.inventory.autoCopy && hook) {
     const before = clipboard.readText();
     try {
@@ -763,13 +784,13 @@ async function checkHovered() {
       let text = '';
       for (let i = 0; i < 16 && !text; i++) { await sleep(25); text = clipboard.readText(); }
       if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }
-      checkText(text);
+      checkText(text, { count });
     } catch (e) {
       clipboard.writeText(before);
-      checkText(before);
+      checkText(before, { count });
     }
   } else {
-    checkText(clipboard.readText());
+    checkText(clipboard.readText(), { count });
   }
   showCheckToast(started);
   changed();
@@ -777,6 +798,7 @@ async function checkHovered() {
 
 // What the check key just did, in a line or two, shown in game for a moment.
 function showCheckToast(started) {
+  if (tradeCheck && tradeCheck.at >= started && tradeCheck.inGame) return; // its own window is on screen
   showToast(checkMessage({ mapCheck, priceCheck, tradeCheck, notice, divine: prices.divine }, started));
 }
 function showToast(message) {
@@ -791,13 +813,19 @@ let gameKeysTaken = []; // those of them another app already holds
 function registerHotkeys() {
   globalShortcut.unregisterAll();
   gameKeysOn = false;
-  status.hotkeys = { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false, layout: false };
+  status.hotkeys = { clipboard: false, snapshot: false, priceCheck: false, tradeNext: false, tradeDismiss: false, layout: false };
+  // Keys that only mean something in the game are held only while the game is in front.
+  // Anywhere else they stay with the program you are in (Ctrl+F finds text, F5 refreshes).
+  gameKeysOn = watch.gameInFront();
   const reg = (key, accel, fn) => {
     if (!accel) return;
     try { status.hotkeys[key] = globalShortcut.register(accel, fn); } catch (_) { status.hotkeys[key] = false; }
   };
   reg('clipboard', config.hotkeys.clipboard, () => { checkHovered(); });
   reg('snapshot', config.hotkeys.snapshot, () => { saveDiagnostic(true).then(changed); });
+  // The price check key: the same check without naming or counting anything.
+  status.hotkeys.priceCheckHeld = gameKeysOn && !!config.hotkeys.priceCheck;
+  if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { checkHovered({ count: false }); });
   if (config.trade.enabled) {
     reg('tradeNext', config.trade.hotkeys.next, () => { const o = book.firstActionable(); if (o) tradeDo(o.id, 'next').then(changed); });
     reg('layout', config.trade.hotkeys.layout, () => toggleLayout());
@@ -806,9 +834,6 @@ function registerHotkeys() {
     for (const action of ['invite', 'trade', 'busy', 'still', 'whisper']) {
       extra(hk[action], () => { const o = book.latestIncoming(); if (o) tradeDo(o.id, action).then(changed); else { say('No buyer to act on.'); changed(); } });
     }
-    // Keys that only mean something in the game are held only while the game is in front.
-    // Anywhere else they stay with the program you are in (F5 refreshes the browser).
-    gameKeysOn = watch.gameInFront();
     const mine = [hk.hideout, hk.remaining].filter(Boolean);
     if (gameKeysOn) {
       const before = taken.length;
@@ -1000,7 +1025,7 @@ function createWindow() {
   if (second) win.maximize();
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); });
+  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
@@ -1017,8 +1042,10 @@ function applyConfig(patch) {
     ...config, ...patch,
     hotkeys: { ...config.hotkeys, ...(patch.hotkeys || {}) },
     inventory: { ...config.inventory, ...(patch.inventory || {}) },
+    priceSearch: { ...config.priceSearch, ...(patch.priceSearch || {}) },
   };
   writeJson('config.json', config);
+  if (patch.priceSearch && config.priceSearch.overlay === false && checkPanel) checkPanel.hide();
   if (patch.customPrices) prices.setCustom(config.customPrices);
   if (patch.hotkeys || patch.trade) registerHotkeys();
   if (patch.trade) { syncKeyHook(); if (!config.trade.enabled) book.clearTests(); }
@@ -1127,9 +1154,13 @@ const actions = {
   tradeSearch: async (a) => {
     if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching') return;
     tradeCheck.filters = applyEdits(tradeCheck.filters, a.edits);
+    tradeCheck.filtersRev += 1; // the other window showing this item redraws its tick boxes
     await runTradeSearch(false);
   },
-  tradeClose: () => { tradeCheck = null; },
+  tradeClose: () => { tradeCheck = null; if (checkPanel) checkPanel.hide(); },
+  // The cross on the window in game: the search stays on the Prices page.
+  checkPanelClose: () => { if (checkPanel) checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; },
+  tradeOpen: () => { if (tradeCheck && /^https:\/\/www\.pathofexile\.com\//.test(tradeCheck.url)) shell.openExternal(tradeCheck.url); },
   // One click, one chat line: the whisper the trade site wrote for this listing.
   tradeWhisper: async (a) => {
     const l = tradeCheck && tradeCheck.listings.find((x) => x.id === a.id);
@@ -1187,6 +1218,7 @@ function setupIpc() {
   });
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
   ipcMain.handle('layout-get', () => layoutData());
+  ipcMain.on('check-size', (e, h) => { if (checkPanel && checkPanel.win && e.sender === checkPanel.win.webContents) checkPanel.setHeight(h); });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];
@@ -1223,7 +1255,10 @@ app.whenReady().then(() => {
   book.restore(readJson('trades.json', null));
   overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
   toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
+  checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; } });
   watch.on('change', syncOverlay);
+  // Away from the game nothing is drawn over the screen.
+  watch.on('change', () => { if (checkPanel.visible && !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; } });
   watch.on('change', () => { if (watch.gameInFront() !== gameKeysOn) { registerHotkeys(); push(); } });
   watch.start();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
