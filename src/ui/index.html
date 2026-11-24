@@ -90,6 +90,7 @@
     <h2 class="pagetitle" id="db-title">Items</h2>
     <button type="button" class="link" id="db-reset" data-act="removeNamed" hidden>Remove all names given by hand</button>
   </div>
+  <p class="db-share" id="db-share" hidden></p>
   <section class="db-unknown" id="unknown-box" hidden>
     <div class="list-head"><h2 id="unknown-title">Not recognised</h2><button type="button" class="link" id="btn-unknown-clear" data-act="clearUnknown" data-confirm="Clear the whole list? Items still in your inventory come back at the next read." hidden>Clear list</button></div>
     <p class="hint small">Stacks the app could not read. Say what each one is and it is read from then on. While one is still in your inventory, you can also hover it in game and press <span id="hk-name">F8</span>.</p>
@@ -277,8 +278,13 @@
       <legend>Item database</legend>
       <p class="fine" id="shared-line"></p>
       <label>Your name in the item database, shown next to the items you name <input name="shareName" maxlength="40"></label>
-      <label>GitHub token, for adding to the database and sending reports (optional) <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
-      <p class="fine">Everyone gets the database without a token. Adding to it needs a fine-grained GitHub token limited to the poeappitemdata repository with "Contents: read and write". That repository holds only item data, so the token cannot change the app. It is stored encrypted on this PC and only ever sent to GitHub. Reports go to the same public repository; they hold the inventory slots as the app saw them, nothing else from your screen.</p>
+      <label>Upload token, so what you name is shared with everyone <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
+      <ol class="fine steps">
+        <li>Open <a href="https://github.com/settings/personal-access-tokens/new?name=Map+Companion+item+database&amp;description=Lets+Map+Companion+add+item+names+to+poeappitemdata&amp;expires_in=none&amp;contents=write" target="_blank" rel="noreferrer">GitHub's token page</a>. The name and the permission (Contents: read and write) are filled in for you.</li>
+        <li>Under "Repository access" choose "Only select repositories" and pick <b>poeappitemdata</b>.</li>
+        <li>Press "Generate token", copy it, paste it above and save. Everything named on this PC is sent right away.</li>
+      </ol>
+      <p class="fine">Everyone gets the database without a token; adding to it needs one. The repository holds only item data, so the token cannot change the app. It is stored encrypted on this PC and only ever sent to GitHub. Reports go to the same public repository; they hold the inventory slots as the app saw them, nothing else from your screen.</p>
       <label class="check"><input type="checkbox" name="clearToken"> Remove the saved token</label>
     </fieldset>
 

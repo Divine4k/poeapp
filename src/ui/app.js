@@ -332,7 +332,8 @@
   let known = null, knownRev = null, dbFilter = 'all', dbCat = '', dbLimit = 100, dbOpen = null, dbSort = { key: 'name', dir: 1 };
   const dbPics = new Map(); // picture id -> { row, p }, for the dialog
   function whoNamed(p) {
-    const here = p.onlyHere ? ', only on this PC' : '';
+    // A picture kept on this PC and not in the shared database: say why, since sharing is the point.
+    const here = !p.onlyHere ? '' : (p.auto ? ' on this PC' : (known && known.canUpload ? ', waiting to be sent' : ', not shared yet'));
     if (p.over) return `named ${p.by ? `by ${p.by}` : 'by someone'}; not used here, you named this picture ${p.over}`;
     if (p.auto) return `learned by the app${p.by ? ` (${p.by})` : ''}${here}`;
     return `named by ${p.by || (p.onlyHere ? 'you' : 'someone')}${here}`;
@@ -371,6 +372,26 @@
       + known.categories.map((c) => `<button type="button" data-db-cat="${esc(c.id)}" aria-pressed="${c.id === dbCat}">${c.icon ? `<img src="${esc(c.icon)}" alt="" loading="lazy">` : '<span class="noicon"></span>'}<span class="cat-name">${esc(c.label)}</span><span class="n">${c.count}</span></button>`).join('');
     if (cats.dataset.html !== catHtml) { cats.dataset.html = catHtml; cats.innerHTML = catHtml; }
     $('db-title').textContent = 'Items';
+    // Whether what you name reaches everyone, said where you manage the items.
+    const sh = state.status.shared || {}, share = $('db-share');
+    const unsent = known.rows.reduce((n, r) => n + r.pictures.filter((p) => p.onlyHere && !p.auto).length, 0);
+    let shareHtml, shareCls;
+    if (!sh.canUpload) {
+      shareCls = 'off';
+      shareHtml = `<span><b>Sharing is off.</b> ${unsent ? `The ${unsent === 1 ? 'name' : `${unsent} names`} you gave ${unsent === 1 ? 'is' : 'are'}` : 'Names you give are'} kept on this PC only, because the app has no upload token for the item database. Save one and everything is sent at once, for everyone.</span>
+        <button type="button" class="primary" data-open-settings="token">Turn on sharing</button>`;
+    } else if (sh.error) {
+      shareCls = 'bad';
+      shareHtml = `<span><b>The item database did not take the last upload.</b> ${esc(sh.error)}${unsent ? ` ${unsent} ${unsent === 1 ? 'name is' : 'names are'} waiting on this PC.` : ''}</span>
+        <span class="row"><button type="button" data-act="uploadShared">Try again</button><button type="button" class="link" data-open-settings="token">Settings</button></span>`;
+    } else {
+      shareCls = 'on';
+      shareHtml = `<span>Sharing is on. What you name is sent to the item database as <b>${esc(sh.by || known.me)}</b> and every app has it at its next start. ${sh.count} ${sh.count === 1 ? 'picture' : 'pictures'} in the database.${unsent ? ` ${unsent} on this PC not sent yet.` : ''}</span>
+        ${unsent ? '<button type="button" data-act="uploadShared">Send now</button>' : ''}`;
+    }
+    share.hidden = false;
+    share.className = `db-share ${shareCls}`;
+    if (share.dataset.html !== shareHtml) { share.dataset.html = shareHtml; share.innerHTML = shareHtml; }
     const reset = $('db-reset');
     reset.hidden = !known.named;
     reset.textContent = `Remove all ${known.named} names given by hand`;
@@ -1072,6 +1093,8 @@
   document.addEventListener('click', (e) => {
     const tb = e.target.closest('[data-trade]');
     if (tb) { act(tb.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
+    const os = e.target.closest('[data-open-settings]');
+    if (os) { $('btn-settings').click(); const f = $('settings-form').elements[os.dataset.openSettings]; if (f) { f.scrollIntoView({ block: 'center' }); f.focus(); } return; }
     const fx = e.target.closest('[data-fix]');
     if (fx) { e.stopPropagation(); openFix(fx.dataset.fix, fx.dataset.run); return; }
     const b = e.target.closest('[data-act]');

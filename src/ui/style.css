@@ -552,3 +552,15 @@ tr.dbdetail td { padding: 14px 16px 18px; color: var(--bone); }
 .dbd .inline-form input { width: 90px; }
 #db-more { margin: 12px 0 16px; }
 @media (max-width: 1000px) { .dbd { grid-template-columns: 1fr; } }
+
+/* Items page: whether what you name is shared */
+.db-share { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 14px; padding: 10px 14px; border: 1px solid var(--seam); border-radius: 6px; font-size: 14px; color: var(--ash); flex: 0 0 auto; }
+.db-share b { color: var(--bone); font-weight: 600; }
+.db-share.off { border-color: var(--gold); background: rgba(209, 173, 98, 0.07); color: var(--bone); }
+.db-share.bad { border-color: var(--blood); color: var(--bone); }
+.db-share button { flex: 0 0 auto; }
+.db-share .row { display: flex; gap: 12px; align-items: center; flex: 0 0 auto; }
+.steps { margin: 6px 0 8px; padding-left: 20px; }
+.steps li { margin-bottom: 3px; }
+.steps b { color: var(--bone); }
+.steps a { color: var(--portal); }

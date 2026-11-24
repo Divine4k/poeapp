@@ -462,7 +462,10 @@ function teach(typed, print, image = null) {
       await shared.flush();
       index.setShared(shared.items); itemsRev++; push();
     };
-    sync().catch((e) => console.error('shared update failed', e.message));
+    sync().then(() => {
+      // The name is kept on this PC either way; say so when it could not be shared.
+      if (shared.token && shared.status.error) { say(`Saved on this PC, but the item database did not take it: ${shared.status.error}`, true); push(); }
+    }).catch((e) => console.error('shared update failed', e.message));
   }
   return { name, entry, was };
 }
@@ -848,18 +851,25 @@ function applyName(k, item, name, entry, print) {
 
 // With an upload token, the pictures kept on this PC that the shared database lacks are sent
 // to it: one database for everyone. The database's own limits decide what is taken.
-async function offerLocalItems() {
-  if (!shared || !shared.token || shared.status.error) return;
+async function offerLocalItems({ announce = false, retry = false } = {}) {
+  if (!shared) return;
+  if (!shared.token) { if (announce) say('No upload token is saved, so nothing can be sent. Add one in Settings, under Item database.', true); return; }
+  if (shared.status.error && !retry) return;
   shared.by = shareName();
+  if (retry) { shared.status.error = null; await shared.load(); }
   for (const l of learned) {
     if (!l.name) continue;
     try { shared.queue(l.name, decodePrint(l.print), { auto: !!l.auto }); } catch (_) { /* skip a broken entry */ }
   }
   // Only what the database does not hold yet is worth a request.
   shared.pending = shared.pending.filter((p) => !shared.items.some((e) => similarity(e.print, p.print) > 0.97));
-  if (!shared.pending.length) return;
-  await shared.flush();
-  index.setShared(shared.items); itemsRev++; push();
+  const before = shared.status.uploaded;
+  if (shared.pending.length) await shared.flush();
+  index.setShared(shared.items); itemsRev++;
+  const sent = shared.status.uploaded - before;
+  if (shared.status.error) say(`The item database did not take it: ${shared.status.error}`, true);
+  else if (announce) say(sent ? `Sent ${sent} ${sent === 1 ? 'picture' : 'pictures'} to the item database. Everyone's app has ${sent === 1 ? 'it' : 'them'} at its next start.` : 'Everything on this PC is already in the item database.');
+  push();
 }
 
 async function loadShared() {
@@ -1390,7 +1400,7 @@ function applyConfig(patch) {
     patch.shareToken = token && safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(token).toString('base64') : '';
     if (shared) {
       shared.token = token && patch.shareToken ? token : ''; shared.status.error = token && !patch.shareToken ? 'This PC cannot store the token safely, so it was not saved.' : null;
-      if (shared.token) setTimeout(() => offerLocalItems().catch((e) => console.error('offer failed', e.message)), 500);
+      if (shared.token) setTimeout(() => offerLocalItems({ announce: true, retry: true }).catch((e) => console.error('offer failed', e.message)), 500);
     }
     delete patch.token;
   }
@@ -1494,7 +1504,7 @@ const actions = {
     delete next[a.name];
     applyConfig({ customPrices: next });
   },
-  uploadShared: async () => { if (shared) { await shared.flush(); index.setShared(shared.items); itemsRev++; } },
+  uploadShared: () => offerLocalItems({ announce: true, retry: true }),
   // A picture in the item database gets another name, or goes. id: "mine:3" for one kept on
   // this PC, "shared:5" for one that is only in the shared database.
   renameItem: (a) => {
