@@ -4,6 +4,8 @@
 (() => {
   if (window.api) return;
   const now = Date.now();
+  // A drawn stand-in for a pair of boots (2 by 2 cells), as the price check shows a picture.
+  const boots = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 94 94"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9aa4ae"/><stop offset=".6" stop-color="#4c5560"/><stop offset="1" stop-color="#2a2f36"/></linearGradient></defs><path d="M30 8h22l2 46 26 14 4 14H26l-2-30z" fill="url(#g)" stroke="#1b1e22" stroke-width="2"/><path d="M28 30h26M27 44h28" stroke="#c9a46a" stroke-width="3"/></svg>')}`;
   const dot = (c) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><circle cx="18" cy="18" r="14" fill="${c}"/></svg>`)}`;
   const price = { 'Divine Orb': 212, 'Chaos Orb': 1, 'Exalted Orb': 14, 'Ambush Scarab of Containment': 9, 'The Nurse': 78, 'Vaal Orb': 0.6, 'Orb of Fusing': 0.3 };
   const loot = (id, name, qty, source) => ({ id, name, qty, source, batch: 'b1', ts: now, chaos: price[name] * qty });
@@ -53,10 +55,11 @@
     unknown: [{ id: 1, qty: 3, at: now, here: true, guesses: [{ name: 'Vaal Orb', score: 78 }, { name: 'Orb of Fusing', score: 61 }, { name: 'Exalted Orb', score: 55 }], image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],
     priceCheck: null,
     tradeCheck: {
-      at: now, rev: 2, filtersRev: 0, inGame: false, ninja: null, state: 'done', error: '', total: 37, searchedAt: now, url: 'https://www.pathofexile.com/trade/search/Demo/abc123',
-      summary: { total: 37, low: 45, median: 120 },
+      at: now, rev: 2, filtersRev: 0, inGame: false, ninja: null, state: 'done', error: '', total: 37, searchedAt: now - 4000, url: 'https://www.pathofexile.com/trade/search/Demo/abc123',
+      icon: boots, iconW: 2, iconH: 2, compare: { label: '+# total maximum Life', mine: 88, lower: false },
+      summary: { total: 37, low: 45, median: 80 },
       filters: {
-        ok: true, rarity: 'Rare', title: 'Kraken Spark, Two-Toned Boots', name: '', offline: false,
+        ok: true, rarity: 'Rare', title: 'Kraken Spark, Two-Toned Boots', name: '', offline: false, sockets: 'R-G-B B', itemLevel: 86,
         type: { value: 'Two-Toned Boots', enabled: false }, category: { id: 'armour.boots', label: 'Boots', enabled: true },
         flags: [{ key: 'corrupted', label: 'Not corrupted', value: false, enabled: true }, { key: 'ilvl', label: 'Item level 86 or higher', value: 86, enabled: false }],
         props: [{ key: 'ar', label: 'Armour', group: 'armour_filters', value: 251, min: 226, enabled: false }, { key: 'ev', label: 'Evasion Rating', group: 'armour_filters', value: 251, min: 226, enabled: false }],
@@ -64,7 +67,8 @@
           { key: 'pseudo:life', text: '+88 total maximum Life', kind: 'pseudo', ids: ['x'], value: 88, min: 79, max: null, enabled: true, tiers: [2] },
           { key: 'pseudo:res', text: '+70% total Elemental Resistance', kind: 'pseudo', ids: ['x'], value: 70, min: 63, max: null, enabled: true, tiers: [1, 4] },
           { key: 'stat:0', text: '30% increased Movement Speed', kind: 'explicit', ids: ['x'], value: 30, min: 27, max: null, enabled: true, tiers: [2] },
-          { key: 'stat:1', text: '35% increased Armour and Evasion', kind: 'explicit', ids: ['x'], value: 35, min: 32, max: null, enabled: false },
+          { key: 'stat:1', text: '35% increased Armour and Evasion', kind: 'fractured', ids: ['x'], value: 35, min: 32, max: null, enabled: false, tiers: [3] },
+          { key: 'stat:3', text: '+1 to Level of Socketed Gems', kind: 'corruption', ids: ['x'], value: 1, min: 1, max: null, enabled: false },
           { key: 'stat:2', text: '8% reduced Mana Cost of Skills', kind: 'crafted', ids: ['x'], value: -8, min: null, max: -7, negated: true, enabled: false },
         ],
         unknown: [],
@@ -74,9 +78,11 @@
         },
       },
       listings: [
-        { id: 'a', price: { amount: 45, currency: 'chaos' }, chaos: 45, seller: 'Zana_Mapper', status: 'instant', listedAt: now - 40 * 60000, itemLevel: 85, corrupted: false, name: 'Dusk Trail, Two-Toned Boots' },
-        { id: 'b', price: { amount: 80, currency: 'chaos' }, chaos: 80, seller: 'KiracsApprentice', status: 'online', listedAt: now - 5 * 3600000, itemLevel: 86, corrupted: false, name: 'Storm Spur, Two-Toned Boots' },
-        { id: 'c', price: { amount: 1, currency: 'divine' }, chaos: 212, seller: 'NikoTheMad', status: 'afk', listedAt: now - 3 * 86400000, itemLevel: 84, corrupted: false, name: 'Gale Stride, Two-Toned Boots' },
+        { id: 'z', price: { amount: 8, currency: 'chaos' }, chaos: 8, seller: 'Cheap_Charlie', status: 'online', listedAt: now - 9 * 86400000, itemLevel: 84, corrupted: false, name: 'Dusk Trail, Two-Toned Boots', icon: boots, w: 2, h: 2, sockets: 'R-G B', cmp: 81, bait: true },
+        { id: 'a', price: { amount: 45, currency: 'chaos' }, chaos: 45, seller: 'Zana_Mapper', status: 'instant', listedAt: now - 40 * 60000, itemLevel: 85, corrupted: false, name: 'Dusk Trail, Two-Toned Boots', icon: boots, w: 2, h: 2, sockets: 'R-G-B-B', cmp: 92 },
+        { id: 'b', price: { amount: 80, currency: 'chaos' }, chaos: 80, seller: 'KiracsApprentice', status: 'online', listedAt: now - 5 * 3600000, itemLevel: 86, corrupted: false, name: 'Storm Spur, Two-Toned Boots', icon: boots, w: 2, h: 2, sockets: 'G-G B', cmp: 86 },
+        { id: 'd', price: { amount: 95, currency: 'chaos' }, chaos: 95, seller: 'Helena_Lux', status: 'instant', listedAt: now - 19 * 3600000, itemLevel: 86, corrupted: false, name: 'Storm Spur, Two-Toned Boots', icon: boots, w: 2, h: 2, sockets: 'B-B-R-G', cmp: 100 },
+        { id: 'c', price: { amount: 1, currency: 'divine' }, chaos: 212, seller: 'NikoTheMad', status: 'afk', listedAt: now - 3 * 86400000, itemLevel: 84, corrupted: false, name: 'Gale Stride, Two-Toned Boots', icon: boots, w: 2, h: 2, sockets: 'R R', cmp: 79 },
       ],
     },
     mapCheck: {
@@ -134,7 +140,7 @@
   };
   window.api = {
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
-    onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true }), 0), checkSize: () => {},
+    onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {},
     // Settings changed in the preview are kept for as long as the page is open, as the app would keep them.
     getState: async () => state, onState: (cb) => { listener = cb; },
     setConfig: async (patch) => { merge(state.config, patch); listener(state); return true; },

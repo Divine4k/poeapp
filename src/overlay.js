@@ -190,15 +190,21 @@ class CheckPanel {
   }
 
   setHeight(h) {
-    this.height = Math.max(0, Number(h) || 0);
+    const height = Math.max(0, Number(h) || 0);
+    // Moving or resizing a see-through window costs Windows a redraw of the whole window, so it
+    // is only done when the height really changed (a click on + or - does not change it).
+    if (height === this.height && this.win && !this.win.isDestroyed() && this.win.isVisible()) return;
+    this.height = height;
     this.place();
   }
 
   place() {
     if (!this.win || this.win.isDestroyed() || !this.wanted || !this.bounds) return;
     if (this.height < 2) return;
-    this.rect = checkPanelBounds(this.bounds, this.cursorX, this.height, this.custom);
-    this.win.setBounds(this.rect);
+    const rect = checkPanelBounds(this.bounds, this.cursorX, this.height, this.custom);
+    const same = this.rect && ['x', 'y', 'width', 'height'].every((k) => this.rect[k] === rect[k]);
+    this.rect = rect;
+    if (!same || !this.win.isVisible()) this.win.setBounds(this.rect);
     if (!this.win.isVisible()) { this.win.showInactive(); this.win.setAlwaysOnTop(true, 'screen-saver'); }
   }
 

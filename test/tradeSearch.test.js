@@ -641,3 +641,35 @@ test('uniques: what can roll differently is ticked, as in Awakened PoE Trade', (
   const ring = buildFilters(parseItemText(RING_FULL), index);
   assert.deepEqual([stat(ring, 'total maximum Life').min, stat(ring, 'total maximum Life').enabled, stat(ring, 'Physical Damage to Attacks').enabled], [76, true, false]);
 });
+
+test('listings: pictures, sockets, the number compared, bait prices', () => {
+  const { compareSpec, markBait } = require('../src/core/tradeQuery');
+  const { socketText } = require('../src/core/tradeApi');
+  assert.equal(socketText([{ group: 0, sColour: 'R' }, { group: 0, sColour: 'G' }, { group: 1, sColour: 'B' }, { group: 1, sColour: 'W' }]), 'R-G B-W');
+  assert.equal(socketText(undefined), '');
+  const raw = {
+    id: 'q', listing: { price: { amount: 3, currency: 'chaos' }, account: { name: 'a' } },
+    item: {
+      icon: 'https://web.poecdn.com/gen/image/x.png', baseType: 'Viper Edge', w: 2, h: 3, sockets: [{ group: 0, sColour: 'R' }, { group: 0, sColour: 'R' }],
+      extended: { pdps: 262.4, hashes: { explicit: [['explicit.stat_1', [1]], ['explicit.stat_2', [0]]] } },
+      explicitMods: ['Adds 2 to 10 Lightning Damage', '+71 to maximum Life'],
+    },
+  };
+  const byProp = readListing(raw, () => 3, { prop: 'pdps' });
+  assert.deepEqual([byProp.icon, byProp.base, byProp.w, byProp.h, byProp.sockets, byProp.cmp], ['https://web.poecdn.com/gen/image/x.png', 'Viper Edge', 2, 3, 'R-R', 262.4]);
+  assert.equal(readListing(raw, () => 3, { ids: ['explicit.stat_1'] }).cmp, 71);
+  assert.equal(readListing(raw, () => 3, { ids: ['explicit.stat_2'] }).cmp, 6); // the average of 2 and 10
+  assert.equal(readListing(raw, () => 3, { ids: ['nope'] }).cmp, null);
+  assert.equal(readListing({ ...raw, item: { ...raw.item, icon: 'https://evil.example/x.png' } }).icon, null);
+
+  const filters = { ok: true, props: [{ key: 'pdps', label: 'Physical damage per second', value: 250, enabled: true }], stats: [{ text: '+88 to maximum Life', ids: ['s'], value: 88, enabled: true }] };
+  assert.deepEqual(compareSpec(filters), { prop: 'pdps', label: 'Physical damage per second', mine: 250, lower: false });
+  filters.props[0].enabled = false;
+  assert.deepEqual(compareSpec(filters), { ids: ['s'], label: '# to maximum Life', mine: 88, lower: false });
+  filters.stats[0].enabled = false;
+  assert.equal(compareSpec(filters), null);
+
+  const ls = markBait([{ chaos: 1 }, { chaos: 10 }, { chaos: 11 }, { chaos: 12 }, { chaos: null }]);
+  assert.deepEqual(ls.map((l) => !!l.bait), [true, false, false, false, false]);
+  assert.deepEqual(markBait([{ chaos: 1 }, { chaos: 10 }]).map((l) => !!l.bait), [false, false]); // too few to tell
+});

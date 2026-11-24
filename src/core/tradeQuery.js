@@ -122,6 +122,7 @@ function buildFilters(item, index) {
     type: base ? { value: base, enabled: unique } : null,
     category: unique ? null : { id: kind.tradeId, label: kind.category, enabled: true },
     flags: [], props: unique ? [] : propFilters(item), stats: [], unknown: [], offline: false,
+    sockets: item.sockets || '', itemLevel: item.itemLevel || null,
   };
   if (item.rarity === 'Rare' && item.name !== item.baseType) out.title = `${item.name}, ${item.baseType}`;
   if (item.rarity === 'Magic') out.title = item.name;
@@ -315,4 +316,29 @@ function summarize(total, listings) {
   return { total, low: known.length ? known[0] : null, median: known.length ? known[Math.floor((known.length - 1) / 2)] : null };
 }
 
-module.exports = { gearKind, searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks };
+// The one number each listing is compared on, beside its price: the first ticked total the game
+// works out (damage, armour...), or else the first ticked stat with a number. mine: this item's.
+// lower: a stat where less is better.
+function compareSpec(filters) {
+  if (!filters || !filters.ok) return null;
+  const p = (filters.props || []).find((x) => x.enabled && x.value);
+  if (p) return { prop: p.key, label: p.label, mine: p.value, lower: false };
+  const st = (filters.stats || []).find((x) => x.enabled && x.value !== null && x.ids && x.ids.length);
+  if (st) return { ids: st.ids, label: st.text.replace(/[+-]?\d+(\.\d+)?/g, '#'), mine: Math.abs(st.value), lower: !!(st.negated || st.inverted) };
+  return null;
+}
+
+// Listings priced far under the rest are often bait: the seller does not answer, or the price
+// is a mistake that is gone by the time you whisper. Marked when there are enough to tell.
+function markBait(listings) {
+  const known = listings.filter((l) => l.chaos !== null && isFinite(l.chaos) && l.chaos > 0);
+  if (known.length < 4) return listings;
+  for (const l of known) {
+    const rest = known.filter((x) => x !== l).map((x) => x.chaos).sort((a, b) => a - b);
+    const median = rest[Math.floor((rest.length - 1) / 2)];
+    l.bait = l.chaos < median * 0.4;
+  }
+  return listings;
+}
+
+module.exports = { gearKind, searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks, compareSpec, markBait };

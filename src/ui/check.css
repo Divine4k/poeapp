@@ -4,11 +4,53 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 #panel, .pc-panel { max-height: 100vh; display: flex; flex-direction: column; background: color-mix(in srgb, var(--slab) 96%, transparent); border: 0; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line2), inset 0 1px 0 color-mix(in srgb, var(--bone) 5%, transparent), 0 6px 20px rgba(0, 0, 0, 0.6); overflow: hidden; }
 #panel:empty { display: none; }
 
-/* the item's name */
-.pc-head { display: flex; align-items: flex-start; gap: 8px; padding: 12px 8px 0 16px; }
-.pc-head h1 { flex: 1; min-width: 0; font-size: 16px; font-weight: 660; letter-spacing: -0.015em; line-height: 1.25; color: var(--bone); overflow-wrap: anywhere; }
-.pc-x { flex: 0 0 auto; border: 0; border-radius: 7px; background: none; color: var(--faint); padding: 2px 7px; font-size: 18px; line-height: 1; }
-.pc-x:hover { color: var(--blood); }
+/* the item: its picture as in game (no frame, sockets drawn over it), its name and the answer */
+.pc-head { position: relative; display: flex; gap: 14px; padding: 16px 16px 12px; background: radial-gradient(260px 150px at 10% 25%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 70%); }
+.pc-meta { flex: 1; min-width: 0; padding-top: 1px; }
+.pc-head h1 { padding-right: 24px; font-size: 16.5px; font-weight: 680; letter-spacing: -0.015em; line-height: 1.25; color: var(--bone); overflow-wrap: anywhere; }
+.pc-about { margin: 1px 0 0; font-size: 12.5px; color: var(--ash); }
+.pc-x { position: absolute; top: 9px; right: 9px; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--faint); font-size: 18px; line-height: 1; }
+.pc-x:hover { color: var(--blood); background: none; }
+.pc-price { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.pc-price b { font: 660 32px/1 var(--display); letter-spacing: -0.04em; color: var(--gold); text-shadow: 0 0 24px color-mix(in srgb, var(--gold) 30%, transparent); font-variant-numeric: tabular-nums; }
+.pc-price .pc-coin { width: 28px; height: 28px; }
+.pc-price small { margin-left: 6px; font-size: 12px; color: var(--ash); }
+.pc-sub { margin: 6px 0 0; font-size: 12px; color: var(--ash); }
+.pc-sub b { color: var(--soft); font-weight: 600; }
+.pc-sub i { font-style: normal; color: var(--faint); margin: 0 6px; }
+.pc-wait, .pc-say, .pc-bad { margin: 10px 0 0; font-size: 13px; }
+.pc-wait, .pc-say { color: var(--ash); }
+.pc-bad { color: var(--blood); }
+.pc-coin { width: 18px; height: 18px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+.pc-cw { font-size: 12px; color: var(--ash); }
+
+/* an item's picture: a box the size of its cells, the sockets centred over it */
+.pc-art { position: relative; flex: 0 0 auto; display: grid; place-items: center; }
+.pc-art img { max-width: 100%; max-height: 100%; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.6)); }
+.pc-art.big { width: 74px; height: 98px; }
+.pc-art.big.h4 { height: 120px; }
+.pc-art.big.h2 { height: 74px; }
+.pc-art.big.h1 { height: 46px; }
+.pc-art.sm { width: 36px; height: 44px; }
+.sk-grid { position: absolute; inset: 0; display: grid; place-content: center; --s: 17px; --g: 8px; grid-template-columns: repeat(var(--cols), var(--s)); grid-auto-rows: var(--s); gap: var(--g); }
+.sk-grid.c1 { --cols: 1; } .sk-grid.c2 { --cols: 2; }
+.pc-art.sm .sk-grid { --s: 7px; --g: 3px; }
+.sk-grid i { position: relative; border-radius: 50%; box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.55); }
+.pc-art.sm .sk-grid i { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.4); }
+.sk-grid i.none { visibility: hidden; }
+.sk-grid i.s-r { background: radial-gradient(circle at 35% 35%, #ff8a7a, #b3241a 60%, #4d0a05); }
+.sk-grid i.s-g { background: radial-gradient(circle at 35% 35%, #9df08a, #2e9a28 60%, #0e3a0b); }
+.sk-grid i.s-b { background: radial-gradient(circle at 35% 35%, #8ab4ff, #2a56c9 60%, #0c1f55); }
+.sk-grid i.s-w { background: radial-gradient(circle at 35% 35%, #fff, #c7c7c7 60%, #555); }
+.sk-grid i.s-a { background: radial-gradient(circle at 35% 35%, #9a9a9a, #333 60%, #111); }
+.sk-grid i.s-d { background: radial-gradient(circle at 35% 35%, #f5f5f5, #9c8f6a 60%, #3a321d); }
+/* the links: a short gold bar to the next socket */
+.sk-grid i.lr::after, .sk-grid i.ll::after, .sk-grid i.ld::after { content: ""; position: absolute; border-radius: 2px; background: linear-gradient(180deg, #f2d48a, #9a7530); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.sk-grid i.lr::after { left: 100%; top: 50%; width: var(--g); height: 4px; margin-top: -2px; }
+.sk-grid i.ll::after { right: 100%; top: 50%; width: var(--g); height: 4px; margin-top: -2px; }
+.sk-grid i.ld::after { top: 100%; left: 50%; width: 4px; height: var(--g); margin-left: -2px; background: linear-gradient(90deg, #f2d48a, #9a7530); }
+.pc-art.sm .sk-grid i.lr::after, .pc-art.sm .sk-grid i.ll::after { height: 2px; margin-top: -1px; }
+.pc-art.sm .sk-grid i.ld::after { width: 2px; margin-left: -1px; }
 
 /* the two ready-made searches */
 .pc-tabs { display: flex; gap: 2px; margin: 10px 16px 0; padding: 3px; align-self: flex-start; border-radius: 10px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
@@ -16,72 +58,67 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-tab:hover { color: var(--bone); }
 .pc-tab.on { background: var(--raise); color: var(--bone); box-shadow: inset 0 0 0 1px var(--line2); }
 
-/* the answer: a few large figures, each with a word under it */
-.pc-headline { padding: 10px 16px 12px; }
-.pc-headline:has(+ .pc-body) { border-bottom: 1px solid var(--line); }
-.pc-headline p { margin: 0; }
-.pc-wait { color: var(--ash); }
-.pc-bad { color: var(--blood); }
-.pc-figs { display: flex; align-items: flex-end; gap: 22px; }
-.pc-fig { display: flex; flex-direction: column; }
-.pc-fig b { font: 600 19px/1.1 var(--display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.pc-fig i { order: -1; font-style: normal; font-size: 11px; font-weight: 560; color: var(--ash); margin-bottom: 2px; }
-.pc-fig.main b { font-size: 30px; color: var(--gold); text-shadow: 0 0 22px color-mix(in srgb, var(--gold) 30%, transparent); }
-.pc-say { align-self: center; color: var(--ash); }
-
 /* what to search for */
 .pc-body { min-height: 0; overflow-y: auto; padding: 12px 12px 4px; }
 .pc-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 4px 10px; }
 .pc-chip { border: 0; border-radius: 9px; background: transparent; box-shadow: inset 0 0 0 1px var(--line2); color: var(--ash); padding: 4px 11px; font-size: 12px; font-weight: 560; line-height: 1.3; }
 .pc-chip:hover { color: var(--bone); background: transparent; }
 .pc-chip.on { background: color-mix(in srgb, var(--bone) 8%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 18%, transparent); color: var(--bone); }
-.pc-rows li { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px; border-radius: 8px; }
+.pc-rows li { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 6px; border-radius: 8px; }
 .pc-rows li:hover { background: color-mix(in srgb, var(--bone) 3%, transparent); }
-.pc-rows li + li { margin-top: 2px; }
+.pc-rows li + li { margin-top: 1px; }
 .pc-tick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer; }
-/* the tick is a small switch: gold when the line is searched for */
-.pc-tick input { flex: 0 0 auto; appearance: none; -webkit-appearance: none; position: relative; width: 26px; height: 15px; margin: 0 4px 0 0; padding: 0; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--bone) 13%, transparent); cursor: pointer; }
-.pc-tick input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--soft); transition: transform 0.12s; }
-.pc-tick input:checked { background: var(--gold); }
-.pc-tick input:checked::after { transform: translateX(11px); background: var(--ink); }
+/* the tick: a small square, gold when the line is searched for */
+.pc-tick input { flex: 0 0 auto; appearance: none; -webkit-appearance: none; position: relative; width: 17px; height: 17px; margin: 0 2px 0 0; padding: 0; border: 0; border-radius: 5px; background: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--bone) 28%, transparent); cursor: pointer; }
+.pc-tick input:checked { background: var(--gold); box-shadow: none; }
+.pc-tick input:checked::after { content: ""; position: absolute; left: 6px; top: 2.5px; width: 4px; height: 8px; border: solid var(--ink); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .pc-tick span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-tick small { flex: 0 0 auto; font-size: 10px; font-weight: 650; color: var(--ash); border: 0; border-radius: 5px; padding: 1px 5px; background: color-mix(in srgb, var(--bone) 6%, transparent); }
 .pc-tick small.pc-tier { color: var(--gold); background: color-mix(in srgb, var(--gold) 13%, transparent); font-variant-numeric: tabular-nums; }
 .pc-tick small.pc-tier.best { background: var(--gold); color: var(--ink); }
-.pc-tick small.k-corruption { color: var(--blood); background: color-mix(in srgb, var(--blood) 13%, transparent); }
-.pc-tick small.k-fractured { color: var(--gold); background: color-mix(in srgb, var(--gold) 13%, transparent); }
-.pc-tick small.k-crafted { color: var(--portal); background: color-mix(in srgb, var(--portal) 13%, transparent); }
-.pc-rows li.off .pc-tick span { color: var(--ash); }
-.pc-num { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
-.pc-num i { font-style: normal; font-size: 11px; color: var(--ash); margin-right: 3px; }
-.pc-num b { min-width: 44px; height: 24px; display: grid; place-items: center; border-radius: 7px; font: 620 13.5px var(--display); background: var(--well); box-shadow: inset 0 0 0 1px var(--line2); }
-.pc-num button { border: 0; background: transparent; color: var(--ash); width: 20px; height: 22px; padding: 0; border-radius: 6px; font-size: 14px; line-height: 1; }
+.pc-tick small.k-corruption { color: #ec6a5e; background: color-mix(in srgb, #ec6a5e 14%, transparent); }
+.pc-tick small.k-fractured { color: #c2ad78; background: color-mix(in srgb, #c2ad78 14%, transparent); }
+.pc-tick small.k-crafted, .pc-tick small.k-enchant { color: #b8c4ff; background: color-mix(in srgb, #b8c4ff 13%, transparent); }
+.pc-tick small.k-implicit { color: #9a9cff; background: color-mix(in srgb, #9a9cff 12%, transparent); }
+.pc-tick .m-explicit, .pc-tick .m-implicit { color: #9a9cff; }
+.pc-tick .m-crafted, .pc-tick .m-enchant { color: #b8c4ff; }
+.pc-tick .m-fractured { color: #c2ad78; }
+.pc-tick .m-corruption { color: #ec6a5e; }
+.pc-tick .m-scourge { color: #ff8a4f; }
+.pc-tick .m-crucible { color: #ffb347; }
+.pc-tick .m-pseudo, .pc-tick .m-prop { color: var(--bone); }
+.pc-rows li.off .pc-tick span { opacity: 0.55; }
+.pc-num { flex: 0 0 auto; display: flex; align-items: center; height: 28px; border-radius: 8px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line2); font-variant-numeric: tabular-nums; }
+.pc-num b { min-width: 34px; text-align: center; font: 640 13.5px var(--display); }
+.pc-num button { width: 24px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ash); font-size: 15px; line-height: 1; box-shadow: none; }
 .pc-num button:hover { color: var(--bone); background: color-mix(in srgb, var(--bone) 7%, transparent); }
-.pc-rows li.off .pc-num { opacity: 0.4; }
+.pc-rows li.off .pc-num b { color: var(--faint); }
 .pc-note { margin: 8px 0 0; font-size: 11px; color: var(--ash); }
-.pc-go { display: flex; align-items: center; gap: 12px; padding: 10px 16px 12px; }
-.pc-go .primary { flex: 1; height: 34px; padding: 0 22px; font-size: 13.5px; border-radius: var(--r-md); }
-.pc-go .link { margin-left: auto; height: 34px; padding: 0 12px; border-radius: var(--r-md); color: var(--bone); background: color-mix(in srgb, var(--bone) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line2); font-size: 12.5px; white-space: nowrap; }
-.pc-go .link:hover { color: var(--bone); }
+.pc-go { display: flex; align-items: center; gap: 8px; padding: 8px 16px 14px; }
+.pc-go .primary { flex: 1; height: 38px; padding: 0 22px; font-size: 13.5px; border-radius: var(--r-md); }
+.pc-site { flex: none; height: 38px; padding: 0 14px; border-radius: var(--r-md); white-space: nowrap; font-size: 13px; }
 
-/* what is listed: one line each, in columns under their names. Each column is as wide as its
-   widest entry and no wider, and the seller's name gets whatever is left. */
-.pc-listings { border-top: 1px solid var(--line); background: transparent; padding: 6px 16px 10px; display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); column-gap: 14px; }
-.pc-cols, .pc-list, .pc-list li { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: baseline; }
-.pc-cols { font-size: 11px; color: var(--ash); padding-bottom: 3px; }
-.pc-list li { min-height: 30px; align-items: center; border-top: 1px solid var(--line); }
-.pc-list li:first-child { border-top: 0; margin: 0 -8px; padding: 0 8px; border-radius: 8px; background: color-mix(in srgb, var(--gold) 8%, transparent); }
-.pc-price { color: var(--ash); font-size: 12px; white-space: nowrap; }
-.pc-list .pc-price b { font: 650 15px var(--display); color: var(--bone); font-variant-numeric: tabular-nums; }
-.pc-list li:first-child .pc-price b { color: var(--gold); }
-.pc-about { margin-left: 4px; font-style: normal; font-size: 11px; color: var(--ash); font-variant-numeric: tabular-nums; }
-.pc-age { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pc-list .pc-age { color: var(--bone); }
-.pc-st { white-space: nowrap; }
-.pc-list .pc-st { color: var(--ash); }
-.pc-list .pc-st::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--seam); }
-.pc-list .pc-st.instant, .pc-list .pc-st.online { color: var(--moss); }
-.pc-list .pc-st.instant::before, .pc-list .pc-st.online::before { background: var(--moss); }
-.pc-list .pc-st.afk { color: var(--gold); }
-.pc-list .pc-st.afk::before { background: var(--gold); }
-.pc-seller { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ash); font-size: 12px; }
+/* what is listed: picture, price, seller, and the number compared with yours */
+.pc-listings { border-top: 1px solid var(--line); padding: 4px 8px 8px; }
+.pc-lh { display: flex; justify-content: space-between; gap: 12px; padding: 6px 8px 6px; font-size: 11.5px; color: var(--faint); }
+.pc-lh b { color: var(--soft); font-weight: 600; }
+.pc-list li { display: grid; grid-template-columns: 36px 78px minmax(0, 1fr); align-items: center; gap: 10px; min-height: 52px; padding: 0 8px; border-radius: 9px; }
+.pc-list.cmp li { grid-template-columns: 36px 78px minmax(0, 1fr) auto; }
+.pc-list li + li { box-shadow: inset 0 1px 0 var(--line); }
+.pc-list li.first { background: color-mix(in srgb, var(--gold) 7%, transparent); }
+.pc-list li.first + li, .pc-list li + li.first { box-shadow: none; }
+.pc-lp { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.pc-lp b { font: 700 15px var(--display); font-variant-numeric: tabular-nums; }
+.pc-list li.first .pc-lp b { color: var(--gold); }
+.pc-who { min-width: 0; line-height: 1.3; }
+.pc-who b { display: block; font-weight: 560; font-size: 12.5px; color: var(--soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-who small { display: block; font-size: 11.5px; color: var(--ash); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-who em { font-style: normal; color: var(--gold); }
+.pc-who .st { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; vertical-align: 1px; background: var(--seam); }
+.pc-who .st.online { background: var(--moss); }
+.pc-who .st.instant { background: var(--portal); }
+.pc-who .st.afk { background: var(--gold); }
+.pc-vs { min-width: 40px; text-align: right; font-weight: 640; font-size: 13px; color: var(--soft); font-variant-numeric: tabular-nums; }
+.pc-vs.up { color: var(--moss); }
+.pc-vs.down { color: var(--blood); }
+.pc-list li.bait { opacity: 0.55; }

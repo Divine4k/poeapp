@@ -36,7 +36,7 @@ const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
 const { StatIndex } = require('./core/tradeStats');
-const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize } = require('./core/tradeQuery');
+const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
 const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tradeApi');
 const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
@@ -1173,6 +1173,7 @@ function startTradeCheck(item, { always = false } = {}) {
   tradeCheck = { at: Date.now(), rev: ++tradeRev, filtersRev: 0, filters, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, inGame: false };
   const entry = prices.get(priceName(item));
   tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques
+  tradeCheck.icon = entry && entry.icon ? entry.icon : null; // a unique's picture; others get theirs from the search
   if (filters.ok) showCheckPanel();
   // The price check key searches at once, with what is ticked from the start. The check key is
   // also pressed just to count loot, so there a unique (it has a poe.ninja price already) and
@@ -1188,10 +1189,13 @@ async function runTradeSearch(announce) {
   push();
   try {
     const r = await tradeClient.check(config.league, buildQuery(tc.filters));
-    tc.listings = r.listings.map((l) => readListing(l, chaosOfPrice));
+    tc.compare = compareSpec(tc.filters);
+    tc.listings = markBait(r.listings.map((l) => readListing(l, chaosOfPrice, tc.compare)));
+    // The item's own picture: a listing of the same base looks the same (a unique has its own).
+    if (!tc.icon) { const same = tc.listings.find((l) => l.icon && tc.filters.type && l.base === tc.filters.type.value) || (tc.filters.name ? tc.listings.find((l) => l.icon) : null); if (same) { tc.icon = same.icon; tc.iconW = same.w; tc.iconH = same.h; } }
     tc.total = r.total;
     tc.url = r.queryId ? searchUrl(config.league, r.queryId) : '';
-    tc.summary = summarize(r.total, tc.listings);
+    tc.summary = summarize(r.total, tc.listings.filter((l) => !l.bait)); // a bait price is not what it sells for
     tc.state = 'done'; tc.searchedAt = Date.now();
   } catch (e) {
     tc.state = 'error'; tc.error = e.message || String(e);
@@ -1203,7 +1207,16 @@ async function runTradeSearch(announce) {
 }
 
 // The price check window on top of the game. It opens beside the game panel the mouse is over.
-const checkPanelData = () => ({ ...tradeCheck, divine: prices.divine, auto: config.priceSearch.auto !== false });
+// coins: the pictures of the currencies prices are asked in.
+function coinIcons(listings) {
+  const out = {};
+  for (const id of new Set(['chaos', 'divine', ...(listings || []).map((l) => l.price && l.price.currency).filter(Boolean)])) {
+    const e = prices.get(id === 'chaos' ? 'Chaos Orb' : currencyName(id));
+    if (e && e.icon) out[id] = e.icon;
+  }
+  return out;
+}
+const checkPanelData = () => ({ ...tradeCheck, divine: prices.divine, auto: config.priceSearch.auto !== false, coins: coinIcons(tradeCheck && tradeCheck.listings) });
 function showCheckPanel() {
   if (!checkPanel || !overlay || config.priceSearch.overlay === false || layoutWin) return;
   if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;

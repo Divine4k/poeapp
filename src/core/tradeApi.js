@@ -109,11 +109,41 @@ class TradeClient {
   }
 }
 
+// The sockets of a listed item, written as the game writes them: "R-R-G B".
+function socketText(sockets) {
+  if (!Array.isArray(sockets) || !sockets.length) return '';
+  let out = '';
+  sockets.forEach((x, i) => {
+    if (i) out += sockets[i - 1].group === x.group ? '-' : ' ';
+    out += String(x.sColour || x.attr || 'W').slice(0, 1).toUpperCase();
+  });
+  return out;
+}
+
+// The number a listing has for one stat: the stat's line found through the site's list of which
+// line carries which stat, then the average of the numbers in it ("Adds 2 to 10": 6).
+function statValue(item, ids) {
+  const hashes = (item.extended && item.extended.hashes) || {};
+  for (const [type, list] of Object.entries(hashes)) {
+    for (const [id, where] of list || []) {
+      if (!ids.includes(id)) continue;
+      const line = ((item[`${type}Mods`] || [])[(where || [])[0]]) || '';
+      const nums = (line.match(/\d+(\.\d+)?/g) || []).map(Number);
+      if (nums.length) return nums.reduce((a, b) => a + b, 0) / nums.length;
+    }
+  }
+  return null;
+}
+
 // One listing as the site sends it -> what the app shows.
 // chaosOf: (amount, currency) -> value in chaos, or null when the currency's rate is unknown.
-function readListing(raw, chaosOf = () => null) {
+// compare: what each listing is compared on (compareSpec in tradeQuery), or null.
+function readListing(raw, chaosOf = () => null, compare = null) {
   const l = raw.listing || {}, it = raw.item || {}, acc = l.account || {};
   const price = l.price && isFinite(Number(l.price.amount)) ? { amount: Number(l.price.amount), currency: String(l.price.currency || '') } : null;
+  let cmp = null;
+  if (compare && compare.prop) { const v = Number((it.extended || {})[compare.prop]); cmp = isFinite(v) && v > 0 ? v : null; }
+  else if (compare && compare.ids) cmp = statValue(it, compare.ids);
   return {
     id: raw.id, price, chaos: price ? chaosOf(price.amount, price.currency) : null,
     seller: acc.lastCharacterName || acc.name || '',
@@ -121,6 +151,10 @@ function readListing(raw, chaosOf = () => null) {
     status: l.fee != null ? 'instant' : (acc.online ? (acc.online.status === 'afk' ? 'afk' : 'online') : 'offline'),
     listedAt: l.indexed ? Date.parse(l.indexed) || 0 : 0, itemLevel: it.ilvl || null, corrupted: !!it.corrupted,
     name: [it.name, it.typeLine].filter(Boolean).join(', '),
+    // Its picture (only from the game's own picture site) with its sockets, and its size in cells.
+    icon: /^https:\/\/web\.poecdn\.com\//.test(it.icon || '') ? it.icon : null,
+    base: it.baseType || it.typeLine || '', w: it.w || 1, h: it.h || 1, sockets: socketText(it.sockets),
+    cmp: cmp === null ? null : Math.round(cmp * 10) / 10,
   };
 }
 
@@ -135,4 +169,4 @@ const currencyName = (id) => CURRENCIES[id] || '';
 
 const searchUrl = (league, queryId) => `${SITE}/trade/search/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 
-module.exports = { TradeClient, TradeError, parseLimits, readListing, searchUrl, currencyName };
+module.exports = { TradeClient, TradeError, parseLimits, readListing, socketText, searchUrl, currencyName };

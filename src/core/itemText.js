@@ -92,6 +92,7 @@ function readGear(item, text, sections) {
   item.influences = [];
   const sockets = /^Sockets: (.+)$/m.exec(text);
   item.links = sockets ? Math.max(...sockets[1].trim().split(' ').map((g) => g.split('-').length)) : 0;
+  item.sockets = sockets ? sockets[1].trim() : ''; // "R-R-G B": colours, linked by -, groups apart by a space
   // What the game works out for a weapon or a piece of armour, as shown at the top of its text.
   const dec = (re) => { const m = re.exec(text); return m ? parseFloat(m[1]) : null; };
   const avg = (re) => { // "Elemental Damage: 12-210 (augmented), 5-9": the average hit, all parts together

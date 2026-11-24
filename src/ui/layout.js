@@ -7,11 +7,11 @@
   // What each part looks like while it is being placed.
   const SAMPLES = {
     toast: '<div class="toast-box"><b>Chaos Orb ×40: 40c (1c each)</b><span>Shown for a moment after the check key.</span></div>',
-    check: `<div class="pc-panel"><div class="pc-head"><h1>Doom Loop, Two-Stone Ring</h1></div>
-      <div class="pc-headline"><div class="pc-figs"><span class="pc-fig main"><b>45c</b><i>cheapest</i></span><span class="pc-fig"><b>120c</b><i>typical</i></span><span class="pc-fig"><b>37</b><i>listed</i></span></div></div>
+    check: `<div class="pc-panel"><div class="pc-head"><span class="pc-art big h1"></span><div class="pc-meta"><h1>Doom Loop, Two-Stone Ring</h1><p class="pc-about">Two-Stone Ring · item level 84</p>
+        <div class="pc-price"><b>45–120</b><span class="pc-cw">chaos</span><small>cheapest – typical</small></div><p class="pc-sub"><b>37</b> listed</p></div></div>
       <div class="pc-body"><div class="pc-chips"><span class="pc-chip on">Ring</span><span class="pc-chip on">Not corrupted</span></div>
         <ul class="pc-rows">${[['+91 total maximum Life', 82], ['+69% total Elemental Resistance', 62], ['+17% to Chaos Resistance', 15]]
-    .map(([label, n]) => `<li class="on"><span class="pc-tick"><input type="checkbox" checked tabindex="-1"><span>${label}</span></span><div class="pc-num"><i>min</i><b>${n}</b></div></li>`).join('')}</ul></div>
+    .map(([label, n]) => `<li class="on"><span class="pc-tick"><input type="checkbox" checked tabindex="-1"><span class="m-pseudo">${label}</span></span><div class="pc-num"><button tabindex="-1">−</button><b>${n}</b><button tabindex="-1">+</button></div></li>`).join('')}</ul></div>
       <div class="pc-go"><button type="button" class="primary" tabindex="-1">Search</button></div></div>`,
     trade: [['Invite', 'Tabula Rasa Simple Robe', '12 chaos'], ['Trade', '400× Chaos Orb', '1.5 divine'], ['Hideout', 'The Nurse', '75 chaos']]
       .map(([step, item, price]) => `<div class="tt in"><button type="button" class="primary" tabindex="-1">${step}</button><span class="tt-open"><span class="tt-item">${item}</span><span class="tt-price">${price}</span></span></div>`).join(''),
