@@ -109,6 +109,7 @@ const saveBacklog = () => writeJson('unrecognised.json', backlog.save(encodePrin
 let learned = []; // [{ name, print(base64) }]
 const session = new Session();
 const index = new IconIndex();
+index.priceOf = (name) => prices.chaosOf(name); // settles look-alike pictures towards the cheaper item
 const reader = new InventoryReader(index);
 const ledger = new LootLedger();
 const priceService = new PriceService({ fetchImpl: webFetch });

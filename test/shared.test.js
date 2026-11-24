@@ -100,3 +100,52 @@ test('reports: uploaded to the data branch under reports/, only with a token', a
   const refused = new SharedItems({ fetchImpl: async () => ({ ok: false, status: 403 }), token: 'tok' });
   await assert.rejects(() => refused.uploadFile('reports/y', Buffer.from('a'), 'm'), /refused/);
 });
+
+test('look-alikes: a shared picture of a similar item does not beat the real item', () => {
+  // Two real slots that look alike but are different items (similarity about 0.8).
+  const real = at(map, 0, 4), alike = at(map, 1, 0);
+  const lookalike = similarity(real, alike);
+  assert.ok(lookalike > 0.7 && lookalike < 0.9);
+
+  // The friend's PC: the shared list has only the look-alike, art has the real item.
+  const index = new IconIndex({ learnedThreshold: 0.75 }); // bar lowered so the look-alike passes, as a closer pair would
+  index.setShared([{ name: 'Eldritch Chaos Orb', print: alike }]);
+  index.addArt('Chaos Orb', at(hide, 0, 4)); // the same item as `real`, from another capture
+  const hit = index.match(real);
+  assert.equal(hit.name, 'Chaos Orb');
+  assert.equal(hit.source, 'art');
+
+  // Scores too close to call: the cheaper item is taken when prices are known.
+  const near = new IconIndex();
+  near.addArt('Chaos Orb', real);
+  near.setShared([{ name: 'Eldritch Chaos Orb', print: real }]);
+  near.priceOf = (n) => ({ 'Chaos Orb': 1, 'Eldritch Chaos Orb': 27 }[n]);
+  assert.equal(near.match(real).name, 'Chaos Orb');
+  near.priceOf = (n) => ({ 'Chaos Orb': 30, 'Eldritch Chaos Orb': 27 }[n]);
+  assert.equal(near.match(real).name, 'Eldritch Chaos Orb');
+
+  // Your own named picture still wins when it is the exact item.
+  const own = new IconIndex();
+  own.addLearned('Chaos Orb', at(hide, 0, 4));
+  own.setShared([{ name: 'Eldritch Chaos Orb', print: alike }]);
+  assert.equal(own.match(real).source, 'learned');
+  // An ignored picture is still ignored.
+  const ign = new IconIndex();
+  ign.addLearned('', real);
+  assert.deepEqual(ign.match(real), { ignored: true });
+});
+
+test('a shared picture with the wrong name is overruled by the downloaded art', () => {
+  const chaos = at(map, 0, 4), other = at(map, 1, 0);
+  const index = new IconIndex();
+  index.setShared([{ name: 'Eldritch Chaos Orb', print: chaos }]); // a Chaos Orb somebody named wrongly
+  index.addArt('Chaos Orb', at(hide, 0, 4));
+  index.addArt('Eldritch Chaos Orb', other);
+  assert.equal(index.match(chaos).name, 'Chaos Orb');
+
+  // No art for the shared name (an item the price site lacks): the shared name stands.
+  const bare = new IconIndex();
+  bare.setShared([{ name: 'Some League Item', print: chaos }]);
+  bare.addArt('Chaos Orb', other);
+  assert.equal(bare.match(chaos).name, 'Some League Item');
+});

@@ -55,6 +55,8 @@ class IconIndex {
     this.learned = []; // { name, print }  name '' means "ignore this item"
     this.shared = [];  // same shape, downloaded from the repository
     this.art = [];     // { name, print }
+    this.closeCall = 0.03; // two names this close in score count as look-alikes
+    this.priceOf = null;   // optional: name -> price, used to settle look-alikes
   }
 
   get size() { return this.learned.length + this.shared.length + this.art.length; }
@@ -89,16 +91,58 @@ class IconIndex {
 
   // Returns { name, score, source } or null when nothing matches well enough.
   // An item you chose to ignore comes back as { ignored: true }.
+  //
+  // All three lists are weighed together. They used to be tried in turn (yours, the shared list,
+  // then downloaded art), which let a shared picture of a look-alike win before the art for the
+  // real item was even considered: a plain Chaos Orb was read as an Eldritch Chaos Orb on a PC
+  // that had the shared Eldritch picture but no Chaos one.
   match(print) {
-    const own = IconIndex.best(this.learned, print);
-    if (own.best && own.score >= this.learnedThreshold) {
-      return own.best.name ? { name: own.best.name, score: own.score, source: 'learned' } : { ignored: true };
+    const names = new Map(); // name -> { score, source } for names that pass their list's bar
+    let top = { name: null, score: -1 };   // best score of any name, passing or not
+    let next = -1;                         // best score of a different name than top
+    const artOf = new Map();               // name -> score of its downloaded picture
+    const see = (list, source, bar) => {
+      const best = new Map();
+      for (const e of list) {
+        const sc = similarity(print, e.print);
+        if (sc > (best.get(e.name) || -1)) best.set(e.name, sc);
+      }
+      for (const [name, sc] of best) {
+        if (source === 'art') artOf.set(name, sc);
+        if (sc >= bar && sc > ((names.get(name) || {}).score || -1)) names.set(name, { score: sc, source });
+        if (name === top.name) { if (sc > top.score) top.score = sc; } else if (sc > top.score) { next = Math.max(next, top.score); top = { name, score: sc }; } else if (sc > next) next = sc;
+      }
+    };
+    see(this.learned, 'learned', this.learnedThreshold);
+    see(this.shared, 'shared', this.learnedThreshold);
+    see(this.art, 'art', this.artThreshold);
+    if (!names.size) return null;
+
+    let winner = null;
+    for (const [name, v] of names) if (!winner || v.score > winner.score) winner = { name, ...v };
+    // A shared picture can carry the wrong name (someone picked the wrong suggestion once, and a
+    // plain Chaos Orb went out to everyone as "Eldritch Chaos Orb"). The downloaded art is the
+    // check: when the art of another item fits clearly better than the art of the shared name,
+    // the art's name is taken.
+    if (winner.source === 'shared' && winner.name && artOf.has(winner.name)) {
+      let other = null;
+      for (const [name, v] of names) if (v.source === 'art' && name !== winner.name && (!other || v.score > other.score)) other = { name, ...v };
+      if (other && other.score - artOf.get(winner.name) >= this.artMargin) return { name: other.name, score: other.score, source: 'art' };
     }
-    const sh = IconIndex.best(this.shared, print);
-    if (sh.best && sh.best.name && sh.score >= this.learnedThreshold) return { name: sh.best.name, score: sh.score, source: 'shared' };
-    const a = IconIndex.best(this.art, print);
-    if (a.best && a.score >= this.artThreshold && a.score - a.second >= this.artMargin) return { name: a.best.name, score: a.score, source: 'art' };
-    return null;
+    // Look-alikes: other passing names almost as close. When prices are known the cheapest of
+    // them is taken, so a doubtful read can never overstate the loot.
+    const close = [...names].filter(([name, v]) => name !== winner.name && v.score >= winner.score - this.closeCall).map(([name, v]) => ({ name, ...v }));
+    if (close.length && this.priceOf && winner.name) {
+      const priced = [winner, ...close].filter((c) => c.name).map((c) => ({ ...c, price: Number(this.priceOf(c.name)) || 0 }));
+      const cheapest = priced.reduce((m, c) => (c.price < m.price ? c : m));
+      winner = cheapest;
+    } else if (winner.source === 'art') {
+      // Downloaded art alone must also beat every other picture clearly, passing or not.
+      const rival = winner.name === top.name ? next : top.score;
+      if (winner.score - rival < this.artMargin) return null;
+    }
+    if (!winner.name) return { ignored: true };
+    return { name: winner.name, score: winner.score, source: winner.source };
   }
 }
 
