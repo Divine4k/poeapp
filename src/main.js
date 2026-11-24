@@ -15,9 +15,9 @@ const { parseItemText, priceName } = require('./core/itemText');
 const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
 const { Session } = require('./core/session');
 const { CANON, COLS, ROWS, gridRect, isInventoryOpen, extractCell, isEmptyCell } = require('./core/inventory/grid');
-const { IconIndex, similarity, fingerprint, encodePrint, decodePrint, printPixels, SIDE } = require('./core/inventory/icons');
+const { IconIndex, similarity, fingerprint, encodePrint, decodePrint, printPixels, SIDE, sharpPrint, sharpShifts, packPrint, unpackPrint } = require('./core/inventory/icons');
 const { readStack } = require('./core/inventory/digits');
-const { InventoryReader, SINGLE_ART_SCORE } = require('./core/inventory/reader');
+const { InventoryReader, SINGLE_ART_SCORE, learnable } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
 const { captureFrame, cursorInFrame, cursorOnDisplay } = require('./capture');
 const { ArtLoader } = require('./art');
@@ -353,7 +353,7 @@ function gridPicture(cells) {
       }
     }
   }
-  const jpeg = nativeImage.createFromBitmap(bgra, { width: w, height: h }).toJPEG(84);
+  const jpeg = nativeImage.createFromBitmap(bgra, { width: w, height: h }).toJPEG(93);
   return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
 }
 
@@ -390,8 +390,16 @@ function recheckMaps() {
       try { cut = cellsOfPicture(trip.image); } catch (_) { /* a picture that cannot be opened is skipped */ }
       if (!cut) continue;
       const changes = recheckCells(trip.cells, (c) => {
-        const hit = index.match(fingerprint(cut(c.cell)));
+        // The exact fingerprint is kept with the slot since 0.17; older pictures are read back
+        // from the saved image. The sharp look always uses the saved image.
+        const rgb = cut(c.cell);
+        let print = null;
+        try { print = c.packed ? unpackPrint(c.packed) : null; } catch (_) { /* fall back to the picture */ }
+        print = print || fingerprint(rgb);
+        const hit = index.match(print, () => sharpShifts(rgb));
+        c.near = nearList(index.nearest(print, 3));
         if (!hit || hit.ignored) return null;
+        c.score = Math.round(hit.score * 100);
         if (hit.source === 'art' && c.qty <= 1 && hit.score < SINGLE_ART_SCORE) return null;
         return hit;
       }, (name) => index.knows(name));
@@ -401,9 +409,9 @@ function recheckMaps() {
         if (n) { const key = `${ch.from || 'not recognised'} → ${ch.to}`; moved.set(key, (moved.get(key) || 0) + n); }
       }
     }
+    try { snapshots.rewrite(run.id); } catch (e) { console.error('snapshot save failed', e.message); }
     if (touched) {
       maps++;
-      try { snapshots.rewrite(run.id); } catch (e) { console.error('snapshot save failed', e.message); }
       session.markSnapshot(run.id);
     }
   }
@@ -412,10 +420,31 @@ function recheckMaps() {
   say(`Corrected ${slots} ${slots === 1 ? 'slot' : 'slots'} in ${maps} ${maps === 1 ? 'map' : 'maps'}${list ? `: ${list}` : ''}.`);
 }
 
+// A kept slot picture (data URL, 52x52) back as RGB pixels, or null.
+function pixelsOfThumb(dataUrl) {
+  try {
+    const img = nativeImage.createFromDataURL(dataUrl);
+    const { width, height } = img.getSize();
+    if (width !== CANON || height !== CANON) return null;
+    const bgra = img.toBitmap(), rgb = Buffer.alloc(CANON * CANON * 3);
+    for (let p = 0; p < CANON * CANON; p++) { rgb[p * 3] = bgra[p * 4 + 2]; rgb[p * 3 + 1] = bgra[p * 4 + 1]; rgb[p * 3 + 2] = bgra[p * 4]; }
+    return rgb;
+  } catch (_) { return null; }
+}
+
+// Gives one entry of the named-items list to the matcher, with its sharp print when the slot
+// picture was kept.
+function indexLearned(l) {
+  try {
+    const rgb = l.image ? pixelsOfThumb(l.image) : null;
+    index.addLearned(l.name, decodePrint(l.print), { sharp: rgb ? sharpPrint(rgb) : null, auto: !!l.auto });
+  } catch (_) { /* skip a broken entry */ }
+}
+
 // After the list of named items was edited: the matcher gets the list again and it is saved.
 function relearn() {
   index.learned = [];
-  for (const l of learned) { try { index.addLearned(l.name, decodePrint(l.print)); } catch (_) { /* skip a broken entry */ } }
+  for (const l of learned) indexLearned(l);
   itemsRev++;
   writeJson('learned.json', learned);
   reader.forgetCells();
@@ -449,7 +478,7 @@ function itemsList() {
     return { id, name, seen: image || printPicture(print), sharp: !!image, icon: (entry && entry.icon) || null, priced: !!entry, doubt: looksLikeAnother(name, print) };
   };
   const mine = [];
-  learned.forEach((l, i) => { try { mine.push(row(`mine:${i}`, l.name, decodePrint(l.print), l.image)); } catch (_) { /* skip a broken entry */ } });
+  learned.forEach((l, i) => { try { mine.push({ ...row(`mine:${i}`, l.name, decodePrint(l.print), l.image), auto: !!l.auto }); } catch (_) { /* skip a broken entry */ } });
   const own = index.learned;
   const everyone = index.shared.map((e, i) => {
     const yours = own.find((l) => similarity(l.print, e.print) >= index.learnedThreshold);
@@ -458,13 +487,33 @@ function itemsList() {
   return { mine, shared: everyone, canUpload: !!(shared && shared.token) };
 }
 
+// The closest names as kept with a slot: [{ name, score (percent), source }].
+const nearList = (near) => (near && near.length ? near.map((n) => ({ name: n.name, score: Math.round(n.score * 100), source: n.source })) : null);
+
+// Items recognised only through their downloaded picture are saved as they really look in
+// game, so the next read matches them almost exactly instead of sitting near the limit. Only
+// clear reads qualify: a stack number, a comfortable score, and either no look-alike near or a
+// sharp verdict. They are kept on this PC and marked as learned by the app.
+const AUTO_LEARN_SCORE = 0.84;
+function autoLearn(cells) {
+  let added = 0;
+  for (const c of learnable(cells, AUTO_LEARN_SCORE)) {
+    if (added >= 12) break;
+    learned.push({ name: c.name, print: encodePrint(c.print), image: thumbnail(c.rgb), auto: true });
+    index.addLearned(c.name, c.print, { sharp: sharpPrint(c.rgb), auto: true });
+    added++;
+  }
+  if (added) { itemsRev++; writeJson('learned.json', learned); }
+}
+
 // Keeps this reading as the picture of what the current map brought in.
 function keepSnapshot(result) {
   const run = session.current;
   if (!snapshots || !run || !(ledger.inMap || ledger.pendingArrival)) return;
   const trip = run.trip || 1;
   const base = carriedIn && carriedIn.runId === run.id && carriedIn.trip === trip ? carriedIn.cells : [];
-  const cells = markCarried(result.cells.filter((c) => c.status !== 'covered'), base, (a, b) => similarity(a, b) > 0.9);
+  const cells = markCarried(result.cells.filter((c) => c.status !== 'covered'), base, (a, b) => similarity(a, b) > 0.9)
+    .map((c) => ({ ...c, score: c.score ? Math.round(c.score * 100) : null, near: nearList(c.near), packed: c.print ? packPrint(c.print) : null }));
   const growing = ledger.inMap;
   if (!snapshots.wants(run.id, trip, cells, growing)) return;
   if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing })) session.markSnapshot(run.id);
@@ -501,6 +550,7 @@ async function readInventory() {
     status.inventory.lastReadAt = Date.now();
     status.inventory.recognised = result.recognised;
     settlePendingNames();
+    if (config.inventory.autoLearn !== false) autoLearn(result.cells);
     updateUnknown(result.unknown);
     const before = new Map(lastInventory.cells.map((c) => [c.cell, c]));
     lastInventory = {
@@ -511,7 +561,7 @@ async function readInventory() {
         const guess = c.print && (c.status === 'unknown' || c.status === 'skipped') ? index.suggest(c.print, 1)[0] : null;
         return {
           cell: c.cell, print: c.print, status: c.status, name: c.name, qty: c.qty, source: c.source,
-          score: c.score ? Math.round(c.score * 100) : null,
+          score: c.score ? Math.round(c.score * 100) : null, how: c.how, near: nearList(c.near),
           guess: guess ? { name: guess.name, score: Math.round(guess.score * 100) } : null,
           image: same ? prev.image : thumbnail(c.rgb),
         };
@@ -568,8 +618,8 @@ function say(text, bad = false) { notice = { text, bad, at: Date.now() }; }
 function learnPrint(typed, print, image = null) {
   const entry = typed ? prices.get(typed) : null;
   const name = entry ? entry.name : String(typed || '').trim();
-  index.addLearned(name, print);
   learned.push(image ? { name, print: encodePrint(print), image } : { name, print: encodePrint(print) });
+  indexLearned(learned[learned.length - 1]);
   itemsRev++;
   writeJson('learned.json', learned);
   if (backlog.resolve(print)) saveBacklog();
@@ -634,6 +684,19 @@ function applyName(k, item, name, entry, print) {
   if ((item.stackable || plainSingle) && !sharedPicture) {
     const hit = index.match(print);
     if (hit && hit.name === name) { say(`${name} is already recognised.`); return; }
+    // The game itself just said what this item is. A picture of it that carries another name
+    // (named wrongly once, or learned by the app from a look-alike) is corrected instead of
+    // getting a second, contradicting entry.
+    const wrong = learned.filter((l) => l.name !== name && similarity(decodePrint(l.print), print) > 0.95);
+    if (wrong.length) {
+      const was = [...new Set(wrong.map((l) => l.name || 'ignored'))].join(', ');
+      for (const l of wrong) { l.name = name; delete l.auto; }
+      relearn();
+      say(`Corrected: this picture was saved as ${was} and now counts as ${name}.`);
+      if (shared && shared.token) shared.correct(print, name).then((n) => { if (n) { index.setShared(shared.items); itemsRev++; push(); } });
+      return;
+    }
+    if (hit && hit.source === 'shared' && shared && shared.token) shared.correct(print, name).then((n) => { if (n) { index.setShared(shared.items); itemsRev++; push(); } });
     const seen = lastInventory.cells.find((c) => c.cell === k);
     learnPrint(name, print, seen && seen.print && similarity(seen.print, print) > 0.98 ? seen.image : null);
     return;
@@ -721,7 +784,7 @@ function readToken() {
 function loadLearned() {
   backlog.load(readJson('unrecognised.json', []), decodePrint);
   learned = readJson('learned.json', []);
-  for (const l of learned) { try { index.addLearned(l.name, decodePrint(l.print)); } catch (_) { /* skip a broken entry */ } }
+  for (const l of learned) indexLearned(l);
 }
 
 // ---- updates ---------------------------------------------------------------------
@@ -1276,6 +1339,7 @@ const actions = {
     if (list === 'mine' && learned[n]) {
       print = decodePrint(learned[n].print);
       learned[n].name = name;
+      delete learned[n].auto;
     } else if (list === 'shared' && index.shared[n]) {
       print = index.shared[n].print;
       learned.push({ name, print: encodePrint(print) });
@@ -1346,7 +1410,7 @@ function setupIpc() {
   ipcMain.handle('inventory', () => {
     const cells = lastInventory.cells.map((c) => {
       const each = c.name ? prices.chaosOf(c.name) : 0;
-      return { cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source, score: c.score, guess: c.guess, image: c.image, each, total: each * (c.qty || 0) };
+      return { cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source, score: c.score, how: c.how, near: c.near, guess: c.guess, image: c.image, each, total: each * (c.qty || 0) };
     });
     return { rev: lastInventory.rev, at: lastInventory.at, cols: COLS, rows: ROWS, cells };
   });
@@ -1357,7 +1421,7 @@ function setupIpc() {
       cols: COLS, rows: ROWS,
       trips: data.trips.map((t) => ({
         trip: t.trip, at: t.at, image: t.image,
-        cells: t.cells.map((c) => { const each = c.name ? prices.chaosOf(c.name) : 0; return { ...c, each, total: each * (c.qty || 0) }; }),
+        cells: t.cells.map((c) => { const each = c.name ? prices.chaosOf(c.name) : 0; return { ...c, packed: undefined, each, total: each * (c.qty || 0) }; }),
       })),
     };
   });

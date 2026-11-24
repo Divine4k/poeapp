@@ -50,7 +50,13 @@ class SnapshotStore {
     const data = this.get(runId);
     const entry = {
       trip, at, filled: cells.length, sig: signature(cells), image,
-      cells: cells.map((c) => ({ cell: c.cell, status: c.status, name: c.name || null, qty: c.qty || 0, source: c.source || null, carried: !!c.carried, carriedQty: c.carriedQty || 0 })),
+      cells: cells.map((c) => {
+        const o = { cell: c.cell, status: c.status, name: c.name || null, qty: c.qty || 0, source: c.source || null, carried: !!c.carried, carriedQty: c.carriedQty || 0 };
+        // How the slot was read (score in percent, closest names, exact fingerprint), kept so a
+        // read can be explained and repeated later.
+        for (const k of ['score', 'how', 'near', 'packed']) if (c[k]) o[k] = c[k];
+        return o;
+      }),
     };
     const i = data.trips.findIndex((t) => t.trip === trip);
     if (i >= 0) data.trips[i] = entry; else data.trips.push(entry);
@@ -108,7 +114,7 @@ function recheckCells(cells, identify, canChange = () => true) {
     if (!hit || !hit.name || hit.name === c.name) continue;
     const loot = c.carried ? 0 : Math.max(0, c.qty - (c.carriedQty || 0));
     changes.push({ cell: c.cell, from: c.name || null, to: hit.name, qty: loot });
-    c.name = hit.name; c.source = hit.source || null;
+    c.name = hit.name; c.source = hit.source || null; c.how = hit.sharp ? 'sharp' : (hit.doubt ? 'doubt' : null);
     if (c.status === 'unknown') c.status = 'item';
   }
   return changes;

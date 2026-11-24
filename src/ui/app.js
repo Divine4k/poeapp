@@ -98,10 +98,22 @@
     });
     return snaps.get(`last:${run.id}`) || null;
   }
+  // How a slot was read, for its hover text: the match, and the closest names when it was not clear-cut.
+  const SOURCE = { art: 'downloaded picture', learned: 'your picture', shared: 'shared picture', pinned: 'named by you for this slot', map: 'map tier read from its picture' };
+  const LIMIT = { art: 82, learned: 90, shared: 90 };
+  function readNote(c) {
+    const parts = [];
+    if (c.name && c.source) parts.push(`Matched by ${SOURCE[c.source] || c.source}${c.score ? `, ${c.score}%` : ''}`);
+    if (c.how === 'sharp') parts.push('look-alikes told apart on the sharp picture');
+    if (c.how === 'doubt') parts.push('look-alikes could not be told apart for certain');
+    const near = (c.near || []).filter((n) => n.name !== c.name).slice(0, c.name ? 2 : 3);
+    if (near.length) parts.push(`${c.name ? 'Next closest' : 'Closest'}: ${near.map((n) => `${n.name} ${n.score}% (${SOURCE[n.source] || n.source}, needs ${LIMIT[n.source] || 90}%)`).join(', ')}`);
+    return parts.length ? ` ${parts.join('. ')}.` : '';
+  }
   function snapTip(c, divine) {
     if (c.carried) return `${c.name ? `${c.name} ×${c.qty}` : 'Single item'}: taken into the map with you, not loot`;
-    if (c.status === 'item' || c.status === 'remembered') return `${c.name} ×${c.qty}${c.each ? `: ${fmtValue(c.total, divine)}` : ', no price'}${c.carriedQty ? `. ${c.carriedQty} of these were taken into the map with you` : ''}`;
-    if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}`;
+    if (c.status === 'item' || c.status === 'remembered') return `${c.name} ×${c.qty}${c.each ? `: ${fmtValue(c.total, divine)}` : ', no price'}${c.carriedQty ? `. ${c.carriedQty} of these were taken into the map with you` : ''}.${readNote(c)}`;
+    if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}.${readNote(c)}`;
     if (c.status === 'ignored') return 'Ignored by you';
     return 'No stack number, so not counted (gear, gems and other single items)';
   }
@@ -248,7 +260,7 @@
       const name = r.name ? `${icon(r.icon)}<span class="nm">${esc(r.name)}</span>${r.priced ? '' : '<small>no price known</small>'}` : '<span class="official none"></span><span class="nm dim">Ignored: never counted</span>';
       const doubt = r.doubt ? `<p class="doubt">Looks more like ${icon(r.doubt.icon)}<b>${esc(r.doubt.name)}</b>
         <button type="button" data-act="renameItem" data-id="${esc(r.id)}" data-name="${esc(r.doubt.name)}">Rename to ${esc(r.doubt.name)}</button></p>` : '';
-      const yours = r.yours ? `<small>on this PC you named it ${esc(r.yours)}</small>` : '';
+      const yours = r.yours ? `<small>on this PC you named it ${esc(r.yours)}</small>` : (r.auto ? '<small title="Recognised by its downloaded picture, then saved as it really looks in your game so later reads are exact">learned by the app</small>' : '');
       return `<li class="${r.doubt ? 'doubtful' : ''}">${seen}<div class="as"><p>${name}${yours}</p>${doubt}</div>
         <span class="acts"><button type="button" class="link" data-rename="${esc(r.id)}">Rename</button>${mine ? `<button type="button" class="link" data-act="forgetItem" data-id="${esc(r.id)}" title="The app then asks about this picture again">Forget</button>` : ''}</span></li>`;
     };
@@ -258,7 +270,7 @@
       if (box.dataset.html !== html && !(typing && box.dataset.renaming === String(renaming))) { box.dataset.html = html; box.dataset.renaming = String(renaming); box.innerHTML = html; const f = box.querySelector('[data-rename-form] input'); if (f) { f.focus(); f.select(); } }
     };
     const doubts = known.mine.filter((r) => r.doubt).length;
-    $('learned-title').textContent = known.mine.length ? `Items you named: ${known.mine.length}${doubts ? `, ${doubts} to check` : ''}` : 'Items you named';
+    $('learned-title').textContent = known.mine.length ? `Items known on this PC: ${known.mine.length}${doubts ? `, ${doubts} to check` : ''}` : 'Items known on this PC';
     $('learned-filter').hidden = known.mine.length + known.shared.length < 8;
     fill($('learned'), order(known.mine), true, q ? 'No named item matches that.' : 'Nothing yet. Items you name, here or with the check key, are listed here.');
     const sd = known.shared.filter((r) => r.doubt && !r.yours).length;
@@ -594,11 +606,10 @@
       box.innerHTML = `<p class="hint">Nothing read yet. Open your inventory in game (${esc(state.config.inventory.key)}) and keep the mouse off it for a second.</p>`;
       return;
     }
-    const how = { art: 'matched to its picture', learned: 'named by you', shared: 'from the shared list', pinned: 'counted by you for this slot', map: 'map tier read from its picture' };
     const describe = (c) => {
-      if (c.status === 'item') return `${c.name} ×${c.qty}: ${fmtValue(c.total)}. Recognised: ${how[c.source] || ''}${c.score ? `, ${c.score}% match` : ''}.`;
+      if (c.status === 'item') return `${c.name} ×${c.qty}: ${fmtValue(c.total)}.${readNote(c)}`;
       if (c.status === 'remembered') return `${c.name} ×${c.qty}: ${fmtValue(c.total)}. Covered in this read, so the last known value is used.`;
-      if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}.${c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}% match.` : ''}`;
+      if (c.status === 'unknown') return `Not recognised, stack of ${c.qty}.${readNote(c) || (c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}% match.` : '')}`;
       if (c.status === 'ignored') return 'Ignored by you.';
       if (c.status === 'covered') return 'Possibly covered by a tooltip in this read, so nothing was concluded.';
       return `A single item the app has no picture for, so it is not counted. Hover it in game and press ${state.config.hotkeys.clipboard} to count it.${c.guess ? ` Closest picture: ${c.guess.name}, ${c.guess.score}%.` : ''}`;

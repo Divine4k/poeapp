@@ -225,3 +225,69 @@ test('shared list: a wrongly named picture is renamed for everyone, with a token
   assert.equal(await s.correct(chaos, 'Chaos Orb'), 0); // already right: nothing uploaded
   assert.equal(puts.length, 1);
 });
+
+test('sharp second look: look-alikes are told apart on sharp pictures of the same kind', () => {
+  const { sharpPrint, sharpShifts } = require('../src/core/inventory/icons');
+  const A = map[0 * COLS + 4], B = map[1 * COLS + 0];           // two different items that look alike
+  const A2 = hide[0 * COLS + 4], B2 = hide[1 * COLS + 0];       // the same two in another capture
+  const sharp = (rgb) => () => sharpShifts(rgb);
+  // The same item scores almost exactly on the sharp print, a look-alike clearly lower than on the blur.
+  assert.ok(similarity(sharpPrint(A), sharpPrint(A2)) > 0.95);
+  assert.ok(similarity(sharpPrint(A), sharpPrint(B2)) < similarity(fingerprint(A), fingerprint(B2)) - 0.05);
+
+  // Both pass the (lowered) bar on the blur; without sharp pictures the cheaper one is taken.
+  const index = new IconIndex({ learnedThreshold: 0.75 });
+  index.lookalike = 0.3;
+  index.priceOf = (n) => ({ Alpha: 50, Beta: 1 }[n]);
+  index.addLearned('Alpha', fingerprint(A2), { sharp: sharpPrint(A2), auto: true });
+  index.addLearned('Beta', fingerprint(B2), { sharp: sharpPrint(B2), auto: true });
+  const a = index.match(fingerprint(A), sharp(A)), b = index.match(fingerprint(B), sharp(B));
+  assert.equal(a.name, 'Alpha'); assert.equal(a.sharp, true);
+  assert.equal(b.name, 'Beta'); assert.equal(b.sharp, true);
+
+  // Downloaded art settles it when the in-game pictures cannot: the learned picture is of the
+  // look-alike, the art of the real item only came close to its bar.
+  const art = new IconIndex({ artThreshold: 0.99 });
+  art.lookalike = 0.3;
+  art.addLearned('Beta', fingerprint(A2), { auto: true });       // learned under the wrong name, no sharp picture
+  art.addArt('Alpha', fingerprint(A2), sharpPrint(A2));
+  art.addArt('Beta', fingerprint(B2), sharpPrint(B2));
+  art.artThreshold = 1.02;                                         // Alpha's art does not pass by itself
+  const hit = art.match(fingerprint(A), sharp(A));
+  assert.equal(hit.name, 'Alpha'); assert.equal(hit.source, 'art'); assert.equal(hit.sharp, true);
+
+  // A picture you named by hand and that fits exactly is not overruled by downloaded art.
+  const own = new IconIndex();
+  own.lookalike = 0.3;
+  own.addLearned('My Name', fingerprint(A2));
+  own.addArt('Alpha', fingerprint(A2), sharpPrint(A2));
+  own.addArt('Beta', fingerprint(B2), sharpPrint(B2));
+  assert.equal(own.match(fingerprint(A), sharp(A)).name, 'My Name');
+
+  // nearest: the closest names with where they come from.
+  const near = own.nearest(fingerprint(A), 2);
+  assert.equal(near.length, 2);
+  assert.ok(near[0].score >= near[1].score && near[0].source);
+});
+
+test('learning by itself: clear reads through downloaded art are saved as they look in game', () => {
+  const { sharpPrint } = require('../src/core/inventory/icons');
+  const { learnable } = require('../src/core/inventory/reader');
+  const { isEmptyCell } = require('../src/core/inventory/grid');
+  // "Downloaded art": the hideout capture's slots, each under its own name.
+  const index = new IconIndex({ artThreshold: 0.9 });
+  hide.forEach((rgb, i) => { if (!isEmptyCell(rgb)) index.addArt(`Item ${i}`, fingerprint(rgb), sharpPrint(rgb)); });
+  const reader = new InventoryReader(index);
+  const first = reader.read(loadFrame('inv_map'));
+  const fresh = learnable(first.cells);
+  assert.ok(fresh.length >= 10, `only ${fresh.length} learnable`);
+  assert.ok(fresh.every((c) => c.source === 'art' && c.stack > 0 && c.clear));
+  for (const c of fresh) index.addLearned(c.name, c.print, { sharp: sharpPrint(c.rgb), auto: true });
+  // The next read matches those through the in-game picture, and nothing is learned twice.
+  const second = reader.read(loadFrame('inv_map'));
+  const again = new Map(second.cells.map((c) => [c.cell, c]));
+  for (const c of fresh) { assert.equal(again.get(c.cell).source, 'learned'); assert.equal(again.get(c.cell).name, c.name); assert.ok(again.get(c.cell).score > 0.99); }
+  assert.equal(learnable(second.cells).filter((c) => fresh.some((f) => f.cell === c.cell)).length, 0);
+  // Every unclear slot keeps its closest names for the hover text.
+  assert.ok(first.cells.filter((c) => c.status === 'unknown').every((c) => Array.isArray(c.near)));
+});

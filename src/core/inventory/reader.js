@@ -2,7 +2,7 @@
 // Reads the whole inventory from one captured frame.
 const { COLS, ROWS, gridRect, extractCell, isEmptyCell, isInventoryOpen } = require('./grid');
 const { readStack } = require('./digits');
-const { fingerprint, similarity } = require('./icons');
+const { fingerprint, similarity, sharpShifts } = require('./icons');
 const { readMapTier } = require('./maps');
 
 // How alike a cell without a stack number must be to downloaded item art to count as that item.
@@ -63,7 +63,9 @@ class InventoryReader {
         }
         const print = fingerprint(rgb);
         if (!unsure) this.prints[k] = print;
-        const info = { cell: k, rgb, print, status: 'skipped', name: null, qty: 0, score: null, source: null };
+        // near: the closest names with their scores, kept when the read was not clear-cut.
+        // how: 'sharp' when look-alikes were told apart on the sharp picture, 'doubt' when they could not be.
+        const info = { cell: k, rgb, print, status: 'skipped', name: null, qty: 0, score: null, source: null, stack: 0, near: null, how: null, clear: false };
         cells.push(info);
 
         const pin = this.pins[k];
@@ -79,10 +81,12 @@ class InventoryReader {
           this.memory[k] = null;
         }
 
-        let hit = this.index.match(print);
+        let hit = this.index.match(print, () => sharpShifts(rgb));
         if (hit && hit.ignored) { this.memory[k] = null; info.status = 'ignored'; continue; }
         const stack = readStack(rgb);
-        info.qty = stack;
+        info.qty = stack; info.stack = stack;
+        if (hit) { info.how = hit.sharp ? 'sharp' : (hit.doubt ? 'doubt' : null); info.clear = !!hit.clear || !!hit.sharp; }
+        if (!hit || hit.sharp || hit.doubt || hit.score < 0.9) info.near = this.index.nearest(print, 3);
         // A cell without a stack number is a single item: one of something that does not stack
         // (an emblem, an invitation), or gear. It counts as one of the matched item, but only on
         // a clearly better match than a numbered cell needs, because gear can resemble an item's
@@ -116,4 +120,11 @@ class InventoryReader {
   }
 }
 
-module.exports = { InventoryReader, SINGLE_ART_SCORE };
+// Which slots of a reading are safe to save as "this is how the item really looks in game":
+// recognised only through downloaded art, with a stack number, a comfortable score, and either
+// no look-alike near or a sharp verdict.
+function learnable(cells, minScore = 0.84) {
+  return cells.filter((c) => c.status === 'item' && c.source === 'art' && c.stack > 0 && c.clear && c.score >= minScore && c.print && c.rgb);
+}
+
+module.exports = { InventoryReader, SINGLE_ART_SCORE, learnable };

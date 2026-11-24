@@ -5,7 +5,7 @@
 const fs = require('fs');
 const { nativeImage } = require('electron');
 const { CANON } = require('./core/inventory/grid');
-const { fingerprint, compositeOnCell, encodePrint, decodePrint } = require('./core/inventory/icons');
+const { fingerprint, sharpPrint, compositeOnCell, encodePrint, decodePrint, packPrint, unpackPrint } = require('./core/inventory/icons');
 
 class ArtLoader {
   constructor({ cacheFile, fetchImpl, userAgent = 'poe-map-companion/0.3 (personal use)' }) {
@@ -47,9 +47,11 @@ class ArtLoader {
       index.clearArt();
       const missing = [];
       for (const e of entries) {
+        // Cache entry: { p: fingerprint, s: sharp print }. Entries from before the sharp print
+        // existed are plain strings; those pictures are downloaded once more.
         const c = this.cache[e.icon];
         if (c === 'skip') continue;
-        if (c) index.addArt(e.name, decodePrint(c)); else missing.push(e);
+        if (c && c.p && c.s) index.addArt(e.name, decodePrint(c.p), unpackPrint(c.s)); else missing.push(e);
       }
       let done = 0, failed = 0;
       const total = missing.length;
@@ -58,8 +60,12 @@ class ArtLoader {
         while (missing.length) {
           const e = missing.pop();
           try {
-            const print = await this.fetchPrint(e.icon);
-            if (print) { this.cache[e.icon] = encodePrint(print); index.addArt(e.name, print); } else this.cache[e.icon] = 'skip';
+            const r = await this.fetchRgb(e.icon);
+            if (r) {
+              const print = fingerprint(r.rgb), sharp = sharpPrint(r.rgb);
+              this.cache[e.icon] = { p: encodePrint(print), s: packPrint(sharp) };
+              index.addArt(e.name, print, unpackPrint(this.cache[e.icon].s));
+            } else this.cache[e.icon] = 'skip';
           } catch (_) { failed++; }
           done++;
           if (done % 50 === 0) { this.save(); onProgress({ done, total, failed }); }
