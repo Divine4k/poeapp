@@ -258,3 +258,52 @@ test('admins and moderators get everyone else\'s recordings from GitHub, and can
   assert.match(c.remoteError, /did not accept the token/);
   for (const dir of [dirA, dirB, c.dir]) fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('a written report goes up with its pictures, and fixed marks are shared through the repository', async () => {
+  const gh = fakeGithub();
+  const cloud = { github: async () => ({ repo: 'Divine4k/reports', token: 'good' }) };
+  const make = (name) => new Troubleshoot({
+    dir: fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-n-')), recorder: {}, displayId: () => null, version: 'x', cloud, fetchImpl: gh.fetch,
+    snapshot: async () => ({ state: { status: { log: { ok: true } } }, inventory: null }), who: () => ({ name, role: 'moderator' }),
+  });
+  const a = make('Helper');
+  const b = make('Divine');
+  const id = await a.newReport();
+  assert.strictEqual(a.list()[0].kind, 'note');
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  assert.strictEqual(a.addImage(id, png, 'image/png'), '');
+  assert.strictEqual(a.addImage(id, Buffer.from('x'), 'image/jpeg'), '');
+  assert.match(a.addImage(id, Buffer.from('x'), 'text/plain'), /Only PNG/);
+  assert.match(a.addImage(id, Buffer.alloc(9 * 1024 * 1024), 'image/png'), /up to 8 MB/);
+  assert.ok(a.removeImage(id, 'image-2.jpg'));
+  assert.strictEqual(a.addImage(id, Buffer.from('y'), 'image/jpeg'), ''); // the free number is used again
+  assert.deepStrictEqual(a.meta(id).images, ['image-1.png', 'image-2.jpg']);
+  assert.ok(a.image(id, 'image-1.png').equals(png));
+  assert.strictEqual(a.image(id, '../meta.json'), null);
+  assert.match(await a.setFixed(id, true), /Send it first/);
+  assert.strictEqual(await a.send(id, 'The Items page shows the wrong league.'), '');
+
+  const tree = gh.tree();
+  const readme = gh.blobs[tree[`recordings/${id}/README.md`]].toString();
+  assert.match(readme, /^# Report /);
+  assert.match(readme, /!\[image-1\.png\]\(image-1\.png\)/);
+  assert.ok(gh.blobs[tree[`recordings/${id}/image-1.png`]].equals(png));
+  assert.match(gh.commits[gh.ref].message, /^Report /);
+
+  // Someone else gets it, pictures included, and marks it fixed; the sender then sees that too.
+  assert.strictEqual(await b.syncRemote(), 1);
+  const [r] = b.list();
+  assert.deepStrictEqual([r.kind, r.images, r.fixed], ['note', 2, null]);
+  assert.ok(b.image(id, 'image-1.png').equals(png));
+  assert.match(b.addImage(id, png, 'image/png'), /written report/); // not to someone else's
+  assert.strictEqual(await b.setFixed(id, true), '');
+  assert.deepStrictEqual(JSON.parse(gh.blobs[gh.tree()['status.json']].toString())[id].by, 'Divine');
+  await a.syncRemote();
+  assert.strictEqual(a.list()[0].fixed.by, 'Divine');
+  assert.strictEqual(a.details(id).fixed.by, 'Divine');
+  // And back.
+  assert.strictEqual(await a.setFixed(id, false), '');
+  await b.syncRemote();
+  assert.strictEqual(b.list()[0].fixed, null);
+  for (const t of [a, b]) fs.rmSync(t.dir, { recursive: true, force: true });
+});

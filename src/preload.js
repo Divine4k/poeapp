@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('api', {
   troubleList: () => ipcRenderer.invoke('trouble-list'),
   troubleDetails: (id) => ipcRenderer.invoke('trouble-details', id),
   troubleVideo: (id) => ipcRenderer.invoke('trouble-video', id),
+  troubleNew: () => ipcRenderer.invoke('trouble-new'),
+  troubleAddImage: (id, bytes, type) => ipcRenderer.invoke('trouble-add-image', id, bytes, type),
+  troubleImage: (id, name) => ipcRenderer.invoke('trouble-image', id, name),
   dev: (a) => ipcRenderer.invoke('dev', a),
   // the trade overlay window
   onTrade: (cb) => ipcRenderer.on('trade', (_e, data) => cb(data)),

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https://web.poecdn.com; media-src 'self' blob:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob: https://web.poecdn.com; media-src 'self' blob:">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Map Companion</title>
 <link rel="stylesheet" href="style.css">
@@ -256,6 +256,7 @@
         <button type="button" class="tr-recbtn" id="tr-recbtn" data-act="troubleToggle"><span class="tr-dot" aria-hidden="true"></span><span id="tr-reclabel">Record</span></button>
         <div class="tr-recinfo"><b id="tr-rectime"></b><small id="tr-rechint"></small></div>
       </div>
+      <button type="button" class="tr-write" id="tr-write">Write a report instead</button>
       <p class="fine tr-what">A recording keeps the game's screen as a video, every key and click, each line the game writes to its log, and what the app does meanwhile. Afterwards you can watch it here, write what went wrong, and send it to the reports repository.</p>
       <h3 class="tr-h">Other checks</h3>
       <div class="set-list">
@@ -268,8 +269,8 @@
           <span class="set-ctl"><button type="button" data-act="saveDiagnostic">Send a report</button></span>
         </div>
       </div>
-      <h3 class="tr-h">Recordings</h3>
-      <p class="fine">Yours, and the ones other admins and moderators sent. New ones come in by themselves.</p>
+      <div class="tr-listhead"><h3 class="tr-h">Recordings and reports</h3><button type="button" class="link" id="tr-refresh">Refresh</button></div>
+      <p class="fine">Yours, and the ones other admins and moderators sent. New ones come in by themselves every minute.</p>
       <p class="warn" id="tr-remote-error" hidden></p>
       <ul class="tr-list" id="tr-list"></ul>
     </section>
@@ -278,18 +279,27 @@
       <div id="tr-detail" hidden>
         <div class="tr-head">
           <h2 class="tr-title" id="tr-title"></h2>
-          <span class="row"><button type="button" class="link" id="tr-delete">Delete</button></span>
+          <span class="row"><button type="button" id="tr-fixbtn" hidden>Mark as fixed</button><button type="button" class="link" id="tr-delete">Delete</button></span>
         </div>
         <p class="map-meta" id="tr-facts"></p>
+        <p class="tr-fixed" id="tr-fixed" hidden></p>
         <video id="tr-video" controls preload="metadata"></video>
         <p class="warn" id="tr-novideo" hidden></p>
-        <label class="tr-note-label" for="tr-note"><b>What went wrong?</b> <small>What you did, what the app did, and what you expected instead. Times from the video help.</small></label>
+        <label class="tr-note-label" for="tr-note"><b>What went wrong?</b> <small id="tr-note-hint">What you did, what the app did, and what you expected instead. Times from the video help.</small></label>
         <textarea id="tr-note" rows="4" maxlength="5000" placeholder="At 0:42 I entered my hideout, but the map timer kept running…"></textarea>
+        <div class="tr-pics" id="tr-pics" hidden>
+          <div class="tr-picgrid" id="tr-picgrid"></div>
+          <div class="tr-picadd" id="tr-picadd">
+            <button type="button" id="tr-picbtn">Add pictures</button>
+            <small class="dim">or paste a screenshot with Ctrl+V. Up to 10, PNG or JPG.</small>
+            <input type="file" id="tr-picfile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+          </div>
+        </div>
         <div class="tr-send">
           <span class="dim" id="tr-sendinfo"></span>
           <button type="button" class="primary" id="tr-sendbtn">Send</button>
         </div>
-        <div class="tr-events-head">
+        <div class="tr-events-head" id="tr-events-head">
           <h3 class="tr-h">What happened</h3>
           <span class="chips tr-filter" id="tr-filter">
             <button type="button" data-kinds="input" aria-pressed="true">Keys and clicks</button>
@@ -297,7 +307,7 @@
             <button type="button" data-kinds="app" aria-pressed="true">The app</button>
           </span>
         </div>
-        <p class="fine">Click a line to jump the video there.</p>
+        <p class="fine" id="tr-events-hint">Click a line to jump the video there.</p>
         <ol class="tr-events" id="tr-events"></ol>
       </div>
     </section>

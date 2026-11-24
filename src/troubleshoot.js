@@ -18,6 +18,10 @@ const { uploadFolder, listFolder, readFile } = require('./github');
 
 const MAX_MS = 8 * 60 * 1000; // a longer video would be too large to send in one piece
 const SYNC_MAX = 20;          // recordings fetched in one go; the rest come with the next look
+const MAX_IMAGES = 10;        // pictures in one written report
+const MAX_IMAGE = 8 * 1024 * 1024;
+const IMAGE = /^image-[0-9]{1,2}\.(png|jpg|gif|webp)$/;
+const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 
 class Troubleshoot {
   // dir: where recordings are kept. recorder: a ScreenRecorder. displayId(): the game's screen.
@@ -35,6 +39,7 @@ class Troubleshoot {
     this.names = {};
     this.ownUntil = 0; // keys and clicks seen before this time were sent by the app itself
     this.syncing = false;
+    this.fixed = {};   // what is fixed, from status.json in the reports repository: { id: { by, at } }
     this.unseen = 0;   // other people's recordings fetched and not opened yet
     this.remoteError = '';
   }
@@ -159,7 +164,7 @@ class Troubleshoot {
     return names.map((id) => this.meta(id)).filter(Boolean)
       .filter((m) => !this.current || m.id !== this.current.id)
       .sort((a, b) => b.startedAt - a.startedAt)
-      .map((m) => ({ id: m.id, startedAt: m.startedAt, endedAt: m.endedAt, by: m.by, note: m.note, sent: m.sent, events: m.events, videoBytes: m.video ? m.video.bytes : 0, videoProblem: m.videoProblem, remote: !!m.remote, seen: m.seen !== false }));
+      .map((m) => ({ id: m.id, startedAt: m.startedAt, endedAt: m.endedAt, by: m.by, note: m.note, sent: m.sent, events: m.events, videoBytes: m.video ? m.video.bytes : 0, videoProblem: m.videoProblem, remote: !!m.remote, seen: m.seen !== false, kind: m.kind || 'recording', images: (m.images || []).length, fixed: this.fixedOf(m.id) }));
   }
 
   // ---- everyone's recordings, for admins and moderators ----
@@ -184,6 +189,7 @@ class Troubleshoot {
       if (gh.error) throw new Error(gh.error);
       if (!gh.token || !gh.repo) throw new Error('No reports repository or token is saved in Developer tools.');
       const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
+      await this.readFixed(where);
       const hidden = this.hidden();
       const ids = (await listFolder({ ...where, path: 'recordings' }))
         .filter((e) => e.type === 'dir' && ID.test(e.name) && !hidden.has(e.name) && !this.meta(e.name))
@@ -197,6 +203,11 @@ class Troubleshoot {
         fs.mkdirSync(this.folder(id), { recursive: true });
         if (events) fs.writeFileSync(path.join(this.folder(id), 'events.json.gz'), events);
         this.saveMeta({ ...m, id, remote: true, seen: false, repo: gh.repo, sent: m.sent || { at: m.endedAt, url: `https://github.com/${gh.repo}/tree/main/recordings/${id}` } });
+        // A written report's pictures are small: they come along now.
+        for (const n of (m.images || []).filter((x) => IMAGE.test(x))) {
+          const img = await readFile({ ...where, path: `recordings/${id}/${n}` });
+          if (img) fs.writeFileSync(path.join(this.folder(id), n), img);
+        }
         added++;
       }
       this.remoteError = '';
@@ -206,8 +217,93 @@ class Troubleshoot {
       this.syncing = false;
     }
     this.countUnseen();
-    if (added || this.remoteError) this.changed();
+    this.changed();
     return added;
+  }
+
+  // ---- fixed or not, shared through status.json at the top of the reports repository ----
+  fixedOf(id) {
+    if (!Object.keys(this.fixed).length) { try { this.fixed = JSON.parse(fs.readFileSync(path.join(this.dir, 'status.json'), 'utf8')) || {}; } catch (_) { /* none yet */ } }
+    const f = this.fixed[id];
+    return f && f.fixed ? { by: f.by || '', at: f.at || 0, commit: f.commit || '' } : null;
+  }
+  async readFixed(where) {
+    const raw = await readFile({ ...where, path: 'status.json' });
+    let all = {};
+    try { all = raw ? JSON.parse(raw.toString('utf8')) || {} : {}; } catch (_) { all = {}; }
+    this.fixed = all;
+    fs.mkdirSync(this.dir, { recursive: true });
+    fs.writeFileSync(path.join(this.dir, 'status.json'), JSON.stringify(all));
+    return all;
+  }
+  // Marks a sent recording or report fixed (or not fixed after all), for everyone. '' when it worked.
+  async setFixed(id, fixed) {
+    const m = ID.test(String(id)) ? this.meta(id) : null;
+    if (!m) return 'That recording is no longer here.';
+    if (!m.remote && !m.sent) return 'Send it first: only what is on GitHub can be marked fixed.';
+    try {
+      const gh = await this.cloud.github();
+      if (gh.error) throw new Error(gh.error);
+      const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
+      const all = await this.readFixed(where); // the newest, so nobody else's mark is lost
+      if (fixed) all[id] = { fixed: true, by: this.who().name || '', at: Date.now() };
+      else delete all[id];
+      await uploadFolder({ ...where, folder: '', files: [{ path: 'status.json', data: Buffer.from(`${JSON.stringify(all, null, 1)}\n`) }], message: `${fixed ? 'Fixed' : 'Not fixed'}: ${id}` });
+      this.fixed = all;
+      fs.writeFileSync(path.join(this.dir, 'status.json'), JSON.stringify(all));
+      return '';
+    } catch (e) {
+      return e.message || String(e);
+    } finally {
+      this.changed();
+    }
+  }
+
+  // ---- written reports: a note and pictures, no recording ----
+  async newReport() {
+    const me = this.who();
+    const at = Date.now();
+    let id = recordingId(at, me.name);
+    if (this.meta(id)) id = recordingId(at + 1000, me.name);
+    fs.mkdirSync(this.folder(id), { recursive: true });
+    let snap = null;
+    try { snap = await this.snapshot(); } catch (e) { snap = { problem: e.message || String(e) }; }
+    try { this.write(id, 'state-start.json.gz', (snap && snap.state) || snap); } catch (_) { /* the report works without it */ }
+    this.saveMeta({ id, kind: 'note', startedAt: at, endedAt: at, by: me.name || '', role: me.role || '', version: this.version, events: 0, dropped: 0, note: '', images: [], sent: null, video: null });
+    this.changed();
+    return id;
+  }
+  // bytes: the picture, type: its MIME type. '' when it was added.
+  addImage(id, bytes, type) {
+    const m = ID.test(String(id)) ? this.meta(id) : null;
+    if (!m || m.kind !== 'note' || m.remote) return 'Pictures go in a written report.';
+    const ext = EXT[String(type || '').toLowerCase()];
+    if (!ext) return 'Only PNG, JPG, GIF and WebP pictures can be added.';
+    const data = Buffer.from(bytes || []);
+    if (!data.length || data.length > MAX_IMAGE) return 'A picture can be up to 8 MB.';
+    m.images = m.images || [];
+    if (m.images.length >= MAX_IMAGES) return `A report holds up to ${MAX_IMAGES} pictures.`;
+    let n = 1;
+    while (m.images.some((x) => x.startsWith(`image-${n}.`))) n++;
+    const name = `image-${n}.${ext}`;
+    fs.writeFileSync(path.join(this.folder(id), name), data);
+    m.images.push(name);
+    this.saveMeta(m);
+    this.changed();
+    return '';
+  }
+  removeImage(id, name) {
+    const m = ID.test(String(id)) ? this.meta(id) : null;
+    if (!m || m.remote || !IMAGE.test(String(name))) return false;
+    m.images = (m.images || []).filter((x) => x !== name);
+    fs.rmSync(path.join(this.folder(id), name), { force: true });
+    this.saveMeta(m);
+    this.changed();
+    return true;
+  }
+  image(id, name) {
+    if (!ID.test(String(id)) || !IMAGE.test(String(name))) return null;
+    try { return fs.readFileSync(path.join(this.folder(id), name)); } catch (_) { return null; }
   }
 
   // The video of a recording; one fetched from GitHub is downloaded the first time it is watched.
@@ -232,7 +328,7 @@ class Troubleshoot {
     let events = [];
     try { events = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(this.folder(id), 'events.json.gz')))).events; } catch (_) { /* none kept */ }
     if (m.remote && m.seen === false) { m.seen = true; this.saveMeta(m); this.countUnseen(); this.changed(); }
-    return { ...m, events };
+    return { ...m, events, fixed: this.fixedOf(id) };
   }
   video(id) {
     if (!ID.test(String(id))) return null;
@@ -276,11 +372,11 @@ class Troubleshoot {
       const d = this.details(id);
       files.push({ path: 'README.md', data: Buffer.from(readme({ ...m, dropped: m.dropped }, d.events)) });
       add('meta.json');
-      for (const n of ['events.json.gz', 'state-start.json.gz', 'state-end.json.gz', 'inventory-start.json.gz', 'inventory-end.json.gz', 'video.webm']) add(n);
+      for (const n of ['events.json.gz', 'state-start.json.gz', 'state-end.json.gz', 'inventory-start.json.gz', 'inventory-end.json.gz', 'video.webm', ...(m.images || [])]) add(n);
       const first = m.note.trim().split('\n')[0].slice(0, 70);
       const r = await uploadFolder({
         fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo, folder: `recordings/${id}`, files,
-        message: `Recording ${id}: ${first}\n\n${m.note.trim()}`,
+        message: `${m.kind === 'note' ? 'Report' : 'Recording'} ${id}: ${first}\n\n${m.note.trim()}`,
         onStep: (step) => { this.sending = { id, step }; this.changed(); },
       });
       m.sent = { at: Date.now(), url: r.url, commit: r.commit };

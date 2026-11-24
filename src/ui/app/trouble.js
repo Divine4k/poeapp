@@ -74,13 +74,15 @@ async function trLoadList() {
   trList = await api.troubleList();
   setHtml($('tr-list'), trList.length ? trList.map((r) => {
     const first = (r.note || '').trim().split('\n')[0];
-    const tag = r.remote ? (r.seen ? '' : '<span class="tag warn">New</span>') : r.sent ? '<span class="tag good">Sent</span>' : '';
-    return `<li><button type="button" class="tr-item${r.id === trSel ? ' on' : ''}${r.remote && !r.seen ? ' new' : ''}" data-rec="${esc(r.id)}">
-      <span class="tr-item-top"><b>${esc(trWhen(r.startedAt))}</b><span class="dim">${r.remote ? `${esc(r.by || 'someone')} · ` : ''}${esc(trClock(r.endedAt - r.startedAt))}${r.videoBytes ? `, ${esc(trSize(r.videoBytes))}` : ', no video'}</span>${tag}</span>
+    // Fixed wins over everything; then new (someone else's, not opened yet); then sent.
+    const tag = r.fixed ? '<span class="tag good">Fixed</span>' : r.remote ? (r.seen ? '' : '<span class="tag warn">New</span>') : r.sent ? '<span class="tag">Sent</span>' : '';
+    const what = r.kind === 'note' ? `report${r.images ? `, ${r.images} picture${r.images === 1 ? '' : 's'}` : ''}` : `${trClock(r.endedAt - r.startedAt)}${r.videoBytes ? `, ${trSize(r.videoBytes)}` : ', no video'}`;
+    return `<li><button type="button" class="tr-item${r.id === trSel ? ' on' : ''}${r.remote && !r.seen ? ' new' : ''}${r.fixed ? ' fixed' : ''}" data-rec="${esc(r.id)}">
+      <span class="tr-item-top"><b>${esc(trWhen(r.startedAt))}</b><span class="dim">${r.remote ? `${esc(r.by || 'someone')} · ` : ''}${esc(what)}</span>${tag}</span>
       <span class="tr-item-note${first ? '' : ' dim'}">${esc(first || 'No note yet')}</span></button></li>`;
-  }).join('') : '<li class="empty">No recordings yet. Press Record, show the problem in game, then press Stop.</li>');
+  }).join('') : '<li class="empty">Nothing yet. Press Record and show the problem in game, or write a report.</li>');
   if (trSel && !trList.some((r) => r.id === trSel)) trOpen(null);
-  else if (trSel && trDetail) { const m = trList.find((r) => r.id === trSel); trDetail.sent = m.sent; trSendLine(); }
+  else if (trSel && trDetail) { const m = trList.find((r) => r.id === trSel); trDetail.sent = m.sent; trDetail.fixed = m.fixed; trSendLine(); }
 }
 
 async function trOpen(id) {
@@ -94,15 +96,22 @@ async function trOpen(id) {
   trDetail = await api.troubleDetails(id);
   if (!trDetail || trSel !== id) return;
   const d = trDetail;
-  $('tr-title').textContent = `Recording of ${trWhen(d.startedAt)}`;
-  $('tr-facts').textContent = [`${trClock(d.endedAt - d.startedAt)} long`, d.by ? `by ${d.by}` : 'not logged in', `${(d.events || []).length} events`, d.video ? `video ${d.video.width}x${d.video.height}, ${trSize(d.video.bytes)}` : null].filter(Boolean).join(' · ');
+  const note = d.kind === 'note';
+  $('tr-title').textContent = `${note ? 'Report' : 'Recording'} of ${trWhen(d.startedAt)}`;
+  $('tr-facts').textContent = note
+    ? [d.by ? `by ${d.by}` : 'not logged in', `${(d.images || []).length} picture${(d.images || []).length === 1 ? '' : 's'}`].join(' · ')
+    : [`${trClock(d.endedAt - d.startedAt)} long`, d.by ? `by ${d.by}` : 'not logged in', `${(d.events || []).length} events`, d.video ? `video ${d.video.width}x${d.video.height}, ${trSize(d.video.bytes)}` : null].filter(Boolean).join(' · ');
   $('tr-note').value = d.note || '';
-  $('tr-novideo').hidden = !!d.video;
-  $('tr-novideo').textContent = d.video ? '' : `There is no video in this one${d.videoProblem ? `: ${String(d.videoProblem).replace(/\.$/, '')}` : ''}. The keys and what the app did are below.`;
-  v.hidden = !d.video;
-  trEvents();
+  // A written report has no video and no timeline, but pictures.
+  for (const el of ['tr-events-head', 'tr-events-hint', 'tr-events']) $(el).hidden = note;
+  $('tr-pics').hidden = !note;
+  $('tr-note-hint').textContent = note ? 'What you did, what the app did, and what you expected instead. Screenshots help.' : 'What you did, what the app did, and what you expected instead. Times from the video help.';
+  $('tr-novideo').hidden = note || !!d.video;
+  $('tr-novideo').textContent = note || d.video ? '' : `There is no video in this one${d.videoProblem ? `: ${String(d.videoProblem).replace(/\.$/, '')}` : ''}. The keys and what the app did are below.`;
+  v.hidden = note || !d.video;
+  if (note) trPics(); else trEvents();
   trSendLine();
-  if (d.video) {
+  if (!note && d.video) {
     // One from someone else is fetched from GitHub the first time; that can take a moment.
     $('tr-novideo').hidden = false;
     $('tr-novideo').textContent = d.remote ? 'Fetching the video from GitHub…' : '';
@@ -150,10 +159,17 @@ function trEvents() {
 
 function trSendLine() {
   if (!trDetail || !state.trouble) return;
+  // Fixed or not: shared with everyone, for what is on GitHub.
+  const f = trDetail.fixed;
+  $('tr-fixed').hidden = !f;
+  $('tr-fixed').textContent = f ? `Fixed${f.by ? ` (marked by ${f.by}${f.at ? `, ${trWhen(f.at)}` : ''})` : ''}.` : '';
+  $('tr-fixbtn').hidden = !(trDetail.remote || trDetail.sent);
+  $('tr-fixbtn').textContent = f ? 'Not fixed after all' : 'Mark as fixed';
   // Someone else's recording: read only, already on GitHub.
   const remote = !!trDetail.remote;
   $('tr-sendbtn').hidden = remote;
   $('tr-note').readOnly = remote;
+  $('tr-picadd').hidden = remote;
   $('tr-delete').textContent = remote ? 'Remove from this list' : 'Delete';
   if (remote) {
     $('tr-sendinfo').innerHTML = `Sent by ${esc(trDetail.by || 'someone')}${trDetail.sent && trDetail.sent.at ? ` ${esc(trWhen(trDetail.sent.at))}` : ''}. <a href="${esc(trDetail.sent ? trDetail.sent.url : '')}" target="_blank" rel="noreferrer">Open on GitHub</a>`;
@@ -166,8 +182,77 @@ function trSendLine() {
   const info = $('tr-sendinfo');
   if (mine) info.textContent = `${s.step}…`;
   else if (trDetail.sent) info.innerHTML = `Sent ${esc(trWhen(trDetail.sent.at))}. <a href="${esc(trDetail.sent.url)}" target="_blank" rel="noreferrer">Open on GitHub</a>`;
-  else info.textContent = state.status.cloud.signedIn ? 'Goes to the reports repository on GitHub, with the video and everything below.' : 'Log in to send.';
+  else info.textContent = !state.status.cloud.signedIn ? 'Log in to send.' : trDetail.kind === 'note' ? 'Goes to the reports repository on GitHub, with the pictures.' : 'Goes to the reports repository on GitHub, with the video and everything below.';
 }
+
+// ---- written reports: pictures ----
+const trPicUrls = [];
+async function trPics() {
+  const d = trDetail;
+  for (const u of trPicUrls.splice(0)) URL.revokeObjectURL(u);
+  const id = d.id;
+  const cells = [];
+  for (const name of d.images || []) {
+    const bytes = await api.troubleImage(id, name);
+    if (trSel !== id) return;
+    if (!bytes) continue;
+    const ext = name.split('.').pop();
+    const url = URL.createObjectURL(new Blob([bytes], { type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` }));
+    trPicUrls.push(url);
+    cells.push(`<figure class="tr-pic"><a href="#" data-pic="${esc(url)}" title="Open full size"><img src="${esc(url)}" alt="${esc(name)}"></a>${d.remote ? '' : `<button type="button" class="link" data-unpic="${esc(name)}">Remove</button>`}</figure>`);
+  }
+  $('tr-picgrid').innerHTML = cells.join('') || '<p class="dim">No pictures yet.</p>';
+}
+// Adds picture files (from the picker or pasted), then shows the report again.
+async function trAddPics(files) {
+  if (!trDetail || trDetail.remote || trDetail.kind !== 'note') return;
+  const id = trDetail.id;
+  for (const f of files) {
+    if (!/^image\//.test(f.type)) continue;
+    const err = await api.troubleAddImage(id, new Uint8Array(await f.arrayBuffer()), f.type);
+    if (err) { window.alert(err); break; }
+  }
+  if (trSel === id) trOpen(id);
+}
+$('tr-picbtn').addEventListener('click', () => $('tr-picfile').click());
+$('tr-picfile').addEventListener('change', (e) => { trAddPics([...e.target.files]); e.target.value = ''; });
+// A screenshot pasted anywhere on the page while a written report is open goes into it.
+document.addEventListener('paste', (e) => {
+  if ($('tab-trouble').hidden || !trDetail || trDetail.kind !== 'note' || trDetail.remote) return;
+  const files = [...(e.clipboardData ? e.clipboardData.files : [])].filter((f) => /^image\//.test(f.type));
+  if (!files.length) return;
+  e.preventDefault();
+  trAddPics(files);
+});
+$('tr-picgrid').addEventListener('click', (e) => {
+  const rm = e.target.closest('[data-unpic]');
+  if (rm) { act({ type: 'troubleImageRemove', id: trSel, name: rm.dataset.unpic }).then(() => trOpen(trSel)); return; }
+  const a = e.target.closest('[data-pic]');
+  if (a) { e.preventDefault(); trBig(a.dataset.pic); }
+});
+// Full size, over the page; a click closes it.
+function trBig(url) {
+  const dlg = document.createElement('dialog');
+  dlg.className = 'tr-bigpic';
+  dlg.innerHTML = `<img src="${esc(url)}" alt="Picture">`;
+  dlg.addEventListener('click', () => { dlg.close(); dlg.remove(); });
+  document.body.appendChild(dlg);
+  dlg.showModal();
+}
+
+$('tr-write').addEventListener('click', async () => {
+  const id = await api.troubleNew();
+  if (!id) return;
+  trListRev = -1;
+  await trLoadList();
+  await trOpen(id);
+  $('tr-note').focus();
+});
+$('tr-refresh').addEventListener('click', () => act({ type: 'troubleSync' }));
+$('tr-fixbtn').addEventListener('click', () => {
+  if (!trSel || !trDetail) return;
+  act({ type: 'troubleFixed', id: trSel, fixed: !trDetail.fixed });
+});
 
 $('tr-list').addEventListener('click', (e) => { const b = e.target.closest('[data-rec]'); if (b) trOpen(b.dataset.rec); });
 $('tr-events').addEventListener('click', (e) => {
@@ -201,4 +286,4 @@ $('tr-delete').addEventListener('click', () => {
 
 // Called when the page is opened.
 // Also looks on GitHub right away for recordings sent since the last look.
-function troubleShown() { trListRev = -1; renderTrouble(); if (state.trouble && state.trouble.can) act({ type: 'troubleSync' }); }
+function troubleShown() { trListRev = -1; renderTrouble(); if (state.trouble && state.trouble.can) act({ type: 'troubleSync', quiet: true }); }

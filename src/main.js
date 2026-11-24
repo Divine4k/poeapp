@@ -1632,7 +1632,18 @@ const actions = {
   // Troubleshooting page.
   troubleToggle: () => toggleRecording(),
   troubleNote: (a) => { if (trouble && trouble.setNote(a.id, a.note)) troubleRev++; },
-  troubleSync: () => { if (trouble && canTrouble()) return trouble.syncRemote(); },
+  // The Refresh button: says what came in, unlike the quiet look once a minute.
+  troubleSync: async (a) => {
+    if (!trouble || !canTrouble()) return;
+    const n = await trouble.syncRemote();
+    if (!a.quiet) say(trouble.remoteError ? `Could not look for new recordings: ${trouble.remoteError}` : n ? `${n} new recording${n === 1 ? '' : 's'}.` : 'Nothing new.', !!trouble.remoteError);
+  },
+  troubleFixed: async (a) => {
+    if (!trouble || !canTrouble()) return;
+    const error = await trouble.setFixed(String(a.id || ''), !!a.fixed);
+    say(error ? `Not marked: ${error}` : a.fixed ? 'Marked as fixed, for everyone.' : 'Marked as not fixed.', !!error);
+  },
+  troubleImageRemove: (a) => { if (trouble) trouble.removeImage(String(a.id || ''), String(a.name || '')); },
   troubleRemove: (a) => { if (trouble && trouble.remove(a.id)) { troubleRev++; say('Recording deleted.'); } },
   troubleSend: async (a) => {
     if (!trouble) return;
@@ -1856,6 +1867,10 @@ function setupIpc() {
     try { return await trouble.videoFor(String(id || '')); } catch (e) { say(`The video could not be fetched: ${e.message || e}`, true); push(); return null; }
   });
   ipcMain.handle('dev', (_e, a) => devAction(a || {}));
+  // Written reports: a new one (answers its id), pictures added to it, and pictures to show.
+  ipcMain.handle('trouble-new', async () => (trouble && canTrouble() ? trouble.newReport() : null));
+  ipcMain.handle('trouble-add-image', (_e, id, bytes, type) => (trouble ? trouble.addImage(String(id || ''), bytes, String(type || '')) : 'Not ready.'));
+  ipcMain.handle('trouble-image', (_e, id, name) => (trouble ? trouble.image(String(id || ''), String(name || '')) : null));
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];
     if (!fn) return false;

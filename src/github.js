@@ -50,7 +50,7 @@ async function uploadFolder({ fetchImpl, token, repo, branch = 'main', folder, f
     onStep(`Sending ${f.path} (${++n} of ${files.length})`);
     const blob = await get('POST', '/git/blobs', { content: f.data.toString('base64'), encoding: 'base64' });
     if (!blob.ok) throw new Error(explain(blob, repo));
-    tree.push({ path: `${folder}/${f.path}`, mode: '100644', type: 'blob', sha: blob.data.sha });
+    tree.push({ path: folder ? `${folder}/${f.path}` : f.path, mode: '100644', type: 'blob', sha: blob.data.sha });
   }
   onStep('Making the commit');
   // Someone else may send at the same moment: then the branch moved, and this tries once more on top of it.
@@ -64,7 +64,7 @@ async function uploadFolder({ fetchImpl, token, repo, branch = 'main', folder, f
     const c = await get('POST', '/git/commits', { message, tree: t.data.sha, parents: [parent] });
     if (!c.ok) throw new Error(explain(c, repo));
     const moved = await get('PATCH', `/git/refs/heads/${branch}`, { sha: c.data.sha, force: false });
-    if (moved.ok) return { commit: c.data.sha, url: `https://github.com/${repo}/tree/${branch}/${folder}` };
+    if (moved.ok) return { commit: c.data.sha, url: `https://github.com/${repo}/tree/${branch}${folder ? `/${folder}` : ''}` };
     if (moved.status !== 422) throw new Error(explain(moved, repo));
   }
   throw new Error('GitHub kept changing while sending. Try again in a moment.');

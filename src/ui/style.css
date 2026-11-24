@@ -932,3 +932,23 @@ button.refresh[hidden] { display: none; }
 .boot-actions { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
 .boot-actions[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .boot-logo .ring, .spin, button.refresh.busy svg { animation: none; } }
+
+/* Troubleshooting: written reports, Refresh, fixed marks */
+.tr-write { margin-top: 8px; width: 100%; }
+.tr-listhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.tr-listhead .link { font-size: 13px; }
+.tr-item.fixed .tr-item-note { color: var(--ash); }
+.tr-head .row { gap: 12px; align-items: center; }
+.tr-fixed { margin: 4px 0 0; color: var(--moss); font-size: 14px; }
+.tr-fixed[hidden] { display: none; }
+.tr-pics { margin-top: 10px; }
+.tr-pics[hidden] { display: none; }
+.tr-picgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.tr-pic { margin: 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tr-pic img { display: block; width: 100%; max-height: 160px; object-fit: contain; background: var(--stone); border: 1px solid var(--seam); border-radius: 6px; }
+.tr-picadd { display: flex; align-items: center; gap: 12px; margin-top: 10px; flex-wrap: wrap; }
+.tr-picadd[hidden] { display: none; }
+.tr-bigpic { padding: 0; border: 0; background: transparent; max-width: 92vw; max-height: 92vh; }
+.tr-bigpic::backdrop { background: color-mix(in srgb, var(--stone) 85%, transparent); }
+.tr-bigpic img { display: block; max-width: 92vw; max-height: 92vh; cursor: zoom-out; }
+.tr-events-head[hidden], .tr-events[hidden], #tr-events-hint[hidden] { display: none; }

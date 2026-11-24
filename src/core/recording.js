@@ -107,6 +107,19 @@ function eventLine(e) {
 const MAX_LINES = 6000;
 // The README.md that goes up with a recording: the note first, then the facts, then the timeline.
 function readme(meta, events) {
+  // A written report: the note, who and when, and its pictures shown inline on GitHub.
+  if (meta.kind === 'note') {
+    return [
+      `# Report ${meta.id}`, '', '## Note', '', meta.note ? meta.note : '(no note)', '',
+      '## Facts', '',
+      `- By: ${meta.by || 'not logged in'}${meta.role ? ` (${meta.role})` : ''}`,
+      `- App version: ${meta.version || 'unknown'}`,
+      `- Written: ${new Date(meta.startedAt).toISOString()}`,
+      '- `state-start.json.gz`: everything the app window showed when the report was started.',
+      '',
+      ...((meta.images || []).length ? ['## Pictures', '', ...meta.images.map((n) => `![${n}](${n})`), ''] : []),
+    ].join('\n');
+  }
   const lines = events.length > MAX_LINES ? events.slice(0, MAX_LINES) : events;
   const kinds = {};
   for (const e of events) kinds[e.kind] = (kinds[e.kind] || 0) + 1;
