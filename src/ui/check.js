@@ -14,6 +14,8 @@
   let data = null;
   let rows = [];     // what is ticked and set right now
   let formFor = '';  // which item and which round of choices the rows belong to
+  let mode = 'stats'; // which of the two searches is set up: by the item's stats, or for its base
+  let modeFor = 0;    // the item the mode belongs to
 
   function fmtValue(c) {
     const divine = data ? data.divine : 0;
@@ -38,17 +40,18 @@
   function rowsFrom(f) {
     const out = [];
     // Short facts about the item: shown as a row of buttons, lit when they are part of the search.
-    if (f.category) out.push({ tc: 'category', chip: true, label: f.category.label, title: 'Any base type of this kind', enabled: f.category.enabled });
-    if (f.type) out.push({ tc: 'type', chip: true, label: f.type.value, title: 'Only this base type', enabled: f.type.enabled });
-    for (const x of f.flags) out.push({ tc: 'flag', chip: true, key: x.key, label: x.label, enabled: x.enabled });
+    // pk: the tick's name in the two ready-made searches (see presets).
+    if (f.category) out.push({ tc: 'category', pk: 'category', chip: true, label: f.category.label, title: 'Any base type of this kind', enabled: f.category.enabled });
+    if (f.type) out.push({ tc: 'type', pk: 'type', chip: true, label: f.type.value, title: 'Only this base type', enabled: f.type.enabled });
+    for (const x of f.flags) out.push({ tc: 'flag', pk: `flag:${x.key}`, chip: true, key: x.key, label: x.label, enabled: x.enabled });
     out.push({ tc: 'offline', chip: true, label: 'Offline sellers too', enabled: f.offline });
-    for (const x of f.props) out.push({ tc: 'prop', key: x.key, label: `${x.label}: ${x.value}`, enabled: x.enabled, bound: 'min', num: x.min === null ? x.value : x.min, step: stepFor(x.value) });
+    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}`, enabled: x.enabled, bound: 'min', num: x.min === null ? x.value : x.min, step: stepFor(x.value) });
     for (const x of f.stats) {
       // The number shown is the one the search asks for: a lowest value for most stats, a
       // highest where less is better. A "reduced" stat is kept below zero by the trade site;
       // it is shown the way the item words it.
       const bound = x.value === null ? null : (x.min === null && x.max !== null ? 'max' : 'min');
-      out.push({ tc: 'stat', key: x.key, label: x.text, kind: KIND_WORDS[x.kind] || '', enabled: x.enabled, bound, num: bound ? x[bound] : null, step: stepFor(x.value), flip: !!x.negated });
+      out.push({ tc: 'stat', pk: `stat:${x.key}`, key: x.key, label: x.text, kind: KIND_WORDS[x.kind] || '', tiers: x.tiers || [], enabled: x.enabled, bound, num: bound ? x[bound] : null, step: stepFor(x.value), flip: !!x.negated });
     }
     return out;
   }
@@ -61,7 +64,7 @@
       num = `<div class="pc-num"><i>${word}</i><button type="button" data-step="-1" aria-label="Lower">−</button><b>${esc(r.flip ? -r.num : r.num)}</b><button type="button" data-step="1" aria-label="Higher">+</button></div>`;
     }
     return `<li class="${r.enabled ? 'on' : 'off'}" data-row="${i}">
-      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span title="${esc(r.label)}">${esc(r.label)}</span>${r.kind ? `<small class="k-${r.kind}">${r.kind}</small>` : ''}</label>${num}</li>`;
+      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span title="${esc(r.label)}">${esc(r.label)}</span>${(r.tiers || []).map((t) => `<small class="pc-tier${t === 1 ? ' best' : ''}" title="Tier ${t}: tier 1 is the best this modifier can be">T${t}</small>`).join('')}${r.kind ? `<small class="k-${r.kind}">${r.kind}</small>` : ''}</label>${num}</li>`;
   }
 
   // The answer in one line, right under the item's name.
@@ -95,12 +98,17 @@
     if (!d || !d.filters || !d.filters.ok) { panel.innerHTML = ''; api.checkSize(0); return; }
     const key = `${d.at}:${d.filtersRev}`;
     if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
+    if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; }
     const f = d.filters;
+    const tabs = f.presets ? `<div class="pc-tabs" role="tablist">
+        <button type="button" role="tab" class="pc-tab${mode === 'stats' ? ' on' : ''}" aria-selected="${mode === 'stats'}" data-mode="stats" title="Items with stats like this one">Stats</button>
+        <button type="button" role="tab" class="pc-tab${mode === 'base' ? ' on' : ''}" aria-selected="${mode === 'base'}" data-mode="base" title="This base type at this item level, whatever is rolled on it">Base item</button></div>` : '';
     const scroll = panel.querySelector('.pc-body') ? panel.querySelector('.pc-body').scrollTop : 0;
     const chips = rows.map((r, i) => (r.chip ? chipHtml(r, i) : '')).join('');
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
     panel.innerHTML = `<div class="pc-head"><h1>${esc(f.title)}</h1><button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
       <div class="pc-headline">${headlineHtml(d)}</div>
+      ${tabs}
       <div class="pc-body"><div class="pc-chips">${chips}</div>
         ${stats ? `<ul class="pc-rows">${stats}</ul>` : ''}
         ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}</div>
@@ -144,6 +152,15 @@
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
+    const tab = e.target.closest('[data-mode]');
+    if (tab && data.filters.presets) {
+      // A ready-made search: its ticks replace the ones on screen. Numbers stay as set.
+      mode = tab.dataset.mode;
+      const set = data.filters.presets[mode] || {};
+      for (const r of rows) if (r.pk in set) r.enabled = !!set[r.pk];
+      draw();
+      return;
+    }
     const chip = e.target.closest('.pc-chip');
     if (chip) { const r = rows[Number(chip.dataset.row)]; r.enabled = !r.enabled; draw(); return; }
     const li = e.target.closest('[data-row]');

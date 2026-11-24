@@ -354,7 +354,12 @@ tr.detail .snap figcaption { margin-top: 2px; }
 .tc-tick { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
 .tc-tick input { flex: 0 0 auto; accent-color: var(--gold); }
 .tc-tick small { margin-left: 6px; padding: 1px 6px; border: 1px solid var(--seam); border-radius: 3px; font-size: 11px; color: var(--ash); white-space: nowrap; }
+.tc-tick small.tier { color: var(--gold); border-color: rgba(209, 173, 98, 0.6); font-weight: 600; }
+.tc-tick small.tier.best { background: var(--gold); border-color: var(--gold); color: #1b1f24; }
 .tc-tick:has(input:not(:checked)) span { color: var(--ash); }
+.tc-modes { display: flex; gap: 6px; margin-bottom: 8px; }
+.tc-modes button { padding: 4px 14px; font-size: 13px; }
+.tc-modes button[aria-pressed=true] { border-color: var(--gold); background: rgba(209, 173, 98, 0.16); }
 .tc-rows input[type=number] { width: 74px; padding: 4px 6px; text-align: right; font-variant-numeric: tabular-nums; }
 .tc-go { position: sticky; bottom: 0; display: flex; align-items: center; gap: 16px; padding: 12px 0 2px; margin-top: auto; background: var(--stone); }
 .tc-go .primary { padding: 8px 26px; font-size: 16px; }

@@ -420,14 +420,18 @@
         <input type="number" step="any" data-tc-min="${esc(x.key)}" value="${numAttr(x.min)}" placeholder="min" aria-label="Lowest ${esc(x.label)}"></li>`);
     }
     for (const x of f.stats) {
-      const kind = KIND_WORDS[x.kind] ? `<small>${KIND_WORDS[x.kind]}</small>` : '';
+      const kind = (x.tiers || []).map((t) => `<small class="tier${t === 1 ? ' best' : ''}" title="Tier 1 is the best this modifier can be">Tier ${t}</small>`).join('')
+        + (KIND_WORDS[x.kind] ? `<small>${KIND_WORDS[x.kind]}</small>` : '');
       const range = x.value === null ? '' : `<input type="number" step="any" data-tc-min="${esc(x.key)}" value="${numAttr(x.min)}" placeholder="min" aria-label="Lowest value for ${esc(x.text)}">
         <input type="number" step="any" data-tc-max="${esc(x.key)}" value="${numAttr(x.max)}" placeholder="max" aria-label="Highest value for ${esc(x.text)}">`;
       rows.push(`<li>${tick(`data-tc="stat" data-key="${esc(x.key)}"`, `${esc(x.text)} ${kind}`, x.enabled)}${range}</li>`);
     }
     rows.push(`<li>${tick('data-tc="offline"', 'Also sellers who are offline', f.offline)}</li>`);
     const unknown = f.unknown.length ? `<p class="hint small">Not searchable on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : '';
-    return `<ul class="tc-rows">${rows.join('')}</ul>${unknown}`;
+    // Two ready-made searches: by the item's stats, or for its base to craft on.
+    const modes = f.presets ? `<div class="tc-modes" role="group" aria-label="Ready-made searches"><button type="button" data-tc-mode="stats" aria-pressed="true">Stats</button>
+      <button type="button" data-tc-mode="base" aria-pressed="false" title="This base type at this item level, whatever is rolled on it">Base item</button></div>` : '';
+    return `${modes}<ul class="tc-rows">${rows.join('')}</ul>${unknown}`;
   }
 
   function tradeResultHtml(tc) {
@@ -499,6 +503,17 @@
   $('trade-check').addEventListener('submit', (e) => {
     e.preventDefault();
     act({ type: 'tradeSearch', edits: tradeEdits(e.target) });
+  });
+  $('trade-check').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tc-mode]');
+    const tc = state.tradeCheck;
+    if (!b || !tc || !tc.filters.presets) return;
+    const set = tc.filters.presets[b.dataset.tcMode] || {};
+    for (const c of $('tc-form').querySelectorAll('[data-tc]')) {
+      const name = c.dataset.tc === 'flag' || c.dataset.tc === 'prop' || c.dataset.tc === 'stat' ? `${c.dataset.tc}:${c.dataset.key}` : c.dataset.tc;
+      if (name in set) c.checked = !!set[name];
+    }
+    for (const x of $('tc-form').querySelectorAll('[data-tc-mode]')) x.setAttribute('aria-pressed', String(x === b));
   });
   $('trade-check').addEventListener('change', (e) => {
     if (e.target.id === 'tc-auto') api.setConfig({ priceSearch: { auto: e.target.checked } });

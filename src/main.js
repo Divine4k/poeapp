@@ -53,7 +53,7 @@ const DEFAULT_CONFIG = {
   priceSearch: { auto: true, overlay: true },
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
-  // autoCopy: the check hotkey presses Ctrl+C in the game for you (one copy per key press).
+  // autoCopy: the check hotkey presses Ctrl+Alt+C in the game for you (one copy per key press).
   inventory: { displayId: null, key: 'Tab', onKey: true, timed: false, intervalMs: 1000, autoCopy: true },
   mapRules: DEFAULT_RULES,
   loadout: [],
@@ -771,7 +771,7 @@ function showCheckPanel() {
   checkPanel.show(checkPanelData(), { bounds: overlay.display().bounds, cursor: screen.getCursorScreenPoint(), custom: checkPlacement() });
 }
 
-// One press of the check hotkey: copy the hovered item (a single Ctrl+C sent to the game, the
+// One press of the check hotkey: copy the hovered item (a single Ctrl+Alt+C sent to the game, the
 // same thing price-check tools do), then read the clipboard once.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function checkHovered({ count = true } = {}) {
@@ -781,7 +781,8 @@ async function checkHovered({ count = true } = {}) {
     const before = clipboard.readText();
     try {
       clipboard.writeText('');
-      hook.uIOhook.keyTap(hook.UiohookKey.C, [hook.UiohookKey.Ctrl]);
+      // With Alt the game copies its fuller text, which also names each modifier's tier.
+      hook.uIOhook.keyTap(hook.UiohookKey.C, [hook.UiohookKey.Ctrl, hook.UiohookKey.Alt]);
       let text = '';
       for (let i = 0; i < 16 && !text; i++) { await sleep(25); text = clipboard.readText(); }
       if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }

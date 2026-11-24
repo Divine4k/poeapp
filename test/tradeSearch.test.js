@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseItemText } = require('../src/core/itemText');
 const { StatIndex, wordings } = require('../src/core/tradeStats');
-const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor } = require('../src/core/tradeQuery');
+const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks } = require('../src/core/tradeQuery');
 const { TradeClient, parseLimits, readListing, searchUrl, currencyName } = require('../src/core/tradeApi');
 const { checkMessage, tradeMessage } = require('../src/core/checkMessage');
 const { checkPanelBounds, inside, shouldClose, PANEL_WIDTH, IDLE_MS, LEFT_MS } = require('../src/core/checkPanel');
@@ -522,4 +522,65 @@ test('item text: the game\'s fuller text, with a line above each modifier and ro
   // A map's mods are read without the extra lines too.
   const map = parseItemText('Item Class: Maps\nRarity: Rare\nX\nStrand Map\n--------\nMap Tier: 16\n--------\nItem Level: 83\n--------\n{ Prefix Modifier "Mirrored" (Tier: 1) }\nMonsters reflect 18(13-18)% of Physical Damage\n');
   assert.deepEqual(map.mods, ['Monsters reflect 18% of Physical Damage']);
+});
+
+const FLASK_FULL = `Item Class: Utility Flasks
+Rarity: Magic
+Chemist's Quicksilver Flask of the Cheetah
+--------
+Item Level: 84
+--------
+{ Prefix Modifier "Chemist's" (Tier: 2) \u2014 Charges }
+25(23-25)% reduced Charges per use
+{ Suffix Modifier "of the Cheetah" (Tier: 1) \u2014 Speed }
+14(12-14)% increased Movement Speed during Effect
+`;
+
+test('tiers of modifiers, and the search for the base item', () => {
+  // The fuller text names each modifier's tier; a total shows the tiers of what went into it.
+  const ring = parseItemText(RING_FULL);
+  assert.deepEqual(ring.modLines.map((l) => l.tier || 0), [0, 3, 6, 2, 0, 0, 0]);
+  const f = buildFilters(ring, index);
+  assert.deepEqual(stat(f, 'total maximum Life').tiers, [3]);
+  assert.deepEqual(stat(f, 'total Elemental Resistance').tiers, [2]); // the implicit has no tier
+  assert.deepEqual(stat(f, 'Physical Damage to Attacks').tiers, [6]);
+  assert.deepEqual(stat(f, 'Chaos Resistance').tiers, []);
+  assert.deepEqual(stat(buildFilters(parseItemText(RING), index), 'total maximum Life').tiers, []); // the short text has none
+
+  // Two ready-made searches. "Stats" is what is ticked from the start.
+  assert.deepEqual(f.presets.stats, ticks(f));
+  // "Base item": this base type at this item level, with what cannot be changed on it.
+  const base = f.presets.base;
+  assert.deepEqual([base.category, base.type, base['flag:ilvl'], base['flag:corrupted']], [false, true, true, true]);
+  const life = stat(f, 'total maximum Life'), fractured = f.stats.find((x) => x.kind === 'fractured');
+  // The fractured life counts in the total and is also listed by itself; only it stays in the base search.
+  assert.deepEqual([fractured.text, fractured.enabled, fractured.tiers], ['+72 to maximum Life', true, [3]]);
+  assert.equal(base[`stat:${life.key}`], false);
+  assert.deepEqual(Object.keys(base).filter((k) => k.startsWith('stat:') && base[k]), [`stat:${fractured.key}`]);
+  // As the windows send it: every tick by its name.
+  const edits = { category: base.category, type: base.type, flags: { ilvl: true, corrupted: true }, stats: Object.fromEntries(f.stats.map((x) => [x.key, { enabled: base[`stat:${x.key}`] }])) };
+  const q = buildQuery(applyEdits(f, edits));
+  assert.equal(q.query.type, 'Two-Stone Ring');
+  assert.deepEqual(q.query.filters.type_filters, { filters: { rarity: { option: 'nonunique' } } });
+  assert.deepEqual(q.query.filters.misc_filters, { filters: { corrupted: { option: 'false' }, ilvl: { min: 84 } } });
+  assert.deepEqual(q.query.stats[0].filters, [{ id: 'fractured.stat_3299347043', value: { min: 65 } }]);
+  assert.equal(isNarrow(applyEdits(f, edits)), true);
+
+  // An influenced, fractured base keeps both in its base search.
+  const bow = buildFilters(parseItemText(BOW.replace('Fractured Item', 'Fractured Item\nShaper Item').replace('Item Level: 83', 'Item Level: 100')), index);
+  const kept = Object.keys(bow.presets.base).filter((k) => k.startsWith('stat:') && bow.presets.base[k]);
+  assert.deepEqual(kept.map((k) => bow.stats.find((x) => `stat:${x.key}` === k).text), ['Shaper influence', '+28% to Global Critical Strike Multiplier']);
+  assert.equal(bow.presets.base['prop:pdps'], false);
+  // Nothing rolls better above item level 86.
+  assert.deepEqual(bow.flags.find((x) => x.key === 'ilvl'), { key: 'ilvl', label: 'Item level 86 or higher', value: 86, enabled: false });
+
+  // A magic item's base type is its name without its affixes' names, once those are known.
+  const flask = parseItemText(FLASK_FULL);
+  assert.equal(flask.magicBase, 'Quicksilver Flask');
+  const ff = buildFilters(flask, index);
+  assert.deepEqual([ff.type, !!ff.presets, ff.presets.base.type], [{ value: 'Quicksilver Flask', enabled: false }, true, true]);
+  assert.deepEqual(stat(ff, 'Movement Speed during Effect').tiers, [1]);
+  assert.equal(buildFilters(parseItemText(FLASK), index).presets, undefined); // short text: base unknown
+  // A unique has one search only.
+  assert.equal(buildFilters(parseItemText(HEADHUNTER), index).presets, undefined);
 });

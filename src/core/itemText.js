@@ -33,7 +33,7 @@ function parseItemText(text) {
       const s = sections[i];
       if (s.some((l) => /^Travel to this Map/i.test(l))) break;
       for (const l of s) {
-        if (/^(Corrupted|Unidentified|Mirrored|Split|Note: )/.test(l) || MOD_HEADER.test(l)) continue;
+        if (/^(Corrupted|Unidentified|Mirrored|Split|Note: )/.test(l) || MOD_HEADER.test(l) || /^\(.*\)$/.test(l)) continue;
         item.mods.push(plainStat(l).replace(/ \((implicit|enchant|fractured|crafted)\)$/, ''));
       }
     }
@@ -58,12 +58,17 @@ const MOD_HEADER = /^\{.*\}$/;
 const ROLL_RANGE = /((?<![\d)])[+-]?\d+(?:\.\d+)?)\([^()]*\)/g;
 // A modifier line as the short text would have it: without ranges and remarks.
 const plainStat = (line) => line.replace(/ — Unscalable Value$/, '').replace(ROLL_RANGE, '$1');
-// What a line in curly brackets says about the modifiers under it.
+// What a line in curly brackets says about the modifiers under it:
+// { Prefix Modifier "Rotund" (Tier: 3) — Life }
 function headerKind(line) {
-  if (/Implicit Modifier/.test(line)) return { type: 'implicit', corruption: /Corruption/.test(line) };
-  if (/Fractured/.test(line)) return { type: 'fractured' };
-  if (/Crafted/.test(line)) return { type: 'crafted' };
-  return { type: 'explicit' };
+  const tier = /\(Tier: (\d+)\)/.exec(line);
+  const name = /^\{ ([^"(—]*?)\s*(?:"([^"]*)")?\s*(?:\(|—|\})/.exec(line);
+  const what = name ? name[1] : '';
+  const h = { type: 'explicit', tier: tier ? Number(tier[1]) : null, name: name && name[2] ? name[2] : '', affix: /Prefix/.test(what) ? 'prefix' : (/Suffix/.test(what) ? 'suffix' : '') };
+  if (/Implicit Modifier/.test(what)) { h.type = 'implicit'; h.corruption = /Corruption/.test(what); }
+  else if (/Fractured/.test(what)) h.type = 'fractured';
+  else if (/Crafted/.test(what)) h.type = 'crafted';
+  return h;
 }
 
 // Everything a trade search needs from an item that is not a map: its level, sockets,
@@ -94,6 +99,7 @@ function readGear(item, text, sections) {
     ward: num(/^Ward: (\d+)/m) || 0,
   };
   item.modLines = [];
+  item.affixes = []; // the names of its prefixes and suffixes, when the fuller text gives them
   const start = sections.findIndex((s) => s.some((l) => /^Item Level: /.test(l)));
   for (let i = start + 1; i < sections.length && start >= 0; i++) {
     let explaining = false;
@@ -101,7 +107,11 @@ function readGear(item, text, sections) {
     for (const raw of sections[i]) {
       if (!explaining && raw.startsWith('(')) explaining = true;
       if (explaining) { if (raw.endsWith(')')) explaining = false; continue; }
-      if (MOD_HEADER.test(raw)) { header = headerKind(raw); group += 1; continue; }
+      if (MOD_HEADER.test(raw)) {
+        header = headerKind(raw); group += 1;
+        if (header.affix && header.name) item.affixes.push({ affix: header.affix, name: header.name });
+        continue;
+      }
       const inf = INFLUENCE.exec(raw);
       if (inf) { item.influences.push(inf[1]); continue; }
       if (NOT_A_MOD.test(raw) || HINT.test(raw)) continue;
@@ -109,9 +119,19 @@ function readGear(item, text, sections) {
       const kind = MOD_KIND.exec(l);
       const line = { text: l.replace(MOD_KIND, ''), type: kind ? kind[1] : (header ? header.type : 'explicit'), section: i };
       // Lines under one header belong to one modifier and are never joined with the next one's.
-      if (header) { line.group = group; if (header.corruption) line.corruption = true; }
+      if (header) { line.group = group; if (header.corruption) line.corruption = true; if (header.tier) line.tier = header.tier; }
       item.modLines.push(line);
     }
+  }
+  // A magic item's name is its base type between its affixes' names ("Chemist's Quicksilver
+  // Flask of the Cheetah"). With those names known, the base type is what is left.
+  if (item.rarity === 'Magic' && item.modLines.some((l) => l.group)) {
+    let base = item.name;
+    for (const a of item.affixes) {
+      if (a.affix === 'prefix' && base.startsWith(`${a.name} `)) base = base.slice(a.name.length + 1);
+      if (a.affix === 'suffix' && base.endsWith(` ${a.name}`)) base = base.slice(0, -a.name.length - 1);
+    }
+    item.magicBase = base;
   }
 }
 

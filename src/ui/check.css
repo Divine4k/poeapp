@@ -10,8 +10,15 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-x { flex: 0 0 auto; border: 0; background: none; color: var(--ash); padding: 0 6px; font-size: 20px; line-height: 1; }
 .pc-x:hover { color: var(--blood); }
 
+/* the two ready-made searches */
+.pc-tabs { display: flex; gap: 2px; padding: 8px 14px 0; border-bottom: 1px solid var(--seam); }
+.pc-tab { border: 1px solid transparent; border-bottom: 0; border-radius: 5px 5px 0 0; background: transparent; color: var(--ash); padding: 4px 14px; font-size: 13px; margin-bottom: -1px; }
+.pc-tab:hover { color: var(--bone); }
+.pc-tab.on { background: rgba(233, 226, 211, 0.07); border-color: var(--seam); color: var(--bone); font-weight: 600; box-shadow: inset 0 2px 0 var(--gold); }
+
 /* the answer: a few large figures, each with a word under it */
-.pc-headline { padding: 8px 14px 11px; border-bottom: 1px solid var(--seam); }
+.pc-headline { padding: 8px 14px 11px; }
+.pc-headline:has(+ .pc-body) { border-bottom: 1px solid var(--seam); }
 .pc-headline p { margin: 0; }
 .pc-wait { color: var(--ash); }
 .pc-bad { color: var(--blood); }
@@ -35,6 +42,8 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-tick input { flex: 0 0 auto; accent-color: var(--gold); margin: 0; }
 .pc-tick span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-tick small { flex: 0 0 auto; font-size: 10px; color: var(--ash); border: 1px solid var(--seam); border-radius: 3px; padding: 0 4px; }
+.pc-tick small.pc-tier { color: var(--gold); border-color: rgba(209, 173, 98, 0.6); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pc-tick small.pc-tier.best { background: var(--gold); border-color: var(--gold); color: #1b1f24; }
 .pc-tick small.k-corruption { color: var(--blood); border-color: var(--blood); }
 .pc-tick small.k-fractured { color: var(--gold); border-color: var(--gold); }
 .pc-tick small.k-crafted { color: var(--portal); border-color: var(--portal); }

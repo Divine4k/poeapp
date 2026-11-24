@@ -79,8 +79,9 @@ function keyStat(category, m) {
   return false;
 }
 
-function statFilter(key, text, kind, found, enabled) {
-  const f = { key, text, kind, ids: found.ids, value: found.value, min: null, max: null, enabled, inverted: !!found.inverted, negated: !!found.negated };
+// tiers: the tier of each modifier the stat comes from, best first (1 is the best there is).
+function statFilter(key, text, kind, found, enabled, tiers = []) {
+  const f = { key, text, kind, ids: found.ids, value: found.value, min: null, max: null, enabled, inverted: !!found.inverted, negated: !!found.negated, tiers: [...new Set(tiers.filter(Boolean))].sort((a, b) => a - b) };
   if (found.value !== null) {
     // "4% reduced Fire Damage taken" is searched as written: at least about that much reduced,
     // which on the trade site is "at most -4% increased".
@@ -99,14 +100,15 @@ function buildFilters(item, index) {
   if (!kind || !searchable(item)) return { ok: false, why: 'The trade search covers magic, rare and unique gear, jewels and flasks.' };
   const unique = item.rarity === 'Unique';
   if (item.unidentified) return { ok: false, why: unique ? 'Identify the item first: the trade site needs its name.' : 'Identify the item first: an unidentified item has no stats to search for.' };
-  // "Synthesised Two-Stone Ring" is listed under "Two-Stone Ring".
-  const base = String(item.baseType || '').replace(/^Synthesised /, '');
+  // "Synthesised Two-Stone Ring" is listed under "Two-Stone Ring". A magic item's base type is
+  // only known when the fuller item text named its affixes.
+  const magic = item.rarity === 'Magic';
+  const base = String((magic ? item.magicBase : item.baseType) || '').replace(/^Synthesised /, '');
 
   const out = {
     ok: true, rarity: item.rarity, title: unique ? item.name : `${item.rarity} ${kind.category}`,
     name: unique ? item.name : '',
-    // A magic item's name holds its affixes, so its base cannot be told from the text.
-    type: item.rarity === 'Magic' ? null : { value: base, enabled: unique },
+    type: base ? { value: base, enabled: unique } : null,
     category: unique ? null : { id: kind.tradeId, label: kind.category, enabled: true },
     flags: [], props: unique ? [] : propFilters(item), stats: [], unknown: [], offline: false,
   };
@@ -115,10 +117,12 @@ function buildFilters(item, index) {
 
   out.flags.push({ key: 'corrupted', label: item.corrupted ? 'Corrupted' : 'Not corrupted', value: !!item.corrupted, enabled: true });
   if (item.links >= 5) out.flags.push({ key: 'links', label: `${item.links} linked sockets`, value: item.links, enabled: item.links === 6 });
-  if (item.itemLevel) out.flags.push({ key: 'ilvl', label: `Item level ${item.itemLevel} or higher`, value: item.itemLevel, enabled: false });
+  // Nothing rolls better above item level 86, so a higher one is searched as 86.
+  const ilvl = Math.min(item.itemLevel || 0, 86);
+  if (ilvl) out.flags.push({ key: 'ilvl', label: `Item level ${ilvl} or higher`, value: ilvl, enabled: false });
   for (const name of item.influences || []) {
     const ids = index.pseudo(`Has ${name} Influence`);
-    if (ids) out.stats.push({ key: `influence:${name}`, text: `${name} influence`, kind: 'pseudo', ids, value: null, min: null, max: null, enabled: true, inverted: false });
+    if (ids) out.stats.push({ key: `influence:${name}`, text: `${name} influence`, kind: 'pseudo', ids, value: null, min: null, max: null, enabled: true, inverted: false, tiers: [] });
   }
 
   // A modifier can run over several lines; try the longest run first.
@@ -130,7 +134,7 @@ function buildFilters(item, index) {
       const run = lines.slice(i, i + n);
       if (run.some((l) => l.section !== run[0].section || l.type !== run[0].type || l.group !== run[0].group)) continue;
       const found = index.match(run.map((l) => l.text).join('\n'), run[0].type, kind.category);
-      if (found) hit = { found, n, text: run.map((l) => l.text).join(' '), type: found.pseudo ? 'pseudo' : run[0].type, corruption: !!run[0].corruption };
+      if (found) hit = { found, n, text: run.map((l) => l.text).join(' '), type: found.pseudo ? 'pseudo' : run[0].type, corruption: !!run[0].corruption, tier: run[0].tier || null };
     }
     if (hit) { matched.push(hit); i += hit.n - 1; } else if (!unique) out.unknown.push(lines[i].text);
   }
@@ -139,17 +143,21 @@ function buildFilters(item, index) {
   const dropped = new Set();
   if (!unique) {
     let res = 0, life = 0, hasLife = false;
+    const resTiers = [], lifeTiers = [];
     for (const m of matched) {
       if (m.type === 'enchant' || m.type === 'pseudo' || m.found.value === null) continue;
       const times = ELEMENTAL[m.found.ref];
-      if (times) { res += m.found.value * times; if (!/Chaos|All Resistances/.test(m.found.ref)) dropped.add(m); }
-      if (m.found.ref === LIFE) { life += m.found.value; hasLife = true; dropped.add(m); }
+      // A fractured modifier counts towards its total and is also kept by itself: it is what
+      // the item is bought for, and part of its base.
+      const keep = m.type === 'fractured';
+      if (times) { res += m.found.value * times; resTiers.push(m.tier); if (!keep && !/Chaos|All Resistances/.test(m.found.ref)) dropped.add(m); }
+      if (m.found.ref === LIFE) { life += m.found.value; hasLife = true; lifeTiers.push(m.tier); if (!keep) dropped.add(m); }
       if (STRENGTH.includes(m.found.ref)) life += m.found.value / 2;
     }
     const resIds = index.pseudo('+#% total Elemental Resistance');
     const lifeIds = index.pseudo('+# total maximum Life');
-    if (hasLife && lifeIds) out.stats.push(statFilter('pseudo:life', `+${Math.floor(life)} total maximum Life`, 'pseudo', { ids: lifeIds, value: Math.floor(life), better: 1 }, true));
-    if (res > 0 && resIds) out.stats.push(statFilter('pseudo:res', `+${res}% total Elemental Resistance`, 'pseudo', { ids: resIds, value: res, better: 1 }, true));
+    if (hasLife && lifeIds) out.stats.push(statFilter('pseudo:life', `+${Math.floor(life)} total maximum Life`, 'pseudo', { ids: lifeIds, value: Math.floor(life), better: 1 }, true, lifeTiers));
+    if (res > 0 && resIds) out.stats.push(statFilter('pseudo:res', `+${res}% total Elemental Resistance`, 'pseudo', { ids: resIds, value: res, better: 1 }, true, resTiers));
     if (!hasLife || !lifeIds) for (const m of matched) if (m.found.ref === LIFE) dropped.delete(m);
     if (!(res > 0 && resIds)) for (const m of matched) if (ELEMENTAL[m.found.ref]) dropped.delete(m);
   }
@@ -158,9 +166,33 @@ function buildFilters(item, index) {
     if (dropped.has(m)) continue;
     // A fractured modifier can never be changed, so it is what the item is bought for.
     // kind is what the window shows beside the stat; a corruption's implicit is named as such.
-    out.stats.push(statFilter(`stat:${n++}`, m.text, m.corruption ? 'corruption' : m.type, m.found, m.type === 'fractured' || keyStat(kind.category, m)));
+    out.stats.push(statFilter(`stat:${n++}`, m.text, m.corruption ? 'corruption' : m.type, m.found, m.type === 'fractured' || keyStat(kind.category, m), [m.tier]));
   }
+  if (!unique && out.type) out.presets = { stats: ticks(out), base: baseTicks(out) };
   return out;
+}
+
+// Every tick box of a search by its name -> whether it is ticked.
+function ticks(f) {
+  const t = {};
+  if (f.category) t.category = f.category.enabled;
+  if (f.type) t.type = f.type.enabled;
+  for (const x of f.flags) t[`flag:${x.key}`] = x.enabled;
+  for (const x of f.props || []) t[`prop:${x.key}`] = x.enabled;
+  for (const x of f.stats) t[`stat:${x.key}`] = x.enabled;
+  return t;
+}
+
+// The "Base item" search: this base type at this item level, whatever is rolled on it. For
+// someone who wants the item to craft on. Influences and a fractured modifier are part of a
+// base, so they stay in.
+function baseTicks(f) {
+  const t = ticks(f);
+  for (const k of Object.keys(t)) if (k.startsWith('stat:') || k.startsWith('prop:')) t[k] = false;
+  for (const x of f.stats) if (x.kind === 'fractured' || x.key.startsWith('influence:')) t[`stat:${x.key}`] = true;
+  t.category = false; t.type = true;
+  if ('flag:ilvl' in t) t['flag:ilvl'] = true;
+  return t;
 }
 
 // What was ticked and typed in the window, laid over the choices it was built from.
@@ -200,7 +232,7 @@ function range(stat) {
 function isNarrow(filters) {
   if (!filters || !filters.ok) return false;
   return filters.rarity === 'Unique' || filters.stats.some((s) => s.enabled) || (filters.props || []).some((p) => p.enabled && p.min !== null)
-    || filters.flags.some((f) => f.enabled && f.key === 'links');
+    || filters.flags.some((f) => f.enabled && f.key === 'links') || !!(filters.type && filters.type.enabled);
 }
 
 // The body of POST /api/trade/search/<league>, cheapest first. "available" is what the trade
@@ -246,4 +278,4 @@ function summarize(total, listings) {
   return { total, low: known.length ? known[0] : null, median: known.length ? known[Math.floor((known.length - 1) / 2)] : null };
 }
 
-module.exports = { gearKind, searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor };
+module.exports = { gearKind, searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks };

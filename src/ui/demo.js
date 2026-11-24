@@ -50,13 +50,17 @@
         flags: [{ key: 'corrupted', label: 'Not corrupted', value: false, enabled: true }, { key: 'ilvl', label: 'Item level 86 or higher', value: 86, enabled: false }],
         props: [{ key: 'ar', label: 'Armour', group: 'armour_filters', value: 251, min: 226, enabled: false }, { key: 'ev', label: 'Evasion Rating', group: 'armour_filters', value: 251, min: 226, enabled: false }],
         stats: [
-          { key: 'pseudo:life', text: '+88 total maximum Life', kind: 'pseudo', ids: ['x'], value: 88, min: 79, max: null, enabled: true },
-          { key: 'pseudo:res', text: '+70% total Elemental Resistance', kind: 'pseudo', ids: ['x'], value: 70, min: 63, max: null, enabled: true },
-          { key: 'stat:0', text: '30% increased Movement Speed', kind: 'explicit', ids: ['x'], value: 30, min: 27, max: null, enabled: true },
+          { key: 'pseudo:life', text: '+88 total maximum Life', kind: 'pseudo', ids: ['x'], value: 88, min: 79, max: null, enabled: true, tiers: [2] },
+          { key: 'pseudo:res', text: '+70% total Elemental Resistance', kind: 'pseudo', ids: ['x'], value: 70, min: 63, max: null, enabled: true, tiers: [1, 4] },
+          { key: 'stat:0', text: '30% increased Movement Speed', kind: 'explicit', ids: ['x'], value: 30, min: 27, max: null, enabled: true, tiers: [2] },
           { key: 'stat:1', text: '35% increased Armour and Evasion', kind: 'explicit', ids: ['x'], value: 35, min: 32, max: null, enabled: false },
           { key: 'stat:2', text: '8% reduced Mana Cost of Skills', kind: 'crafted', ids: ['x'], value: -8, min: null, max: -7, negated: true, enabled: false },
         ],
         unknown: [],
+        presets: {
+          stats: { category: true, type: false, 'flag:corrupted': true, 'flag:ilvl': false, 'prop:ar': false, 'prop:ev': false, 'stat:pseudo:life': true, 'stat:pseudo:res': true, 'stat:stat:0': true, 'stat:stat:1': false, 'stat:stat:2': false },
+          base: { category: false, type: true, 'flag:corrupted': true, 'flag:ilvl': true, 'prop:ar': false, 'prop:ev': false, 'stat:pseudo:life': false, 'stat:pseudo:res': false, 'stat:stat:0': false, 'stat:stat:1': false, 'stat:stat:2': false },
+        },
       },
       listings: [
         { id: 'a', price: { amount: 45, currency: 'chaos' }, chaos: 45, seller: 'Zana_Mapper', status: 'instant', listedAt: now - 40 * 60000, itemLevel: 85, corrupted: false, name: 'Dusk Trail, Two-Toned Boots' },
