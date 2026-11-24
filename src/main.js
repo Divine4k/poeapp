@@ -48,7 +48,7 @@ const DEFAULT_CONFIG = {
   // priceCheck: only check its price; nothing is named or counted. Held only while the game is in front.
   hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+F' },
   checkToast: true, // after the check key, say in game for a moment what was read
-  // auto: checking a magic or rare item searches the trade site straight away (two web requests).
+  // auto: checking an item searches the trade site straight away (two web requests).
   // overlay: show the search on top of the game, beside the inventory or stash.
   priceSearch: { auto: true, overlay: true },
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
@@ -707,7 +707,7 @@ function checkText(text, { count = true } = {}) {
   }
   const name = priceName(item);
   const entry = prices.get(name);
-  startTradeCheck(item);
+  startTradeCheck(item, { always: !count });
   priceCheck = {
     at: Date.now(), name, qty: item.stackSize, found: !!entry,
     each: entry ? entry.chaos : 0, total: entry ? entry.chaos * item.stackSize : 0,
@@ -722,7 +722,9 @@ function chaosOfPrice(amount, currency) {
   const each = prices.chaosOf(currencyName(currency));
   return each > 0 ? amount * each : null;
 }
-function startTradeCheck(item) {
+// always: search whatever the item is (the price check key). Otherwise, with the key that
+// also counts loot, a search is only sent where it says something without any ticking.
+function startTradeCheck(item, { always = false } = {}) {
   tradeCheck = null;
   if (!searchable(item)) return;
   let filters;
@@ -736,9 +738,11 @@ function startTradeCheck(item) {
   const entry = prices.get(priceName(item));
   tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques
   if (filters.ok) showCheckPanel();
-  // A unique has a poe.ninja price already, and an item with nothing ticked would only find the
-  // cheapest of its kind: those searches wait for the button.
-  if (filters.ok && item.rarity !== 'Unique' && isNarrow(filters) && (config.priceSearch || {}).auto !== false) runTradeSearch(true);
+  // The price check key searches at once, with what is ticked from the start. The check key is
+  // also pressed just to count loot, so there a unique (it has a poe.ninja price already) and
+  // an item with nothing ticked (it would only find the cheapest of its kind) wait for the button.
+  const worthIt = always || (item.rarity !== 'Unique' && isNarrow(filters));
+  if (filters.ok && worthIt && (config.priceSearch || {}).auto !== false) runTradeSearch(true);
 }
 // announce: say the outcome in game, as the check key's own message does.
 async function runTradeSearch(announce) {

@@ -470,7 +470,7 @@
           <button type="button" data-act="tradeClose">Back to the price lists</button></div>
         ${f.ok ? `<div class="tc-cols"><form id="tc-form" autocomplete="off"><h3>Search for</h3>${tradeFormHtml(f)}
             <div class="tc-go"><button type="submit" class="primary" id="tc-search">Search</button>
-              <label class="tc-tick"><input type="checkbox" id="tc-auto" ${(state.config.priceSearch || {}).auto !== false ? 'checked' : ''}> <span>Search by itself when I check a rare or magic item</span></label>
+              <label class="tc-tick"><input type="checkbox" id="tc-auto" ${(state.config.priceSearch || {}).auto !== false ? 'checked' : ''}> <span>Search straight away when I check an item</span></label>
               <label class="tc-tick"><input type="checkbox" id="tc-overlay" ${(state.config.priceSearch || {}).overlay !== false ? 'checked' : ''}> <span>Show the search on top of the game</span></label></div>
           </form><section id="tc-result" aria-live="polite"></section></div>`
     : `<p class="notice">${esc(f.why)}</p>`}`;
