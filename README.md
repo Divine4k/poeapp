@@ -95,6 +95,17 @@ Items the app cannot recognise are kept on the Items page with their picture, al
 
 Named items are kept on your PC. They can also be uploaded to the shared list, which lives on the `data` branch of this repository (`items.json`) and is downloaded by every copy of the app. Uploading needs a fine-grained GitHub token limited to this repository with "Contents: read and write", pasted under Settings. The shared list holds only item names and small picture fingerprints.
 
+## Accounts and uploaded sessions
+
+The app asks you to register when it starts: a name and a password. The server it talks to is described in `server/README.md`. "Not now" skips it until the next start.
+
+- **What goes up:** each finished session (when you press **Start new session**) with its maps, loot and costs, and the inventory picture kept for each map. Sessions already saved on the PC go up after you register.
+- **What stays on the PC:** settings, trades, whispers and named items.
+- **Who can see it:** anyone with an account. This is what a later version will use to show other people's map runs.
+- **Offline:** nothing is lost. What could not be sent waits and is tried again every ten minutes.
+- **Deleting:** a session deleted in the app comes off the server too. The account window (your name at the bottom of the sidebar) can log out, and delete the account with everything uploaded under it.
+- **Password:** it never leaves the PC as typed; a stretched form of it is sent instead. There is no "forgot password" yet.
+
 ## Install (Windows)
 
 1. Open the [Releases page](https://github.com/Divine4k/poeapp/releases) and download `MapCompanion-Setup.exe` from the newest release.

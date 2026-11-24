@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   onState: (cb) => ipcRenderer.on('state', (_e, state) => cb(state)),
   setConfig: (patch) => ipcRenderer.invoke('set-config', patch),
   action: (a) => ipcRenderer.invoke('action', a),
+  account: (a) => ipcRenderer.invoke('account', a),
   search: (q) => ipcRenderer.invoke('search', q),
   inventory: () => ipcRenderer.invoke('inventory'),
   logCheck: () => ipcRenderer.invoke('log-check'),

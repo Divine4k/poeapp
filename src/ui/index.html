@@ -22,6 +22,7 @@
   </nav>
   <div class="side-foot">
     <button type="button" class="navi" id="btn-side-update"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg><span class="lbl" id="side-update-label">Check for updates</span></button>
+    <button type="button" class="navi" id="btn-account" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span class="lbl" id="account-label">Log in</span><span class="navdot" id="account-dot" hidden></span></button>
     <button type="button" class="navi" id="btn-settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h2"/><path d="M10 12h10"/><circle cx="8" cy="12" r="2"/><path d="M4 18h10"/><path d="M18 18h2"/><circle cx="16" cy="18" r="2"/></svg><span class="lbl">Settings</span></button>
   </div>
 </aside>
@@ -300,6 +301,41 @@
       <button type="submit" class="primary" value="save">Save settings</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="account">
+  <form id="account-form" autocomplete="off" hidden>
+    <h2 id="account-title">Create your account</h2>
+    <p class="account-lead" id="account-lead"></p>
+    <div class="account-fields">
+      <label>Name <input name="name" maxlength="20" autocomplete="username" spellcheck="false" required></label>
+      <label>Password <input name="password" type="password" autocomplete="new-password" required></label>
+      <label id="account-again">Password again <input name="again" type="password" autocomplete="new-password"></label>
+    </div>
+    <p class="warn" id="account-error" role="alert" hidden></p>
+    <p class="fine">Your finished sessions go up under this name: the maps, the loot, the costs and the inventory picture of each map. Anyone with an account can look at them. Settings, trades and whispers stay on this PC. Your password is never sent; if you forget it, it cannot be recovered yet.</p>
+    <div class="dialog-actions">
+      <button type="button" class="link" id="account-switch">I already have an account</button>
+      <span class="row"><button type="button" id="account-later">Not now</button><button type="submit" class="primary" id="account-go">Create account</button></span>
+    </div>
+  </form>
+  <div id="account-me" hidden>
+    <h2>Your account</h2>
+    <p class="account-lead">Logged in as <b id="account-name"></b>.</p>
+    <p id="account-status"></p>
+    <details class="account-delete">
+      <summary>Delete my account</summary>
+      <form id="account-delete-form" autocomplete="off">
+        <p class="fine">This takes your account and everything uploaded under it off the server. What is saved on this PC stays. It cannot be undone.</p>
+        <span class="row"><input name="password" type="password" placeholder="Your password" autocomplete="current-password" aria-label="Your password" required><button type="submit">Delete account</button></span>
+        <p class="warn" id="account-delete-error" role="alert" hidden></p>
+      </form>
+    </details>
+    <div class="dialog-actions">
+      <span class="row"><button type="button" id="account-logout">Log out</button><button type="button" id="account-sync">Upload now</button></span>
+      <button type="button" class="primary" id="account-close">Close</button>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="logcheck">

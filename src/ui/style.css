@@ -414,6 +414,20 @@ fieldset label { margin-bottom: 8px; }
 .fine { font-size: 12px; color: var(--ash); margin: 16px 0 0; }
 .dialog-actions { display: flex; justify-content: space-between; margin-top: 16px; }
 
+/* account */
+.navi[hidden] { display: none; }
+#account { width: min(460px, 92vw); }
+.account-lead { margin: 0 0 14px; color: var(--ash); font-size: 14px; }
+.account-lead b { color: var(--bone); }
+.account-fields { display: flex; flex-direction: column; gap: 12px; }
+.account-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ash); }
+.account-fields input { width: 100%; font-size: 15px; padding: 8px 10px; }
+#account-status { margin: 0; font-size: 14px; }
+.account-delete { margin-top: 18px; font-size: 13px; color: var(--ash); }
+.account-delete summary { cursor: pointer; }
+.account-delete .fine { margin: 8px 0; }
+#account button:disabled { opacity: 0.6; cursor: default; }
+
 @media (max-width: 900px) {
   .side { flex-basis: 60px; padding: 14px 8px; }
   .side-brand, .navi .lbl { display: none; }

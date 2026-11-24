@@ -26,6 +26,7 @@ const { ArtLoader } = require('./art');
 const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
+const { Cloud } = require('./cloud');
 const { SnapshotStore, SessionArchive, markCarried, recheckCells } = require('./core/store');
 const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
@@ -42,6 +43,7 @@ const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tr
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
 const SHARED_REFRESH_MS = 10 * 60 * 1000;
+const CLOUD_RETRY_MS = 10 * 60 * 1000; // uploads that could not be sent are tried again this often
 
 const DEFAULT_CONFIG = {
   league: '',
@@ -98,6 +100,7 @@ let artLoader = null;
 let hook = null;
 let updater = null;
 let shared = null;
+let cloud = null; // the account and the uploading of sessions and pictures
 let snapshots = null; // the inventory as read for each map
 let archive = null;   // sessions closed with "Start new session"
 let flushTimer = null;
@@ -133,6 +136,7 @@ const status = {
   inventory: { keyHook: 'off', open: false, lastReadAt: 0, recognised: 0, error: null, art: { known: 0, done: 0, total: 0, failed: 0 } },
   hotkeys: { clipboard: false, snapshot: false, tradeNext: false, tradeDismiss: false, layout: false },
   shared: { count: 0, loadedAt: 0, error: null, uploaded: 0, canUpload: false },
+  cloud: { enabled: false, signedIn: false, name: '', waiting: 0, busy: false, error: null, sentAt: 0 },
   update: { current: null, latest: null, available: false, checking: false, applying: false, step: '', error: null, checkedAt: 0 },
 };
 let mapCheck = null;
@@ -195,6 +199,7 @@ function buildState() {
   status.inventory.awaitingArrival = ledger.pendingArrival && !!session.current;
   status.inventory.noBaseline = !ledger.baseline;
   if (shared) status.shared = { ...shared.status, canUpload: !!shared.token, waiting: shared.pending.length, by: shareName() };
+  if (cloud) status.cloud = cloud.status;
   return {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
     inventoryRev: lastInventory.rev,
@@ -229,6 +234,7 @@ function closeSession() {
   try {
     const saved = archive && archive.save(session.summary(prices), Date.now(), { strategyId: config.activeStrategy });
     session.reset(); syncLedger();
+    if (saved) syncCloud();
     return saved ? 'saved' : 'empty';
   } catch (e) {
     say(`The session could not be saved (${e.message || e}), so it is still open.`, true);
@@ -944,6 +950,54 @@ async function saveDiagnostic(snapshot = false) {
   }
 }
 
+// ---- account and uploads ---------------------------------------------------------
+// The login is kept encrypted, like the upload token. On a PC that cannot encrypt it is not
+// kept at all, and the app asks again at the next start.
+function loadCloud() {
+  const saved = readJson('cloud.json', null) || {};
+  let token = '';
+  try { token = saved.token ? safeStorage.decryptString(Buffer.from(saved.token, 'base64')) : ''; } catch (_) { token = ''; }
+  cloud = new Cloud({
+    fetchImpl: webFetch, saved: { ...saved, token },
+    save: (state) => writeJson('cloud.json', { ...state, token: state.token && safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(state.token).toString('base64') : '' }),
+  });
+}
+// What goes up: each saved session with the name of its strategy, and the pictures file of each of its maps.
+const cloudSource = {
+  ids: () => (archive ? archive.list().map((x) => x.id) : []),
+  session: (id) => {
+    const s = archive && archive.get(id);
+    if (!s) return null;
+    const st = config.strategies.find((x) => x.id === strategyOf(s));
+    return { ...s, strategy: { name: st ? st.name : '', atlasUrl: st ? st.atlasUrl || '' : '' } };
+  },
+  pictures: (runId) => { try { return fs.readFileSync(snapshots.file(runId), 'utf8'); } catch (_) { return null; } },
+};
+function syncCloud() {
+  if (!cloud || !cloud.signedIn || cloud.busy) return;
+  cloud.sync(cloudSource).then(push, (e) => console.error('upload failed', e.message));
+  push();
+}
+// A session deleted here comes off the server too.
+function dropSession(id) {
+  const runIds = archive.remove(id);
+  for (const runId of runIds) if (snapshots) snapshots.remove(runId);
+  if (cloud) { cloud.forget(id, runIds); syncCloud(); }
+}
+// What the account window asks for. Answers { error } with '' when it worked.
+async function accountAction(a) {
+  if (!cloud || !a) return { error: 'Accounts are not switched on in this version.' };
+  let error = '';
+  if (a.type === 'register') error = await cloud.register(a.name, a.password, a.again);
+  else if (a.type === 'login') error = await cloud.login(a.name, a.password);
+  else if (a.type === 'logout') await cloud.logout();
+  else if (a.type === 'delete') error = await cloud.deleteAccount(a.password);
+  else if (a.type === 'sync') syncCloud();
+  if (!error && (a.type === 'register' || a.type === 'login')) syncCloud();
+  push();
+  return { error };
+}
+
 function readToken() {
   if (!config.shareToken) return '';
   try { return safeStorage.decryptString(Buffer.from(config.shareToken, 'base64')); } catch (_) { return ''; }
@@ -1457,12 +1511,11 @@ const actions = {
     if (a.id === config.activeStrategy) { say('You are running this strategy. Run another one first, then delete it.', true); return; }
     if (!config.strategies.some((x) => x.id === a.id)) return;
     const gone = archive ? archive.list().filter((x) => strategyOf(x) === a.id).map((x) => x.id) : [];
-    for (const id of gone) for (const runId of archive.remove(id)) if (snapshots) snapshots.remove(runId);
+    for (const id of gone) dropSession(id);
     applyConfig({ strategies: config.strategies.filter((x) => x.id !== a.id) });
   },
   deleteSession: (a) => {
-    if (!archive) return;
-    for (const runId of archive.remove(a.id)) if (snapshots) snapshots.remove(runId);
+    if (archive) dropSession(a.id);
   },
   addLoot: (a) => {
     if (!session.current && !a.runId) { session.startRun({ name: 'Manual run', loadout: config.loadout }); syncLedger(); }
@@ -1637,6 +1690,7 @@ const actions = {
 function setupIpc() {
   ipcMain.handle('get-state', () => buildState());
   ipcMain.handle('set-config', (_e, patch) => { applyConfig(patch || {}); return true; });
+  ipcMain.handle('account', (_e, a) => accountAction(a));
   // The game log check: is the file being written to, what arrived, and what the tracker did.
   ipcMain.handle('log-check', () => ({
     path: status.log.path, ok: status.log.ok, error: status.log.error, now: Date.now(),
@@ -1755,6 +1809,10 @@ app.whenReady().then(() => {
   shared.by = shareName();
   loadShared();
   setInterval(loadShared, SHARED_REFRESH_MS);
+
+  loadCloud();
+  setTimeout(syncCloud, 5000);
+  setInterval(syncCloud, CLOUD_RETRY_MS);
 
   updater = new Updater(app.getAppPath(), webFetch);
   status.update.current = updater.current;

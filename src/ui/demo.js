@@ -34,6 +34,7 @@
       log: { ok: true, path: 'Client.txt' }, prices: { count: 5210, league: 'Demo', updatedAt: now, errors: [], loading: false },
       inventory: { keyHook: 'ok', open: true, lastReadAt: now, recognised: 23, error: null, art: { known: 1480, done: 0, total: 0, failed: 0 } }, hotkeys: { clipboard: true, snapshot: true },
       shared: { count: 212, loadedAt: now, error: null, uploaded: 0, canUpload: false, waiting: 0 },
+      cloud: (() => { const q = new URLSearchParams(location.search); return { enabled: q.has('account'), signedIn: q.get('account') === 'in', name: q.get('account') === 'in' ? 'Divine4k' : '', waiting: 0, busy: false, error: null, sentAt: now - 4 * 60000 }; })(),
       update: { current: { sha: 'abc1234def', message: 'Read loot from the inventory' }, latest: { sha: 'fff9999', message: 'Fix poe.ninja item list parsing' }, available: true, checking: false, applying: false, step: '', error: null, checkedAt: now },
     },
     leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }],
@@ -117,6 +118,14 @@
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true }), 0), checkSize: () => {},
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
+    // Open index.html?account to look at the registration window, ?account=in for a logged-in one.
+    account: async (q) => {
+      const c = state.status.cloud;
+      if (q.type === 'register' && q.name.toLowerCase() === 'taken') return { error: 'That name is taken. Pick another one.' };
+      if (q.type === 'register' || q.type === 'login') Object.assign(c, { signedIn: true, name: q.name, waiting: 0, sentAt: Date.now() });
+      if (q.type === 'logout' || q.type === 'delete') Object.assign(c, { signedIn: false, name: '' });
+      return { error: '' };
+    },
     itemsList: async () => {
       const seen = state.unknown[0].image;
       const pic = (id, extra = {}) => ({ id, seen, sharp: true, by: 'Divine', auto: false, onlyHere: false, over: null, doubt: null, ...extra });
