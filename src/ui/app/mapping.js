@@ -251,28 +251,30 @@ function snapHtml(data, compact, divine) {
 // named; uncertain ones are counted as the cheaper look-alike until confirmed.
 function renderAttention() {
   const box = $('attention');
-  const un = (state.unknown || []).filter((u) => u.here).slice(0, 4), doubts = (state.doubts || []).slice(0, 3);
+  const un = (state.unknown || []).filter((u) => u.here), doubts = state.doubts || [];
+  const all = [...un.map((u) => ({ u })), ...doubts.map((d) => ({ d }))];
   const waiting = (state.unknown || []).length - un.length;
-  const key = JSON.stringify([un.map((u) => [u.id, u.qty, u.guesses.map((g) => g.name)]), doubts.map((d) => [d.id, d.name, d.options]), waiting]);
+  const first = all[0];
+  const key = JSON.stringify([first ? (first.u ? [first.u.id, first.u.qty, first.u.guesses.map((g) => g.name)] : [first.d.id, first.d.name, first.d.options]) : null, all.length, waiting]);
   if (box.dataset.key === key) return;
   if (box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.value) return;
   box.dataset.key = key;
-  box.hidden = !un.length && !doubts.length;
-  if (box.hidden) { box.innerHTML = ''; return; }
-  const n = un.length + doubts.length;
-  const cards = un.map((u) => `<li>
-        <span class="it"><img src="${esc(u.image)}" alt=""></span>
-        <div><p><b>What is this?</b> Stack of ${u.qty}, not counted until you say.</p>
-        <div class="chips">${u.guesses.map((g) => `<button type="button" data-act="learn" data-id="${u.id}" data-name="${esc(g.name)}" title="${g.score}% alike">${esc(g.name)}</button>`).join('')}
-          <button type="button" class="other" data-fix="unknown:${u.id}">Something else…</button>
-          <button type="button" class="link" data-act="ignore" data-id="${u.id}" title="Never count or ask about this item again">Ignore</button></div></div></li>`).join('')
-    + doubts.map((d) => `<li>
-        <span class="it"><img src="${esc(d.image)}" alt=""></span>
-        <div><p><b>Is this right?</b> Counted as ${esc(d.name)}${d.qty > 1 ? ` ×${d.qty}` : ''}, but it looks much like ${esc(d.options.join(' or ') || 'another item')}.</p>
-        <div class="chips">${[d.name, ...d.options].map((name, i) => `<button type="button"${i ? '' : ' class="yes"'} data-act="fixSlot" data-id="${esc(d.id)}" data-name="${esc(name)}">${i ? '' : '✓ '}${esc(name)}</button>`).join('')}
-          <button type="button" class="other" data-fix="${esc(d.id)}">Something else…</button></div></div></li>`).join('');
-  box.innerHTML = `<div class="p-head"><h2 class="needs">${n === 1 ? 'One item needs a look' : `${n} items need a look`}</h2></div><ul>${cards}</ul>
-      ${waiting > 0 ? `<p class="more">${waiting} more from earlier ${waiting === 1 ? 'is' : 'are'} waiting on the <button type="button" class="link" data-tab="items">Items page</button>.</p>` : ''}`;
+  box.hidden = !first;
+  if (!first) { box.innerHTML = ''; return; }
+  const more = all.length - 1 + Math.max(0, waiting);
+  const moreHtml = more ? `<button type="button" class="link more" data-tab="items" title="The rest are on the Items page">+${more} more</button>` : '';
+  if (first.u) {
+    const u = first.u;
+    box.innerHTML = `<span class="it sm"><img src="${esc(u.image)}" alt=""></span><b>What is this?</b><span class="what">stack of ${u.qty}, not counted until you say</span>
+      <span class="chips">${u.guesses.slice(0, 3).map((g) => `<button type="button" data-act="learn" data-id="${u.id}" data-name="${esc(g.name)}" title="${g.score}% alike">${esc(g.name)}</button>`).join('')}
+        <button type="button" class="other" data-fix="unknown:${u.id}">Something else…</button>
+        <button type="button" class="link" data-act="ignore" data-id="${u.id}" title="Never count or ask about this item again">Ignore</button></span>${moreHtml}`;
+  } else {
+    const d = first.d;
+    box.innerHTML = `<span class="it sm"><img src="${esc(d.image)}" alt=""></span><b>Is this right?</b><span class="what">counted as ${esc(d.name)}${d.qty > 1 ? ` ×${d.qty}` : ''}</span>
+      <span class="chips">${[d.name, ...d.options].map((name, i) => `<button type="button"${i ? '' : ' class="yes"'} data-act="fixSlot" data-id="${esc(d.id)}" data-name="${esc(name)}">${i ? '' : '✓ '}${esc(name)}</button>`).join('')}
+        <button type="button" class="other" data-fix="${esc(d.id)}">Something else…</button></span>${moreHtml}`;
+  }
 }
 
 // The dialog behind every "click to correct": a slot of the inventory, of a map's picture, or
@@ -389,6 +391,28 @@ function drawClock(ms) {
   t.lastChild.textContent = frac;
 }
 
+// The sockets of one read inventory. Each filled one shows its own square of the kept picture
+// (--inv on the grid; the square is picked by its column and row classes).
+let invTrip = null; // which inventory of this map is shown; null: the latest
+function invGridHtml(data, trip, run) {
+  const cols = (data && data.cols) || 12, rows = (data && data.rows) || 5;
+  const by = new Map(trip ? trip.cells.map((c) => [c.cell, c]) : []);
+  let html = '';
+  for (let k = 0; k < cols * rows; k++) {
+    const c = by.get(k), pos = `c${k % cols} r${Math.floor(k / cols)}`;
+    if (!c) { html += '<i class="sk"></i>'; continue; }
+    const fixable = run && c.qty > 0 && ['item', 'remembered', 'unknown'].includes(c.status) && c.source !== 'pinned' && c.source !== 'map';
+    const tip = esc(snapTip(c, state.summary.divine));
+    if (c.carried && run) {
+      const what = c.name ? `${c.carriedQty > 1 ? `${c.carriedQty} ` : ''}${c.name}` : 'this item';
+      html += `<i class="sk pic ${pos} carried fixable" data-act="markLoot" data-id="snap:${trip.trip}:${c.cell}" data-run="${esc(run.id)}" data-confirm="${esc(`Count ${what} as loot from this map?`)}" title="${tip}"></i>`;
+      continue;
+    }
+    html += `<i class="sk pic ${pos} ${esc(c.status)}${fixable ? ' fixable' : ''}"${fixable ? ` data-fix="snap:${trip.trip}:${c.cell}" data-run="${esc(run.id)}"` : ''} title="${tip}${fixable ? ' Click to correct.' : ''}"></i>`;
+  }
+  return html;
+}
+
 function renderNow() {
   const run = currentRun();
   const toggle = $('btn-run-toggle');
@@ -426,50 +450,36 @@ function renderNow() {
     setHtml($('now-net'), `<small>Net this map</small><div class="money ${run.net < 0 ? 'neg' : ''}">${bigValue(run.net)}</div><div class="note" title="Loot ${esc(fmtValue(run.lootValue))}, costs ${esc(fmtValue(run.costValue))}">${pace}</div>`);
   }
 
-  // The picture is only redrawn when it changes, so it does not flicker with the timer.
-  const snapBox = $('now-snap');
+  // The inventory as last read: every slot as a socket, each item shown with its own picture
+  // from the game. Empty sockets until the inventory has been read in this map.
   const snap = snapData(run, renderNow);
-  // Every inventory this map has filled so far is shown, not only the one being filled now.
-  const snapKey = snap && snap.trips.length ? `${run.id}:${snap.trips.map((t) => `${t.trip}@${t.at}`).join(',')}` : '';
-  if (snapBox.dataset.key !== snapKey) {
-    snapBox.dataset.key = snapKey;
-    snapBox.innerHTML = snapHtml(snap, true);
+  const trips = snap && snap.trips.length ? snap.trips : [];
+  if (invTrip != null && !trips[invTrip]) invTrip = null;
+  const ti = invTrip == null ? trips.length - 1 : invTrip;
+  const trip = trips[ti];
+  const snapKey = trip ? `${run.id}:${trip.trip}@${trip.at}:${ti}` : `empty:${run ? run.id : ''}`;
+  const grid = $('now-snap');
+  if (grid.dataset.key !== snapKey) {
+    grid.dataset.key = snapKey;
+    grid.innerHTML = invGridHtml(snap, trip, run);
+    grid.style.setProperty('--inv', trip ? `url("${trip.image}")` : 'none');
   }
+  setHtml($('inv-trips'), trips.length > 1 ? trips.map((t, i) => `<button type="button" data-inv-trip="${i}" aria-pressed="${i === ti}" title="Inventory ${i + 1} of ${trips.length}, read at ${clock(t.at)}">${i + 1}</button>`).join('') : '');
   setHtml($('now-uncounted'), run ? uncountedLine(run, true) : '');
 
-  // One line per item, most valuable first.
-  const feed = $('feed');
+  // The loot: picture, name, how many and what it is worth, most valuable first.
   const n = run ? run.items.length : 0;
-  $('loot-title').innerHTML = run && n ? `Loot this map <small>${n} ${n === 1 ? 'item' : 'items'} · worth ${esc(fmtValue(run.lootValue))}</small>` : 'Loot this map';
+  const readAt = trip ? ` · read ${clock(trip.at)}` : '';
+  $('loot-title').innerHTML = run && n ? `Loot this map <small>${n} ${n === 1 ? 'item' : 'items'} · <b>${esc(fmtValue(run.lootValue))}</b>${readAt}</small>` : `Loot this map${run ? ` <small>${trip ? `read ${clock(trip.at)}` : 'not read yet'}</small>` : ''}`;
   const divine = state.summary.divine || 0;
   const html = !run || !n
-    ? `<li class="empty">${run ? `No loot yet. Open your inventory (${esc(state.config.inventory.key)}) after picking things up.` : 'Loot shows up here once a map is running.'}</li>`
-    : run.items.map((l) => `<li>
-        <span class="it${divine && l.chaos >= divine ? ' g-gold' : ''}">${l.icon ? `<img src="${esc(l.icon)}" alt="" loading="lazy">` : ''}</span>
-        <span class="nm"><b>${esc(l.name)}</b><small>×${l.qty}${l.byHand ? ' · added by hand' : ''}</small></span>
+    ? `<li class="empty">${run ? `Open your inventory in game (${esc(state.config.inventory.key)}) and the loot shows up here.` : 'Enter a map: its loot shows up here.'}</li>`
+    : run.items.map((l) => `<li class="${divine && l.chaos >= divine ? 'top' : ''}">
+        <span class="it">${l.icon ? `<img src="${esc(l.icon)}" alt="" loading="lazy">` : ''}</span>
+        <span class="nm"><b>${esc(l.name)}</b><small>×${l.qty}${l.byHand ? ' · added by hand' : ''}${l.chaos > 0 && l.qty > 1 ? ` · ${fmtValue(l.chaos / l.qty)} each` : ''}</small></span>
         <span class="val ${l.chaos > 0 ? '' : 'dim'}">${l.chaos > 0 ? fmtValue(l.chaos) : 'no price'}</span>
         <button type="button" class="link x" data-act="removeLootName" data-run="${esc(run.id)}" data-name="${esc(l.name)}" title="Remove from this map's loot" aria-label="Remove ${esc(l.name)}">×</button></li>`).join('');
-  setHtml(feed, html);
-  renderBestDrops();
+  setHtml($('feed'), html);
   renderItems();
 }
 
-// The most valuable drops of the session, over all its maps. Only once there is more than one map.
-function renderBestDrops() {
-  const box = $('best-drops'), runs = state.summary.runs;
-  const by = new Map();
-  for (const r of runs) for (const i of r.items) {
-    if (!(i.chaos > 0)) continue;
-    const e = by.get(i.name) || { name: i.name, qty: 0, chaos: 0, icon: i.icon, maps: new Set() };
-    e.qty += i.qty; e.chaos += i.chaos; e.icon = e.icon || i.icon; e.maps.add(r.name);
-    by.set(i.name, e);
-  }
-  const top = [...by.values()].sort((a, b) => b.chaos - a.chaos).slice(0, 3);
-  box.hidden = runs.length < 2 || !top.length;
-  if (box.hidden) return;
-  const divine = state.summary.divine || 0;
-  setHtml(box, `<div class="p-head"><h2>Best drops this session</h2></div><ul class="feed drops">${top.map((e) => `<li>
-      <span class="it${divine && e.chaos >= divine ? ' g-gold' : ''}">${e.icon ? `<img src="${esc(e.icon)}" alt="" loading="lazy">` : ''}</span>
-      <span class="nm"><b>${esc(e.name)}</b><small>×${e.qty} · ${esc([...e.maps].slice(0, 3).join(', '))}</small></span>
-      <span class="val">${fmtValue(e.chaos)}</span></li>`).join('')}</ul>`);
-}

@@ -44,7 +44,7 @@ h1, h2 { margin: 0; font-family: var(--display); font-weight: 650; letter-spacin
 h1 { font-size: 20px; }
 h2 { font-size: 13.5px; color: var(--soft); font-weight: 620; margin: 18px 0 8px; }
 ul { list-style: none; margin: 0; padding: 0; }
-.num, td.num, .kpi b, .clock, .money, .val { font-variant-numeric: tabular-nums; }
+.num, td.num, .statbar b, .clock, .money, .val { font-variant-numeric: tabular-nums; }
 
 button, input, select {
   font: inherit; color: var(--bone); background: var(--well);
@@ -210,49 +210,63 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .arrival b { color: var(--bone); }
 .arrival .link { font-size: 16px; line-height: 1; }
 
-/* the two panels under it */
-.map-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 14px; }
-/* left: this map now (what needs a look, its loot); right: what already happened (numbers, line, maps, best drops) */
-.panel.cur, .panel.sess { overflow-y: auto; }
-.cur .p-sec + .p-sec, .sess .p-sec { border-top: 1px solid var(--line); }
+/* only while something needs you: one line under the map card */
+.ask-line { flex: none; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 5px 8px 5px 12px; border-radius: var(--r-md); background: color-mix(in srgb, var(--gold) 7%, var(--slab)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 35%, transparent); font-size: 13px; color: var(--ash); }
+.ask-line[hidden] { display: none; }
+.ask-line::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.ask-line b { color: var(--bone); font-weight: 620; white-space: nowrap; }
+.ask-line .what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ask-line .chips { flex-wrap: nowrap; margin-left: 6px; }
+.ask-line .more { margin-left: auto; flex: none; font-size: 12.5px; }
 
-/* sessions: which one, its numbers, the profit line, the maps */
+/* the two halves under it: this map on the left, what already happened on the right */
+.map-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 14px; }
+.panel.cur { overflow-y: auto; }
+.hist { min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.panel.sess { flex: 1; min-height: 0; }
+
+/* the inventory as last read: sockets, each showing its own square of the kept picture */
+.invgrid { --inv: none; display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin: 2px 18px 10px; padding: 6px; border-radius: var(--r-md); background: var(--well); box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line); }
+.invgrid .sk { position: relative; display: block; aspect-ratio: 1; border-radius: 4px; background: color-mix(in srgb, var(--bone) 3%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 4%, transparent); }
+.invgrid .sk.pic { background: var(--inv) no-repeat; background-size: 1200% 500%; background-position: calc(var(--cx) * 100% / 11) calc(var(--cy) * 100% / 4); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 8%, transparent), 0 0 10px color-mix(in srgb, var(--gold) 10%, transparent); }
+.invgrid .sk.unknown { box-shadow: inset 0 0 0 1.5px var(--blood); }
+.invgrid .sk.remembered { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gold) 70%, transparent); }
+.invgrid .sk.carried { opacity: 0.3; box-shadow: none; }
+.invgrid .sk.fixable { cursor: pointer; }
+.invgrid .sk.fixable:hover { outline: 2px solid var(--bone); outline-offset: -1px; opacity: 1; }
+.invgrid .c0 { --cx: 0; } .invgrid .c1 { --cx: 1; } .invgrid .c2 { --cx: 2; } .invgrid .c3 { --cx: 3; } .invgrid .c4 { --cx: 4; } .invgrid .c5 { --cx: 5; }
+.invgrid .c6 { --cx: 6; } .invgrid .c7 { --cx: 7; } .invgrid .c8 { --cx: 8; } .invgrid .c9 { --cx: 9; } .invgrid .c10 { --cx: 10; } .invgrid .c11 { --cx: 11; }
+.invgrid .r0 { --cy: 0; } .invgrid .r1 { --cy: 1; } .invgrid .r2 { --cy: 2; } .invgrid .r3 { --cy: 3; } .invgrid .r4 { --cy: 4; }
+.inv-trips { display: flex; gap: 2px; margin-left: auto; }
+.inv-trips button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--ash); font-size: 12px; }
+.inv-trips button[aria-pressed=true] { background: var(--raise); color: var(--bone); box-shadow: inset 0 0 0 1px var(--line2); }
+.inv-trips:empty + .link { margin-left: auto; }
+.cur .p-head h2 small b { color: var(--bone); font-weight: 600; }
+
+/* the session's numbers */
+.statbar { flex: none; flex-direction: row; padding: 12px 18px; }
+.statbar > div { flex: 1 1 0; min-width: 0; padding: 0 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.statbar > div:first-child { padding-left: 0; flex-grow: 1.2; }
+.statbar > div + div { box-shadow: inset 1px 0 0 var(--line); }
+.statbar small { display: block; font-size: 11.5px; color: var(--ash); font-weight: 560; }
+.statbar b { font: 600 19px/1.25 var(--display); letter-spacing: -0.02em; }
+.statbar .lead b { color: var(--gold); text-shadow: 0 0 20px color-mix(in srgb, var(--gold) 25%, transparent); }
+.statbar .lead.neg b { color: var(--blood); text-shadow: none; }
+
+/* the maps: which session, then one line each */
 .sess .p-head { padding-right: 14px; }
-.session-strip { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; padding: 2px; }
-.session-strip button { flex: 0 0 auto; height: 28px; padding: 0 11px; border: 0; border-radius: 8px; background: transparent; color: var(--ash); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.sess .p-head h2 { flex: none; }
+.session-strip { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; padding: 2px; justify-content: flex-end; }
+.session-strip button { flex: 0 0 auto; height: 26px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ash); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .session-strip button:hover { color: var(--bone); background: transparent; }
 .session-strip button[aria-selected=true] { color: var(--bone); background: var(--raise); box-shadow: inset 0 0 0 1px var(--line2); }
-.session-strip button:first-child[aria-selected=true] { color: var(--bone); }
 .strip-hint { margin: 0; align-self: center; font-size: 12.5px; color: var(--ash); white-space: normal; }
-#btn-new-session { flex: 0 0 auto; color: var(--ash); }
+#btn-new-session { flex: 0 0 auto; color: var(--ash); font-size: 12px; }
 #btn-new-session[hidden] { display: none; }
 .session-note { display: flex; justify-content: space-between; gap: 16px; margin: 0; padding: 0 18px 6px; font-size: 12px; color: var(--faint); }
 .session-note .link { flex: 0 0 auto; font-size: 12px; }
-.kpis { display: grid; grid-template-columns: 1.35fr 1.1fr 0.6fr 0.95fr 0.65fr; align-items: end; padding: 4px 18px 2px; }
-.kpi { min-width: 0; padding: 0 12px; white-space: nowrap; }
-.kpi:first-child { padding-left: 0; }
-.kpi + .kpi { box-shadow: inset 1px 0 0 var(--line); }
-.kpi small { display: block; font-size: 11.5px; font-weight: 560; color: var(--ash); margin-bottom: 3px; }
-.kpi b { font: 600 21px/1.1 var(--display); letter-spacing: -0.03em; }
-.kpi.lead b { font-size: 30px; color: var(--gold); text-shadow: 0 0 22px color-mix(in srgb, var(--gold) 25%, transparent); }
-.kpi.lead.neg b { color: var(--blood); text-shadow: none; }
-.chart { flex: 0 0 170px; margin: 6px 12px 8px; position: relative; }
-.chart svg { position: absolute; inset: 0; display: block; overflow: visible; }
-.chart .empty { padding: 30px 6px; }
-.chart .gl { stroke: color-mix(in srgb, var(--bone) 6%, transparent); stroke-dasharray: 2 4; }
-.chart .zero { stroke: color-mix(in srgb, var(--blood) 40%, transparent); stroke-dasharray: 3 3; }
-.chart .f0 { stop-color: var(--gold); stop-opacity: 0.24; }
-.chart .f1 { stop-color: var(--gold); stop-opacity: 0; }
-.chart .area { fill: url(#chart-fill); }
-.chart .line { fill: none; stroke: var(--gold); stroke-width: 2; stroke-linejoin: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--gold) 45%, transparent)); }
-.chart circle { fill: var(--slab); stroke: var(--gold); stroke-width: 2; }
-.chart circle.now { fill: var(--gold); stroke: color-mix(in srgb, var(--gold) 30%, transparent); stroke-width: 6; }
-.chart .pin rect { fill: var(--raise); stroke: var(--line2); }
-.chart .pin text { fill: var(--soft); font: 560 11px var(--body); }
-.chart .pin.now rect { fill: color-mix(in srgb, var(--gold) 14%, var(--slab)); stroke: color-mix(in srgb, var(--gold) 50%, transparent); }
-.chart .pin.now text { fill: var(--gold); }
-.chart .pin.neg text { fill: var(--blood); }
-.chart text.ax { fill: var(--faint); font: 11px var(--body); }
+.sess .table-wrap { border-top: 1px solid var(--line); }
+
 .sess .table-wrap { flex: none; overflow: visible; border-top: 1px solid var(--line); }
 
 /* tables */
@@ -267,65 +281,55 @@ tr.run.open td { background: var(--raise); }
 tr.detail td { background: var(--raise); padding: 10px 14px; font-size: 13px; color: var(--ash); }
 tr.detail b { color: var(--bone); font-weight: 500; }
 .runs-table th { background: var(--slab); height: 30px; padding-top: 0; padding-bottom: 0; }
-.runs-table td { padding-top: 6px; padding-bottom: 6px; font-size: 13px; color: var(--soft); }
+.runs-table td { height: 38px; padding-top: 4px; padding-bottom: 4px; font-size: 13.5px; }
 .runs-table th:first-child, .runs-table td:first-child { padding-left: 18px; }
-.runs-table th:last-child, .runs-table td:last-child { padding-right: 12px; }
-.runs-table .ic { width: 48px; }
-.runs-table .nm b { display: block; color: var(--bone); font-weight: 580; }
-.runs-table .nm small { display: block; font-size: 11px; color: var(--ash); }
-.runs-table .nm small.now { color: var(--moss); }
-.runs-table .barcol { width: 18%; min-width: 60px; }
-.nbar { display: block; width: 100%; height: 5px; }
-.nbar .bg { fill: color-mix(in srgb, var(--bone) 7%, transparent); }
-.nbar .fg { fill: var(--gold); }
-.nbar.neg .fg { fill: var(--blood); }
-.runs-table .net em { display: inline-grid; place-items: center end; min-width: 82px; height: 28px; padding: 0 10px; border-radius: 8px; font-style: normal; font-weight: 650; color: var(--bone); background: color-mix(in srgb, var(--bone) 3%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 5%, transparent); }
-.runs-table .net em.gold { color: var(--gold); }
+.runs-table th:last-child, .runs-table td:last-child { padding-right: 10px; }
+.runs-table .nm { white-space: nowrap; }
+.runs-table .nm b { font-weight: 580; color: var(--bone); }
+.runs-table .nm u { text-decoration: none; margin-left: 7px; padding: 1px 6px; border-radius: 5px; font-size: 10.5px; font-weight: 650; color: var(--gold); background: color-mix(in srgb, var(--gold) 13%, transparent); }
+.runs-table .nm em { margin-left: 7px; font-style: normal; font-size: 11px; color: var(--blood); }
+.runs-table .nm em.dim { color: var(--ash); }
+.runs-table .live-dot { display: inline-block; margin-right: 8px; vertical-align: 1px; }
+.runs-table .t { color: var(--ash); }
+.runs-table .vs { font-size: 12.5px; }
+.runs-table .vs .up { color: var(--moss); }
+.runs-table .vs .down { color: var(--blood); }
+.runs-table .net { font-weight: 650; color: var(--bone); }
+.runs-table .net.gold { color: var(--gold); }
 .runs-table tr.live td { background: color-mix(in srgb, var(--gold) 6%, transparent); }
 .runs-table tr.live td:first-child { box-shadow: inset 2px 0 0 var(--gold); }
-.runs-table tr.live .net em { background: color-mix(in srgb, var(--gold) 8%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 24%, transparent); }
-.runs-table .x { width: 28px; text-align: center; }
+.runs-table .x { width: 26px; text-align: center; }
 .runs-table .x .link { font-size: 16px; line-height: 1; opacity: 0; }
 .runs-table tr.run:hover .x .link, .runs-table .x .link:focus-visible { opacity: 1; }
 .runs-table .x .link:hover { color: var(--blood); }
-.runs-table tfoot td { position: sticky; bottom: 0; background: color-mix(in srgb, var(--bone) 2%, var(--slab)); color: var(--bone); font-weight: 600; border-bottom: 0; box-shadow: inset 0 1px 0 var(--line); }
+.runs-table tfoot td { position: sticky; bottom: 0; background: color-mix(in srgb, var(--bone) 2%, var(--slab)); color: var(--soft); font-weight: 600; border-bottom: 0; box-shadow: inset 0 1px 0 var(--line); }
 
-/* the side panel: what needs a look, then this map's loot, then the best drops */
-#attention { padding: 0 0 6px; }
-#attention .needs { display: flex; align-items: center; gap: 8px; }
-#attention .needs::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
-#attention ul { display: grid; }
-#attention li { display: grid; grid-template-columns: 38px 1fr; gap: 12px; align-items: start; padding: 8px 18px; }
-#attention li + li { border-top: 1px solid var(--line); }
-#attention p { margin: 1px 0 7px; font-size: 12.5px; color: var(--ash); }
-#attention p b { color: var(--bone); font-weight: 600; margin-right: 3px; }
-#attention .chips, .chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 0; }
 .chips button { height: 28px; padding: 0 11px; border: 0; border-radius: 8px; font-size: 12.5px; background: color-mix(in srgb, var(--bone) 6%, transparent); box-shadow: inset 0 0 0 1px var(--line2); }
 .chips button:hover { background: color-mix(in srgb, var(--bone) 10%, transparent); }
 .chips button.yes { color: var(--gold); background: color-mix(in srgb, var(--gold) 13%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent); }
 .chips button.other { background: none; color: var(--ash); box-shadow: inset 0 0 0 1px var(--line); }
 .chips button.link { box-shadow: none; background: none; height: auto; }
-#attention .more { margin: 4px 18px 0; color: var(--ash); font-size: 12.5px; }
 #add-loot { padding: 0 18px 10px; }
 #add-loot input, #add-loot button { padding: 6px 10px; font-size: 13px; }
-#now-snap { padding: 2px 18px 0; }
-#now-snap:empty { display: none; }
-#now-snap .snap + .snap { margin-top: 10px; }
 #now-uncounted:empty { display: none; }
-.uncounted { margin: 8px 18px 0; font-size: 12.5px; color: var(--gold); }
-.feed { padding: 6px 18px 12px; }
-.feed li { display: grid; grid-template-columns: 34px 1fr auto 18px; gap: 12px; align-items: center; padding: 5px 0; }
-.feed li + li { border-top: 1px solid var(--line); }
-.feed .it { width: 34px; height: 34px; border-radius: 9px; }
-.feed .nm { min-width: 0; line-height: 1.3; }
-.feed .nm b { display: block; font-weight: 580; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.feed .nm small { display: block; font-size: 11.5px; color: var(--ash); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.feed .val { min-width: 74px; padding: 4px 10px; border-radius: 8px; text-align: right; font-weight: 640; background: color-mix(in srgb, var(--bone) 3%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 5%, transparent); white-space: nowrap; }
-.feed .val.dim { color: var(--ash); font-weight: 500; }
-.feed .x { font-size: 16px; line-height: 1; opacity: 0; }
-.feed li:hover .x, .feed .x:focus-visible { opacity: 1; }
-.feed li.empty { display: block; color: var(--ash); font-size: 13px; border: 0; }
-.feed.drops li { grid-template-columns: 34px 1fr auto; }
+.uncounted { margin: -2px 18px 8px; font-size: 12.5px; color: var(--gold); }
+
+/* this map's loot: two columns, picture, name, count, value */
+.loot2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; margin: 0 18px 12px; border-top: 1px solid var(--line); }
+.loot2 li { display: grid; grid-template-columns: 32px 1fr auto 14px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.loot2 .it { width: 32px; height: 32px; border-radius: 8px; }
+.loot2 li.top .it { --gc: var(--gold); }
+.loot2 .nm { min-width: 0; line-height: 1.3; }
+.loot2 .nm b { display: block; font-weight: 580; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot2 .nm small { display: block; font-size: 11.5px; color: var(--ash); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot2 .val { font-weight: 650; font-size: 13px; white-space: nowrap; }
+.loot2 li.top .val { color: var(--gold); }
+.loot2 .val.dim { color: var(--ash); font-weight: 500; }
+.loot2 .x { font-size: 15px; line-height: 1; opacity: 0; padding: 0; }
+.loot2 li:hover .x, .loot2 .x:focus-visible { opacity: 1; }
+.loot2 li.empty { grid-column: 1 / -1; display: block; padding: 4px 0; color: var(--ash); font-size: 13px; border: 0; }
+
 
 /* the inventory picture kept for a map: one image with a frame per slot laid over it */
 .snap { margin: 0; }
@@ -573,14 +577,13 @@ dialog h2 { font-size: 20px; color: var(--bone); margin: 0 0 14px; }
   .mc-acts button { flex: 1; }
   .map-cols { flex: none; grid-template-columns: minmax(0, 1fr); }
   .view.mapping { overflow: auto; }
-  .map-cols .panel { min-height: auto; overflow: visible; }
-  .map-cols .panel.sess { order: 2; }
+  .map-cols .panel, .hist { min-height: auto; overflow: visible; }
   .runs-table tfoot td { position: static; }
-  .chart { flex: 0 0 180px; }
+  .ask-line { flex-wrap: wrap; }
+  .ask-line .chips { flex-wrap: wrap; }
 }
 @media (max-width: 900px) {
   .totals { grid-template-columns: repeat(2, 1fr); }
-  .kpis { grid-template-columns: repeat(3, 1fr); row-gap: 10px; }
   .cost-cols, .settings-grid, .trade, .mapcheck { grid-template-columns: 1fr; }
   #tab-trade { overflow: auto; }
   .trade { height: auto; }

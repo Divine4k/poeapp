@@ -73,42 +73,44 @@
     </div>
   </section>
   <div class="arrival" id="arrival" hidden></div>
+  <!-- Only while something needs you: one line, the first item to name, gone when done. -->
+  <div class="ask-line" id="attention" hidden></div>
   <div class="map-cols">
-    <!-- Left: what is happening now. Right: what already happened this session. -->
+    <!-- Left: this map. The inventory as last read (empty sockets until it is), then the loot. -->
     <section class="panel cur" aria-label="This map">
-      <div id="attention" class="p-sec" hidden></div>
-      <div class="p-sec">
-        <div class="p-head">
-          <h2 id="loot-title">Loot this map</h2>
-          <button type="button" class="link" id="btn-add-loot" aria-expanded="false">+ Add by name</button>
-        </div>
-        <form id="add-loot" class="inline-form" autocomplete="off" hidden>
-          <input id="add-loot-name" list="price-names" placeholder="Item name" aria-label="Item name">
-          <input id="add-loot-qty" type="number" min="1" value="1" aria-label="Quantity">
-          <button type="submit">Add</button>
-        </form>
-        <div id="now-snap"></div>
-        <div id="now-uncounted"></div>
-        <ul class="feed" id="feed"></ul>
-      </div>
-    </section>
-    <section class="panel sess" aria-label="This session">
       <div class="p-head">
-        <div class="session-strip" id="session-strip" role="tablist" aria-label="Sessions"></div>
-        <button type="button" class="link" id="btn-new-session" title="Saves the session you are on and starts an empty one">+ New session</button>
+        <h2 id="loot-title">Loot this map</h2>
+        <span class="inv-trips" id="inv-trips"></span>
+        <button type="button" class="link" id="btn-add-loot" aria-expanded="false">+ Add by name</button>
       </div>
-      <div id="session-head"></div>
-      <div class="kpis" id="totals"></div>
-      <div class="chart" id="sess-chart"></div>
-      <div class="table-wrap">
-        <table class="runs-table">
-          <thead><tr><th class="ic"></th><th>Map</th><th class="num">Time</th><th class="num">Loot</th><th class="num">Costs</th><th class="barcol"></th><th class="num">Net</th><th class="x"></th></tr></thead>
-          <tbody id="runs"></tbody>
-          <tfoot id="runs-total"></tfoot>
-        </table>
-      </div>
-      <div class="p-sec" id="best-drops" hidden></div>
+      <form id="add-loot" class="inline-form" autocomplete="off" hidden>
+        <input id="add-loot-name" list="price-names" placeholder="Item name" aria-label="Item name">
+        <input id="add-loot-qty" type="number" min="1" value="1" aria-label="Quantity">
+        <button type="submit">Add</button>
+      </form>
+      <div class="invgrid" id="now-snap"></div>
+      <div id="now-uncounted"></div>
+      <ul class="loot2" id="feed"></ul>
     </section>
+    <!-- Right: what already happened. The session's numbers, then its maps. -->
+    <div class="hist">
+      <section class="panel statbar" id="totals" aria-label="This session"></section>
+      <section class="panel sess" aria-label="Maps this session">
+        <div class="p-head">
+          <h2>Maps</h2>
+          <div class="session-strip" id="session-strip" role="tablist" aria-label="Sessions"></div>
+          <button type="button" class="link" id="btn-new-session" title="Saves the session you are on and starts an empty one">+ New session</button>
+        </div>
+        <div id="session-head"></div>
+        <div class="table-wrap">
+          <table class="runs-table">
+            <thead><tr><th>Map</th><th class="num">Time</th><th class="num" title="How much more or less than your average map this session">vs average</th><th class="num">Net</th><th class="x"></th></tr></thead>
+            <tbody id="runs"></tbody>
+            <tfoot id="runs-total"></tfoot>
+          </table>
+        </div>
+      </section>
+    </div>
   </div>
 </main>
 

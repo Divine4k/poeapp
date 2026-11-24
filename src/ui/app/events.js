@@ -32,6 +32,8 @@ document.addEventListener('click', (e) => {
   if (st) { stratSel = st.dataset.strat; sessionSel = 'current'; expanded = null; renderStrategies(); renderSession(); return; }
   if (e.target.closest('#btn-strategy-new')) { openStrategy(null); return; }
   if (e.target.closest('#btn-strategy-edit')) { openStrategy(stratSel); return; }
+  const it = e.target.closest('[data-inv-trip]');
+  if (it) { invTrip = Number(it.dataset.invTrip); $('now-snap').dataset.key = ''; renderNow(); return; }
   const pick = e.target.closest('[data-session]');
   if (pick) { sessionSel = pick.dataset.session; expanded = null; renderSession(); return; }
   if (e.target.closest('[data-allitems]')) { allItems = !allItems; renderSession(); return; }
