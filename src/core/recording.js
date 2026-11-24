@@ -95,7 +95,7 @@ function clockOf(ms) {
 function eventLine(e) {
   const { t, kind, ...rest } = e;
   let what;
-  if (kind === 'key') what = `${rest.dir === 'up' ? 'released' : 'pressed'} ${rest.key}`;
+  if (kind === 'key') what = `${rest.dir === 'up' ? 'released' : 'pressed'} ${rest.key}${rest.by === 'app' ? ' (sent by the app)' : ''}`;
   else if (kind === 'mouse') what = `${rest.dir === 'up' ? 'released' : 'clicked'} ${rest.button} at ${rest.x},${rest.y}`;
   else if (kind === 'wheel') what = `wheel ${rest.amount} at ${rest.x},${rest.y}`;
   else if (kind === 'log') what = rest.line;

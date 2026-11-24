@@ -147,6 +147,7 @@ test('record, stop, write a note and send: the folder lands in the repository', 
   const handlers = {};
   t.attachHook({ UiohookKey: { Tab: 15 }, uIOhook: { on: (ev, fn) => { handlers[ev] = fn; } } });
   handlers.keydown({ keycode: 15 }); handlers.keydown({ keycode: 15 }); handlers.keyup({ keycode: 15 });
+  t.ownKeys(1000); handlers.keydown({ keycode: 15 }); t.ownUntil = 0; handlers.keyup({ keycode: 15 });
   handlers.mousedown({ button: 1, x: 10, y: 20 });
   t.event('log', { line: 'You have entered Strand.' });
   t.state({ status: { log: { ok: false, error: 'gone' } }, summary: { runs: [] } });
@@ -161,7 +162,9 @@ test('record, stop, write a note and send: the folder lands in the repository', 
   const d = t.details(id);
   const kinds = d.events.map((e) => (e.kind === 'key' ? `key ${e.dir}` : e.kind));
   // The held key's repeat is left out.
-  assert.deepStrictEqual(kinds, ['start', 'state', 'key down', 'key up', 'mouse', 'log', 'state', 'stop']);
+  assert.deepStrictEqual(kinds, ['start', 'state', 'key down', 'key up', 'key down', 'key up', 'mouse', 'log', 'state', 'stop']);
+  // Keys the app sends are marked as such.
+  assert.deepStrictEqual(d.events.filter((e) => e.kind === 'key').map((e) => e.by || 'you'), ['you', 'you', 'app', 'you']);
   assert.strictEqual(t.video(id).toString(), 'webm!');
   assert.strictEqual(t.video('../x'), null);
 
@@ -174,7 +177,7 @@ test('record, stop, write a note and send: the folder lands in the repository', 
   const sent = Object.keys(tree).filter((k) => k.startsWith(`recordings/${id}/`)).map((k) => k.split('/').pop()).sort();
   assert.deepStrictEqual(sent, ['README.md', 'events.json.gz', 'inventory-end.json.gz', 'inventory-start.json.gz', 'meta.json', 'state-end.json.gz', 'state-start.json.gz', 'video.webm']);
   assert.match(gh.blobs[tree[`recordings/${id}/README.md`]].toString(), /The map timer kept running in my hideout\./);
-  assert.strictEqual(JSON.parse(zlib.gunzipSync(gh.blobs[tree[`recordings/${id}/events.json.gz`]])).events.length, 8);
+  assert.strictEqual(JSON.parse(zlib.gunzipSync(gh.blobs[tree[`recordings/${id}/events.json.gz`]])).events.length, 10);
   assert.match(gh.commits[gh.ref].message, /^Recording .*: The map timer kept running/);
   assert.ok(t.list()[0].sent.url.endsWith(`recordings/${id}`));
 

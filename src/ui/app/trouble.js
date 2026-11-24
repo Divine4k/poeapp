@@ -20,7 +20,7 @@ const trWhen = (ts) => new Date(ts).toLocaleString([], { day: 'numeric', month: 
 // What one event says, in a line. The same wording as the README that goes up with it.
 function trText(e) {
   const { t, kind, ...r } = e;
-  if (kind === 'key') return `${r.dir === 'up' ? 'Released' : 'Pressed'} ${r.key}`;
+  if (kind === 'key') return `${r.dir === 'up' ? 'Released' : 'Pressed'} ${r.key}${r.by === 'app' ? ' (sent by the app)' : ''}`;
   if (kind === 'mouse') return `${r.dir === 'up' ? 'Released' : 'Clicked'} ${r.button} at ${r.x}, ${r.y}`;
   if (kind === 'wheel') return `Wheel ${r.amount} at ${r.x}, ${r.y}`;
   if (kind === 'log') return String(r.line || '').replace(/^\S+ \S+ \d+ \S+ /, '');

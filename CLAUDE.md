@@ -54,7 +54,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `src/github.js` | Puts a folder into a GitHub repository as one commit (reports repository) |
 | `src/core/recording.js` | Event list, state summary, the README of a recording (pure) |
 | `src/updater.js` | In-app updates from `main` of this repo |
-| `src/overlay.js`, `capture.js`, `chat.js`, `gamewin.js`, `http.js`, `art.js`, `leftovers.js` | Overlay windows, screen capture, typing chat lines, which window is in front, web requests, item pictures, closing stray copies |
+| `src/overlay.js`, `capture.js`, `chat.js`, `gamewin.js`, `http.js`, `art.js`, `leftovers.js` | Overlay windows, screen capture, typing chat lines and the copy key (`copyItem`), which window is in front, web requests, item pictures, closing stray copies |
 | `server/` | Cloudflare Worker + D1 schema. Deployed by pasting `worker.js` into the dashboard (see server/README.md); a push does not deploy it |
 | `test/*.test.js` | node:test unit tests; `test/server.js` fake server; `test/fixtures/` captures |
 

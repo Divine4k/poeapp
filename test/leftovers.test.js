@@ -49,3 +49,18 @@ test('chat lines go out fast and hand the clipboard back once', async () => {
   await typeChat(hook, clip, '@Buyer ', { send: false });
   assert.deepEqual(keys.map((x) => x.k), ['Enter', 'Ctrl+A', 'Ctrl+V']);
 });
+
+test('the copy key holds Alt over a pause, so the game sees it let go, and never leaves a key down', async () => {
+  const { copyItem, COPY_STEP_MS } = require('../src/chat');
+  const log = [];
+  let t = 0;
+  const hook = { UiohookKey: { Ctrl: 'Ctrl', Alt: 'Alt', C: 'C' }, uIOhook: { keyToggle: (k, dir) => log.push(`${t} ${k} ${dir}`) } };
+  await copyItem(hook, async (ms) => { t += ms; });
+  assert.deepEqual(log, ['0 Ctrl down', '0 Alt down', `${COPY_STEP_MS} C down`, `${2 * COPY_STEP_MS} C up`, `${3 * COPY_STEP_MS} Alt up`, `${3 * COPY_STEP_MS} Ctrl up`]);
+  assert.ok(COPY_STEP_MS >= 20 && COPY_STEP_MS <= 50);
+  // Something going wrong in the middle still lets go of Ctrl and Alt.
+  log.length = 0;
+  const broken = { ...hook, uIOhook: { keyToggle: (k, dir) => { if (k === 'C') throw new Error('no'); log.push(`${k} ${dir}`); } } };
+  await assert.rejects(copyItem(broken, async () => {}));
+  assert.deepEqual(log, ['Ctrl down', 'Alt down', 'Alt up', 'Ctrl up']);
+});

@@ -32,7 +32,13 @@ class Troubleshoot {
     this.lastBrief = null;
     this.held = new Set();
     this.names = {};
+    this.ownUntil = 0; // keys and clicks seen before this time were sent by the app itself
   }
+
+  // The app is about to press keys in the game: what the keyboard helper sees in the next ms
+  // milliseconds is marked as sent by the app, so a recording tells them apart from yours.
+  ownKeys(ms) { this.ownUntil = Date.now() + ms; }
+  by() { return Date.now() < this.ownUntil ? { by: 'app' } : {}; }
 
   get recording() { return !!this.current && this.busy !== 'stopping'; }
   get status() {
@@ -60,9 +66,9 @@ class Troubleshoot {
     h.on('keydown', (e) => {
       if (this.held.has(e.keycode)) return; // held down: the repeats are not news
       this.held.add(e.keycode);
-      this.event('key', { dir: 'down', key: keyLabel(e, this.names) });
+      this.event('key', { dir: 'down', key: keyLabel(e, this.names), ...this.by() });
     });
-    h.on('keyup', (e) => { this.held.delete(e.keycode); this.event('key', { dir: 'up', key: keyLabel(e, this.names) }); });
+    h.on('keyup', (e) => { this.held.delete(e.keycode); this.event('key', { dir: 'up', key: keyLabel(e, this.names), ...this.by() }); });
     h.on('mousedown', (e) => this.event('mouse', { dir: 'down', button: buttonName(e.button), x: e.x, y: e.y }));
     h.on('mouseup', (e) => this.event('mouse', { dir: 'up', button: buttonName(e.button), x: e.x, y: e.y }));
     h.on('wheel', (e) => this.event('wheel', { amount: e.rotation, x: e.x, y: e.y }));

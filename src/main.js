@@ -30,7 +30,7 @@ const { SnapshotStore, SessionArchive, markCarried, recheckCells } = require('./
 const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
-const { focusGame, typeChat } = require('./chat');
+const { focusGame, typeChat, copyItem } = require('./chat');
 const { Overlay, Toast, CheckPanel } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, restartCommand } = require('./leftovers');
@@ -1193,7 +1193,8 @@ async function checkHovered({ count = true } = {}) {
     try {
       clipboard.writeText('');
       // With Alt the game copies its fuller text, which also names each modifier's tier.
-      hook.uIOhook.keyTap(hook.UiohookKey.C, [hook.UiohookKey.Ctrl, hook.UiohookKey.Alt]);
+      if (trouble) trouble.ownKeys(300);
+      await copyItem(hook);
       let text = '';
       for (let i = 0; i < 16 && !text; i++) { await sleep(25); text = clipboard.readText(); }
       if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }
@@ -1397,6 +1398,7 @@ async function sendChat(text, { auto = false, send = true } = {}) {
       await sleep(120);
     }
     if (!watch.gameInFront()) { say('Nothing was sent: the game is not the window in front.', true); return false; }
+    if (trouble) trouble.ownKeys(500);
     return await typeChat(hook, clipboard, text, { send });
   } catch (e) {
     if (!auto) say(`Nothing was sent: ${e.message || e}`, true);

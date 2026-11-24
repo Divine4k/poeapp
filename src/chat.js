@@ -62,4 +62,28 @@ async function typeChat(hook, clipboard, text, { send = true } = {}) {
   return true;
 }
 
-module.exports = { focusGame, typeChat, LINE_GAP_MS };
+// Copies the item under the mouse with Ctrl+Alt+C, the game's copy that also names each
+// modifier's tier. Holding Alt locks the game's item tooltip in place, and it lets go when Alt
+// is released. Pressed and released within the same instant (as one key tap does), the game
+// can miss the release, and the tooltip then stays on screen until the item is picked up and
+// put down again. So each step waits a couple of frames, and Alt is held over at least one.
+// Ctrl and Alt are released even when you were holding Ctrl for the check key yourself.
+const COPY_STEP_MS = 30;
+async function copyItem(hook, wait = sleep) {
+  const { uIOhook, UiohookKey: K } = hook;
+  uIOhook.keyToggle(K.Ctrl, 'down');
+  uIOhook.keyToggle(K.Alt, 'down');
+  await wait(COPY_STEP_MS);
+  try {
+    uIOhook.keyToggle(K.C, 'down');
+    await wait(COPY_STEP_MS);
+    uIOhook.keyToggle(K.C, 'up');
+    await wait(COPY_STEP_MS);
+  } finally {
+    // Whatever happened above, no key is left held down in the game.
+    uIOhook.keyToggle(K.Alt, 'up');
+    uIOhook.keyToggle(K.Ctrl, 'up');
+  }
+}
+
+module.exports = { focusGame, typeChat, copyItem, LINE_GAP_MS, COPY_STEP_MS };
