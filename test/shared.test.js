@@ -58,13 +58,13 @@ test('upload: reads the newest list, adds to it, retries on a conflict, needs a 
     if (opts.method === 'PUT') {
       const body = JSON.parse(opts.body);
       assert.equal(opts.headers.Authorization, 'Bearer tok');
-      assert.equal(body.branch, 'data');
+      assert.equal(body.branch, undefined); // the item data repository's own default branch
       if (conflictOnce) { conflictOnce = false; return { ok: false, status: 409 }; }
       assert.equal(body.sha, `s${sha}`);
       remote = Buffer.from(body.content, 'base64').toString(); sha++; puts.push(body.message);
       return { ok: true, status: 200 };
     }
-    assert.ok(String(url).includes('ref=data'));
+    assert.ok(String(url).includes('/poeappitemdata/contents/items.json'));
     return opts.headers.Accept.includes('raw')
       ? { ok: true, status: 200, text: async () => remote }
       : { ok: true, status: 200, json: async () => ({ sha: `s${sha}` }) };
@@ -86,7 +86,7 @@ test('upload: reads the newest list, adds to it, retries on a conflict, needs a 
   assert.equal(puts.length, 1);
 });
 
-test('reports: uploaded to the data branch under reports/, only with a token', async () => {
+test('reports: uploaded to the item data repository under reports/, only with a token', async () => {
   const calls = [];
   const fetchImpl = async (url, opts) => { calls.push({ url, opts }); return { ok: true, status: 201 }; };
   await assert.rejects(() => new SharedItems({ fetchImpl }).uploadFile('reports/x.json.gz', Buffer.from('hi'), 'm'), /no token/);
@@ -94,8 +94,8 @@ test('reports: uploaded to the data branch under reports/, only with a token', a
   assert.equal(await s.uploadFile('reports/snapshot-1.json.gz', Buffer.from('hi'), 'Report'), 'reports/snapshot-1.json.gz');
   assert.equal(calls.length, 1);
   assert.ok(calls[0].url.endsWith('/contents/reports/snapshot-1.json.gz'));
+  assert.ok(calls[0].url.includes('/poeappitemdata/'));
   const body = JSON.parse(calls[0].opts.body);
-  assert.equal(body.branch, 'data');
   assert.equal(Buffer.from(body.content, 'base64').toString(), 'hi');
   const refused = new SharedItems({ fetchImpl: async () => ({ ok: false, status: 403 }), token: 'tok' });
   await assert.rejects(() => refused.uploadFile('reports/y', Buffer.from('a'), 'm'), /refused/);
@@ -323,4 +323,31 @@ test('ledger: a corrected name moves what was counted, so nothing is counted twi
   // An item that had no name: 4 of it were carried in, then it is named.
   L.rename(null, 'Ritual Thread', { carried: 4 });
   assert.deepEqual(read({ 'Portal Scroll': 10, 'Chaos Orb': 13, 'Ritual Thread': 6 }), [{ name: 'Ritual Thread', qty: 2 }]);
+});
+
+test('item database: every picture says who named it, and can be renamed or removed', async () => {
+  const p1 = at(map, 0, 4), p2 = at(map, 3, 2);
+  let remote = serialise([{ name: 'Old Name', print: p1, by: 'Anna', at: 5 }]);
+  const fetchImpl = async (url, opts = {}) => {
+    if (opts.method === 'PUT') { remote = Buffer.from(JSON.parse(opts.body).content, 'base64').toString(); return { ok: true, status: 200 }; }
+    return opts.headers.Accept.includes('raw') ? { ok: true, status: 200, text: async () => remote } : { ok: true, status: 200, json: async () => ({ sha: 's' }) };
+  };
+  const s = new SharedItems({ fetchImpl, token: 'tok' });
+  s.by = 'Divine';
+  await s.load();
+  assert.deepEqual(s.items.map((e) => [e.name, e.by, e.auto]), [['Old Name', 'Anna', false]]);
+  // A name typed by a person, and one an app learned by itself.
+  s.queue('Hand Named', p2);
+  s.queue('App Learned', at(map, 4, 2), { auto: true });
+  await s.flush();
+  assert.deepEqual(parse(remote).map((e) => [e.name, e.by, e.auto]), [['Old Name', 'Anna', false], ['Hand Named', 'Divine', false], ['App Learned', 'Divine', true]]);
+  // Renaming signs the picture with the one who corrected it.
+  assert.equal(await s.correct(p1, 'Right Name'), 1);
+  assert.deepEqual(parse(remote)[0].name + ' by ' + parse(remote)[0].by, 'Right Name by Divine');
+  // Removing takes it out for everyone; without a token nothing happens.
+  assert.equal(await new SharedItems({ fetchImpl }).remove(p2), 0);
+  assert.equal(await s.remove(p2), 1);
+  assert.deepEqual(parse(remote).map((e) => e.name), ['Right Name', 'App Learned']);
+  // Lists written before names were recorded still load.
+  assert.equal(parse(JSON.stringify([{ name: 'Plain', print: packPrint(p1) }]))[0].by, '');
 });

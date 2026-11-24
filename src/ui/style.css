@@ -487,3 +487,33 @@ fieldset label { margin-bottom: 8px; }
 .fix-pic .crop img.r2 { top: -128px; }
 .fix-pic .crop img.r3 { top: -192px; }
 .fix-pic .crop img.r4 { top: -256px; }
+
+/* Items page: the item database */
+.items-cols { grid-template-columns: minmax(300px, 2fr) 3fr; }
+.db-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.db-filters button { font-size: 13px; padding: 4px 10px; }
+.db-filters button span { color: var(--ash); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.db-filters button[aria-selected="true"] { border-color: var(--gold); color: var(--bone); }
+.db-filters button.check { color: var(--gold); }
+.db { list-style: none; margin: 0 0 12px; padding: 0; }
+.db li { display: grid; grid-template-columns: 30px minmax(120px, 1fr) minmax(0, 1.4fr); gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--slab); }
+.db li.empty { display: block; color: var(--ash); font-size: 13px; }
+.db .official { width: 30px; height: 30px; object-fit: contain; }
+.db .official.none { display: inline-block; }
+.db .what { min-width: 0; display: flex; flex-direction: column; }
+.db .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.db small { color: var(--ash); font-size: 12px; }
+.db .pics { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.db .pic { display: grid; grid-template-columns: 38px 1fr; column-gap: 10px; align-items: center; }
+.db .pic .seen { grid-row: span 2; width: 38px; height: 38px; padding: 0; border: 1px solid var(--seam); background: #101317; cursor: pointer; border-radius: 0; }
+.db .pic .seen:hover { border-color: var(--bone); }
+.db .pic .seen img { width: 100%; height: 100%; display: block; }
+.db .pic.over { opacity: 0.6; }
+.db .pic .doubt { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--gold); }
+.db .pic .doubt b { font-weight: 600; }
+.db .pic .doubt button { font-size: 12px; padding: 1px 8px; }
+.db .mini { width: 18px; height: 18px; object-fit: contain; }
+.db li.doubtful .pic .seen { border-color: var(--gold); }
+.db small.none { font-style: normal; }
+#db-more { margin-bottom: 16px; }
+@media (max-width: 900px) { .items-cols { grid-template-columns: 1fr; } }

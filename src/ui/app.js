@@ -181,7 +181,17 @@
   function openFix(id, runId) {
     const [where, x, y] = id.split(':');
     let pic = '', now = '', options = [];
-    if (where === 'inv') {
+    $('fix-remove').hidden = true;
+    if (where === 'db') {
+      const hit = dbPics.get(`${x}:${y}`);
+      if (!hit) return;
+      const { row, p } = hit;
+      pic = `<img src="${esc(p.seen)}" alt="">`;
+      now = `This picture counts as <b>${row.name ? esc(row.name) : 'ignored'}</b>: ${esc(whoNamed(p))}.`;
+      options = p.doubt ? [p.doubt.name] : [];
+      fixTarget = { type: 'renameItem', id: p.id };
+      $('fix-remove').hidden = !(known.canUpload || p.onlyHere || x === 'mine');
+    } else if (where === 'inv') {
       const c = invCells.get(Number(x)) || (state.doubts || []).find((d) => d.id === id);
       if (!c) return;
       pic = `<img src="${esc(c.image)}" alt="">`;
@@ -217,6 +227,7 @@
   const sendFix = (name) => { if (fixTarget && name) act({ ...fixTarget, name }); fixTarget = null; $('fix').close(); };
   $('fix-form').addEventListener('submit', (e) => { e.preventDefault(); const name = $('fix-name').value.trim(); if (name) sendFix(name); });
   $('fix-cancel').addEventListener('click', () => { fixTarget = null; $('fix').close(); });
+  $('fix-remove').addEventListener('click', () => { if (fixTarget) act({ type: 'forgetItem', id: fixTarget.id }); fixTarget = null; $('fix').close(); });
   $('fix-options').addEventListener('click', (e) => { const b = e.target.closest('[data-fix-name]'); if (b) sendFix(b.dataset.fixName); });
 
   // ---- current map ------------------------------------------------------------
@@ -313,48 +324,65 @@
     renderKnown();
   }
 
-  // Every named picture beside the item it counts as, so a wrong name can be seen and fixed.
-  let known = null, knownRev = null, renaming = null;
+  // The item database: every item the app can recognise, and beside each the pictures of it
+  // as seen in game with who named them. One list, whether a picture is kept on this PC, in the
+  // shared database, or both. A picture is clicked to rename or remove it.
+  let known = null, knownRev = null, dbFilter = 'seen', dbLimit = 80;
+  const dbPics = new Map(); // picture id -> { row, picture }, for the dialog
+  function whoNamed(p) {
+    const here = p.onlyHere ? ', only on this PC' : '';
+    if (p.over) return `named ${p.by ? `by ${p.by}` : 'by someone'}; not used here, you named this picture ${p.over}`;
+    if (p.auto) return `learned by the app${p.by ? ` (${p.by})` : ''}${here}`;
+    return `named by ${p.by || (p.onlyHere ? 'you' : 'someone')}${here}`;
+  }
   function renderKnown() {
     if (state.itemsRev !== knownRev && api.itemsList) {
       knownRev = state.itemsRev;
-      api.itemsList().then((d) => { known = d; renaming = null; renderKnown(); });
+      api.itemsList().then((d) => { known = d; renderKnown(); });
     }
     if (!known) return;
+    const rows = known.rows;
+    const hasDoubt = (r) => r.pictures.some((p) => p.doubt && !p.over);
+    const sets = {
+      seen: rows.filter((r) => r.pictures.length),
+      people: rows.filter((r) => r.pictures.some((p) => !p.auto)),
+      check: rows.filter(hasDoubt),
+      all: rows,
+    };
+    if (dbFilter === 'check' && !sets.check.length) dbFilter = 'seen';
+    const labels = [['seen', 'Seen in game'], ['people', 'Named by people'], ['check', 'To check'], ['all', 'Every item']];
+    $('db-filters').innerHTML = labels.filter(([id]) => id !== 'check' || sets.check.length)
+      .map(([id, label]) => `<button type="button" role="tab" data-db-filter="${id}" aria-selected="${id === dbFilter}"${id === 'check' ? ' class="check"' : ''}>${label} <span>${sets[id].length}</span></button>`).join('');
+    $('db-title').textContent = `Item database: ${rows.length} items`;
+    $('db-hint').textContent = `Every item the app can recognise. An item is known by its official picture, and better still by a picture of how it looks in your game; those are shown on the right with who named them. Click a picture to rename or remove it. ${known.canUpload ? `What you name is added for everyone, signed ${known.me}.` : 'Without an upload token (Settings), what you name stays on this PC.'}`;
+
     const q = $('learned-filter').value.trim().toLowerCase();
-    // Doubtful ones first, then by name.
-    const order = (list) => list.filter((r) => !q || (r.name || 'ignored').toLowerCase().includes(q))
-      .sort((a, b) => (b.doubt ? 1 : 0) - (a.doubt ? 1 : 0) || (a.name || '').localeCompare(b.name || ''));
-    const icon = (src) => (src ? `<img class="official" src="${esc(src)}" alt="">` : '<span class="official none"></span>');
-    const row = (r, mine) => {
-      const seen = `<img class="seen${r.sharp ? '' : ' blur'}" src="${esc(r.seen)}" alt="" title="${r.sharp ? 'As it looked in your inventory' : 'As it looked in the inventory. Only a blur of this picture was kept'}">`;
-      if (renaming === r.id) {
-        return `<li>${seen}<form class="inline-form" data-rename-form="${esc(r.id)}" autocomplete="off">
-          <input list="price-names" value="${esc(r.name)}" aria-label="Item name"><button type="submit">Save</button><button type="button" class="link" data-rename="">Cancel</button></form></li>`;
-      }
-      const name = r.name ? `${icon(r.icon)}<span class="nm">${esc(r.name)}</span>${r.priced ? '' : '<small>no price known</small>'}` : '<span class="official none"></span><span class="nm dim">Ignored: never counted</span>';
-      const doubt = r.doubt ? `<p class="doubt">Looks more like ${icon(r.doubt.icon)}<b>${esc(r.doubt.name)}</b>
-        <button type="button" data-act="renameItem" data-id="${esc(r.id)}" data-name="${esc(r.doubt.name)}">Rename to ${esc(r.doubt.name)}</button></p>` : '';
-      const yours = r.yours ? `<small>on this PC you named it ${esc(r.yours)}</small>` : (r.auto ? '<small title="Recognised by its downloaded picture, then saved as it really looks in your game so later reads are exact">learned by the app</small>' : '');
-      return `<li class="${r.doubt ? 'doubtful' : ''}">${seen}<div class="as"><p>${name}${yours}</p>${doubt}</div>
-        <span class="acts"><button type="button" class="link" data-rename="${esc(r.id)}">Rename</button>${mine ? `<button type="button" class="link" data-act="forgetItem" data-id="${esc(r.id)}" title="The app then asks about this picture again">Forget</button>` : ''}</span></li>`;
-    };
-    const fill = (box, list, mine, empty) => {
-      const html = list.length ? list.map((r) => row(r, mine)).join('') : `<li class="empty">${empty}</li>`;
-      const typing = box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
-      if (box.dataset.html !== html && !(typing && box.dataset.renaming === String(renaming))) { box.dataset.html = html; box.dataset.renaming = String(renaming); box.innerHTML = html; const f = box.querySelector('[data-rename-form] input'); if (f) { f.focus(); f.select(); } }
-    };
-    const doubts = known.mine.filter((r) => r.doubt).length;
-    $('learned-title').textContent = known.mine.length ? `Items known on this PC: ${known.mine.length}${doubts ? `, ${doubts} to check` : ''}` : 'Items known on this PC';
-    $('learned-filter').hidden = known.mine.length + known.shared.length < 8;
-    fill($('learned'), order(known.mine), true, q ? 'No named item matches that.' : 'Nothing yet. Items you name, here or with the check key, are listed here.');
-    const sd = known.shared.filter((r) => r.doubt && !r.yours).length;
-    $('shared-title').textContent = `Shared by everyone: ${known.shared.length}${sd ? `, ${sd} to check` : ''}`;
-    $('shared-hint').textContent = known.canUpload
-      ? 'Pictures named by players and downloaded by everyone. Renaming one corrects it for everyone.'
-      : 'Pictures named by players and downloaded by everyone. Renaming one corrects it on this PC; with a GitHub token in Settings it is corrected for everyone.';
-    fill($('shared-items'), order(known.shared), false, q ? 'No shared item matches that.' : 'The shared list is empty or could not be downloaded.');
+    const list = sets[dbFilter].filter((r) => !q || (r.name || 'ignored').toLowerCase().includes(q) || r.pictures.some((p) => (p.by || '').toLowerCase().includes(q)))
+      .sort((x, y) => (hasDoubt(y) ? 1 : 0) - (hasDoubt(x) ? 1 : 0) || (y.pictures.length ? 1 : 0) - (x.pictures.length ? 1 : 0) || (x.name || '').localeCompare(y.name || ''));
+    dbPics.clear();
+    const icon = (src, cls = 'official') => (src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy">` : `<span class="${cls} none"></span>`);
+    const html = list.slice(0, dbLimit).map((r) => {
+      const pics = r.pictures.map((p) => {
+        dbPics.set(p.id, { row: r, p });
+        const doubt = p.doubt && !p.over ? `<span class="doubt">looks more like ${icon(p.doubt.icon, 'mini')}<b>${esc(p.doubt.name)}</b>
+          <button type="button" data-act="renameItem" data-id="${esc(p.id)}" data-name="${esc(p.doubt.name)}">Rename</button></span>` : '';
+        return `<span class="pic${p.over ? ' over' : ''}"><button type="button" class="seen${p.sharp ? '' : ' blur'}" data-fix="db:${esc(p.id)}" title="${p.sharp ? 'As it looks in game' : 'As it looks in game (only a blur of this picture was kept)'}. Click to rename or remove."><img src="${esc(p.seen)}" alt=""></button>
+          <small>${esc(whoNamed(p))}</small>${doubt}</span>`;
+      }).join('');
+      const meta = [r.category, r.chaos === null ? 'no price known' : (r.chaos ? fmtValue(r.chaos) : '')].filter(Boolean).join(', ');
+      const none = r.official ? 'official picture only, not yet seen in game' : 'official picture not downloaded yet';
+      return `<li class="${hasDoubt(r) ? 'doubtful' : ''}">${icon(r.icon)}
+        <div class="what"><span class="nm">${r.name ? esc(r.name) : 'Ignored: never counted'}</span><small>${esc(meta)}</small></div>
+        <div class="pics">${pics || `<small class="none">${none}</small>`}</div></li>`;
+    }).join('') || `<li class="empty">${q ? 'No item matches that.' : (dbFilter === 'seen' ? 'No item has been seen in game yet. Open your inventory in game and the list fills by itself.' : 'Nothing here yet.')}</li>`;
+    const box = $('db-rows');
+    if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
+    const more = $('db-more');
+    more.hidden = list.length <= dbLimit;
+    more.textContent = `Show more (${list.length - dbLimit} left)`;
   }
+  $('db-filters').addEventListener('click', (e) => { const b = e.target.closest('[data-db-filter]'); if (b) { dbFilter = b.dataset.dbFilter; dbLimit = 80; renderKnown(); } });
+  $('db-more').addEventListener('click', () => { dbLimit += 200; renderKnown(); });
 
   // ---- session ------------------------------------------------------------------
   const totalsHtml = (t, divine) => `
@@ -957,8 +985,6 @@
     if (tb) { act(tb.dataset.trade === 'dismiss' && e.ctrlKey ? { type: 'tradeDismissAll' } : { type: 'trade', id: tb.dataset.id, do: tb.dataset.trade }); return; }
     const fx = e.target.closest('[data-fix]');
     if (fx) { e.stopPropagation(); openFix(fx.dataset.fix, fx.dataset.run); return; }
-    const rn = e.target.closest('[data-rename]');
-    if (rn) { renaming = rn.dataset.rename || null; document.activeElement.blur(); renderKnown(); return; }
     const b = e.target.closest('[data-act]');
     if (b) {
       const d = b.dataset;
@@ -1052,13 +1078,6 @@
   document.addEventListener('input', (e) => { if (e.target.getAttribute('list') === 'price-names') suggest(e.target.value); });
 
   document.addEventListener('submit', (e) => {
-    const rf = e.target.closest('[data-rename-form]');
-    if (rf) {
-      e.preventDefault();
-      const name = rf.querySelector('input').value.trim();
-      if (name) { act({ type: 'renameItem', id: rf.dataset.renameForm, name }); renaming = null; }
-      return;
-    }
     const f = e.target.closest('[data-learn-form]');
     if (!f) return;
     e.preventDefault();
@@ -1237,10 +1256,11 @@
     el.intervalSec.value = (c.inventory.intervalMs || 1000) / 1000;
     $('rules').innerHTML = c.mapRules.map((r) => `<label><input type="checkbox" data-rule="${esc(r.id)}" ${r.enabled ? 'checked' : ''}> ${esc(r.label)}</label>`).join('');
     const sh = state.status.shared;
-    $('shared-line').textContent = `${sh.count} shared items loaded.`
+    $('shared-line').textContent = `${sh.count} pictures in the shared database.`
       + (sh.canUpload ? ` Uploading is on${sh.uploaded ? `: ${sh.uploaded} sent this session` : ''}${sh.waiting ? `, ${sh.waiting} waiting` : ''}.` : ' Uploading is off (no token saved).')
       + (sh.error ? ` Problem: ${sh.error}` : '');
     el.token.value = ''; el.clearToken.checked = false;
+    el.shareName.value = c.shareName || ''; el.shareName.placeholder = sh.by || '';
     dlg.showModal();
   });
   $('btn-browse').addEventListener('click', async () => { await act({ type: 'browseLog' }); form.elements.logPath.value = state.config.logPath || ''; });
@@ -1253,6 +1273,7 @@
       ...tokenPatch,
       league: el.league.value || c.league,
       characterName: el.characterName.value.trim(),
+      shareName: el.shareName.value.trim(),
       checkToast: el.checkToast.checked,
       logPath: el.logPath.value.trim(),
       hotkeys: { clipboard: el.hkClip.value.trim() || 'F8', snapshot: el.hkSnap.value.trim(), priceCheck: el.hkPrice.value.trim() },

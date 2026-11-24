@@ -1,6 +1,6 @@
 'use strict';
 // Reads the whole inventory from one captured frame.
-const { COLS, ROWS, gridRect, extractCell, isEmptyCell, isInventoryOpen } = require('./grid');
+const { COLS, ROWS, gridRect, extractCell, isEmptyCell, isInventoryOpen, multiSlotCells } = require('./grid');
 const { readStack } = require('./digits');
 const { fingerprint, similarity, sharpShifts } = require('./icons');
 const { readMapTier } = require('./maps');
@@ -46,12 +46,22 @@ class InventoryReader {
     const empties = [];
     let recognised = 0;
     const add = (k) => { const m = this.memory[k]; counts.set(m.name, (counts.get(m.name) || 0) + m.qty); recognised++; };
+    // First the whole grid is cut out, so pieces of items that take several slots (a bow, a
+    // body armour) can be told from items of one slot. A piece is never matched to a picture:
+    // a corner of a bow on its backdrop can look like a thin one-slot item.
+    const rgbs = [], empty = [], stacks = [];
+    for (let k = 0; k < COLS * ROWS; k++) {
+      rgbs.push(extractCell(frame, rect, Math.floor(k / COLS), k % COLS));
+      empty.push(isEmptyCell(rgbs[k]));
+      stacks.push(empty[k] ? 0 : readStack(rgbs[k]));
+    }
+    const pieces = multiSlotCells(rgbs.map((rgb, k) => (empty[k] || stacks[k] ? null : rgb)));
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const k = r * COLS + c;
         const unsure = !!cursor && (r < cursor.row || (r === cursor.row && c === cursor.col));
-        const rgb = extractCell(frame, rect, r, c);
-        if (isEmptyCell(rgb)) {
+        const rgb = rgbs[k];
+        if (empty[k]) {
           if (unsure && this.memory[k]) {
             cells.push({ cell: k, rgb, print: this.prints[k], status: 'remembered', name: this.memory[k].name, qty: this.memory[k].qty, score: null, source: null });
             add(k);
@@ -71,7 +81,7 @@ class InventoryReader {
         const pin = this.pins[k];
         if (pin) {
           if (unsure || similarity(print, pin.print) > 0.88) {
-            const stack = unsure ? 0 : readStack(rgb);
+            const stack = unsure ? 0 : stacks[k];
             this.memory[k] = { name: pin.name, qty: stack || pin.qty };
             info.status = 'item'; info.source = 'pinned'; info.name = pin.name; info.qty = this.memory[k].qty;
             add(k);
@@ -81,9 +91,15 @@ class InventoryReader {
           this.memory[k] = null;
         }
 
+        if (pieces.has(k) && !unsure) {
+          this.memory[k] = null;
+          info.part = true; // status stays 'skipped'
+          continue;
+        }
+
         let hit = this.index.match(print, () => sharpShifts(rgb));
         if (hit && hit.ignored) { this.memory[k] = null; info.status = 'ignored'; continue; }
-        const stack = readStack(rgb);
+        const stack = stacks[k];
         info.qty = stack; info.stack = stack;
         if (hit) { info.how = hit.sharp ? 'sharp' : (hit.doubt ? 'doubt' : null); info.clear = !!hit.clear || !!hit.sharp; }
         if (!hit || hit.sharp || hit.doubt || hit.score < 0.9) info.near = this.index.nearest(print, 3);

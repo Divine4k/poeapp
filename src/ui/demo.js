@@ -118,11 +118,19 @@
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true }), 0), checkSize: () => {},
     getState: async () => state, onState: () => {}, setConfig: async () => true, action: async () => true,
     itemsList: async () => {
-      const seen = state.unknown[0].image, ic = (n) => (state.summary.runs.flatMap((r) => r.items).find((i) => i.name === n) || {}).icon || null;
-      const mk = (id, name, extra = {}) => ({ id, name, seen, sharp: id.endsWith('0'), icon: ic(name), priced: true, doubt: null, ...extra });
-      return { canUpload: false,
-        mine: [mk('mine:0', 'Chaos Orb'), mk('mine:1', 'Eldritch Chaos Orb', { doubt: { name: 'Chaos Orb', icon: ic('Chaos Orb') } }), mk('mine:2', 'Ritual Thread'), mk('mine:3', '', { priced: false }), mk('mine:4', 'My League Thing', { priced: false })],
-        shared: [mk('shared:0', 'Immortal Astrolabe'), mk('shared:1', 'Lesser Eldritch Ember', { yours: 'Greater Eldritch Ember' })] };
+      const seen = state.unknown[0].image;
+      const pic = (id, extra = {}) => ({ id, seen, sharp: true, by: 'Divine', auto: false, onlyHere: false, over: null, doubt: null, ...extra });
+      const row = (name, category, chaos, pictures = [], official = true) => ({ name, icon: null, category, chaos, official, pictures });
+      return { me: 'Divine', canUpload: true, rows: [
+        row('Chaos Orb', 'Currency', 1, [pic('mine:0'), pic('shared:4', { by: 'Marek', sharp: false })]),
+        row('Eldritch Chaos Orb', 'Currency', 27, [pic('mine:1', { doubt: { name: 'Chaos Orb', icon: null } })]),
+        row('Ritual Thread', 'Thread', 3.2, [pic('mine:2', { auto: true })]),
+        row('Vaal Orb', 'Currency', 1.4, [pic('mine:5', { auto: true, onlyHere: true, by: '' })]),
+        row('Immortal Astrolabe', 'Fragment', 12, [pic('shared:0', { by: 'Marek', sharp: false })]),
+        row('Lesser Eldritch Ember', 'Currency', 0.4, [pic('shared:1', { by: 'Anna', sharp: false, over: 'Greater Eldritch Ember' })]),
+        row('', '', null, [pic('mine:3')], false),
+        row('Divine Orb', 'Currency', 212), row('Exalted Orb', 'Currency', 14), row('Orb of Fusing', 'Currency', 0.3), row('Stacked Deck', 'Currency', 2.1),
+      ] };
     },
     runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },

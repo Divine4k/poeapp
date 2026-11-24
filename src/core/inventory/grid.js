@@ -87,10 +87,63 @@ function isInventoryOpen(frame, rect = gridRect(frame.width, frame.height)) {
   return Math.sqrt(Math.max(0, sq / good - mean * mean)) < 14; // the lit line is the same shade all along
 }
 
+// Items that take several slots (weapons, body armour) are drawn across the lines between
+// their slots, while an item of one slot stays inside its own. So two neighbouring slots belong
+// to one item when the picture runs on across their shared edge: the outermost line of pixels
+// on both sides is busy (not plain backdrop) and the two lines look alike.
+// Measured on real captures: across a body armour the lines vary by 35 to 60 and agree 0.81 to
+// 0.98; between separate items the edge line varies by 3 or less.
+const EDGE_BUSY = 20, EDGE_ALIKE = 0.7, EDGE_DIFF = 30, EDGE_SLIDE = 3;
+function edgeLine(cell, side) {
+  const out = new Float32Array(CANON * 3);
+  for (let i = 0; i < CANON; i++) {
+    const x = side === 'r' ? CANON - 1 : side === 'l' ? 0 : i, y = side === 'b' ? CANON - 1 : side === 't' ? 0 : i;
+    const o = (y * CANON + x) * 3;
+    out[i * 3] = cell[o]; out[i * 3 + 1] = cell[o + 1]; out[i * 3 + 2] = cell[o + 2];
+  }
+  return out;
+}
+function sameItemAcross(a, sideA, b, sideB) {
+  const la = edgeLine(a, sideA), lb = edgeLine(b, sideB);
+  const grey = (l) => { const v = new Float32Array(CANON); for (let i = 0; i < CANON; i++) v[i] = (l[i * 3] + l[i * 3 + 1] + l[i * 3 + 2]) / 3; return v; };
+  const va = grey(la), vb = grey(lb);
+  const spread = (v) => { let m = 0; for (const x of v) m += x; m /= CANON; let q = 0; for (const x of v) q += (x - m) ** 2; return Math.sqrt(q / CANON); };
+  if (Math.min(spread(va), spread(vb)) < EDGE_BUSY) return false;
+  // Something thin that crosses the edge at a slant (a bow limb) sits a pixel or two further
+  // along on the other side, so the two lines may slide against each other a little.
+  for (let d = -EDGE_SLIDE; d <= EDGE_SLIDE; d++) {
+    let n = 0, ma = 0, mb = 0, diff = 0;
+    for (let i = Math.max(0, -d); i < Math.min(CANON, CANON - d); i++) {
+      n++; ma += va[i]; mb += vb[i + d];
+      diff += Math.abs(la[i * 3] - lb[(i + d) * 3]) + Math.abs(la[i * 3 + 1] - lb[(i + d) * 3 + 1]) + Math.abs(la[i * 3 + 2] - lb[(i + d) * 3 + 2]);
+    }
+    ma /= n; mb /= n;
+    let sa = 0, sb = 0, sab = 0;
+    for (let i = Math.max(0, -d); i < Math.min(CANON, CANON - d); i++) { sa += (va[i] - ma) ** 2; sb += (vb[i + d] - mb) ** 2; sab += (va[i] - ma) * (vb[i + d] - mb); }
+    if (sa > 0 && sb > 0 && sab / Math.sqrt(sa * sb) >= EDGE_ALIKE && diff / n / 3 <= EDGE_DIFF) return true;
+  }
+  return false;
+}
+// cells: the whole grid in reading order (Uint8Array per slot, or null for a slot to leave out,
+// such as an empty one or one with a stack number: stacks always take one slot).
+// Returns the set of slot numbers that are pieces of an item spanning several slots.
+function multiSlotCells(cells) {
+  const linked = new Set();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const k = r * COLS + c;
+      if (!cells[k]) continue;
+      if (c + 1 < COLS && cells[k + 1] && sameItemAcross(cells[k], 'r', cells[k + 1], 'l')) { linked.add(k); linked.add(k + 1); }
+      if (r + 1 < ROWS && cells[k + COLS] && sameItemAcross(cells[k], 'b', cells[k + COLS], 't')) { linked.add(k); linked.add(k + COLS); }
+    }
+  }
+  return linked;
+}
+
 function extractGrid(frame, rect = gridRect(frame.width, frame.height)) {
   const cells = [];
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) cells.push(extractCell(frame, rect, r, c));
   return cells;
 }
 
-module.exports = { CANON, COLS, ROWS, GEOMETRY, gridRect, extractCell, extractGrid, cellStats, isEmptyCell, isInventoryOpen };
+module.exports = { multiSlotCells, sameItemAcross, CANON, COLS, ROWS, GEOMETRY, gridRect, extractCell, extractGrid, cellStats, isEmptyCell, isInventoryOpen };

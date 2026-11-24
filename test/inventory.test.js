@@ -322,3 +322,62 @@ test('maps: a special map with its own picture is told apart from the plain tier
   assert.equal(readMapTier(at('2,5')), null);
   assert.equal(readMapTier(at('3,5')), null);
 });
+
+test('items that take several slots are found by their picture running across slot edges', () => {
+  const { multiSlotCells, isEmptyCell, COLS } = require('../src/core/inventory/grid');
+  const { readStack } = require('../src/core/inventory/digits');
+  const plain = (grid) => grid.map((rgb) => (isEmptyCell(rgb) || readStack(rgb) ? null : rgb));
+  // The map capture holds a body armour in columns 7 and 8, rows 1 to 3.
+  const armour = [0, 1, 2].flatMap((r) => [r * COLS + 6, r * COLS + 7]);
+  for (const name of ['inv_map', 'inv_hideout']) {
+    const found = [...multiSlotCells(plain(extractGrid(frames[name])))].sort((a, b) => a - b);
+    assert.deepEqual(found, armour, name);
+  }
+  // No item of one slot is taken for a piece: not the maps standing side by side, not anything else.
+  const tip = extractGrid(loadFrame('inv_tooltip'));
+  const pieces = multiSlotCells(plain(tip));
+  for (let r = 0; r < 5; r++) for (let c = 6; c < COLS; c++) assert.ok(!pieces.has(r * COLS + c), `slot ${r},${c}`);
+});
+
+test('a piece of a larger item is never read as an item of its own', () => {
+  const { fingerprint, IconIndex } = require('../src/core/inventory/icons');
+  const { InventoryReader } = require('../src/core/inventory/reader');
+  const { COLS } = require('../src/core/inventory/grid');
+  // Worst case: the app has "learned" every piece of the armour as an item.
+  const grid = extractGrid(frames.inv_map);
+  const index = new IconIndex();
+  const armour = [0, 1, 2].flatMap((r) => [r * COLS + 6, r * COLS + 7]);
+  for (const k of armour) index.addLearned(`Piece ${k}`, fingerprint(grid[k]));
+  const out = new InventoryReader(index).read(frames.inv_map);
+  const by = new Map(out.cells.map((c) => [c.cell, c]));
+  for (const k of armour) { assert.equal(by.get(k).status, 'skipped'); assert.equal(by.get(k).part, true); }
+  assert.ok(![...out.counts.keys()].some((n) => n.startsWith('Piece')));
+});
+
+test('a thin limb crossing a slot edge at a slant still joins the two slots', () => {
+  const { sameItemAcross, CANON } = require('../src/core/inventory/grid');
+  // Two slots side by side on the blue backdrop, with a bright line of the given thickness
+  // drawn through both: y = y0 + slope * x over the 104 pixels of the pair.
+  const pair = (slope, thick, y0) => {
+    const mk = () => { const c = new Uint8Array(CANON * CANON * 3); for (let p = 0; p < CANON * CANON; p++) { c[p * 3] = 4; c[p * 3 + 1] = 4; c[p * 3 + 2] = 29; } return c; };
+    const a = mk(), b = mk();
+    for (let x = 0; x < CANON * 2; x++) {
+      for (let t = 0; t < thick; t++) {
+        const y = Math.round(y0 + slope * x) + t;
+        if (y < 0 || y >= CANON) continue;
+        const cell = x < CANON ? a : b, o = (y * CANON + (x % CANON)) * 3;
+        cell[o] = 210; cell[o + 1] = 200; cell[o + 2] = 120;
+      }
+    }
+    return [a, b];
+  };
+  for (const [slope, thick] of [[0, 5], [0.5, 4], [1, 4], [2, 5], [-1.5, 3]]) {
+    const [a, b] = pair(slope, thick, slope >= 0 ? 26 - slope * 52 : 26 - slope * 52);
+    assert.equal(sameItemAcross(a, 'r', b, 'l'), true, `slope ${slope}`);
+  }
+  // Plain backdrop on both sides, or a line that stops short of the edge: two separate slots.
+  const [p, q] = pair(0, 0, 0);
+  assert.equal(sameItemAcross(p, 'r', q, 'l'), false);
+  const [u, v] = pair(1, 4, -26); // crosses the first slot only at its far side... and never reaches the shared edge in view
+  assert.equal(sameItemAcross(u, 'b', v, 't'), false);
+});

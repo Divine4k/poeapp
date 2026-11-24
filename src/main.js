@@ -1,6 +1,7 @@
 'use strict';
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const zlib = require('zlib');
 const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage, safeStorage } = require('electron');
 
@@ -64,6 +65,7 @@ const DEFAULT_CONFIG = {
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
   navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
   shareToken: '', // GitHub token for uploading named items, stored encrypted
+  shareName: '',  // the name your additions to the item database are signed with (empty: this PC's user name)
   // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
   // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat
   // line per press); hotkeys.dismiss removes the oldest offer.
@@ -190,7 +192,7 @@ function buildState() {
   status.inventory.art.known = index.art.length;
   status.inventory.awaitingArrival = ledger.pendingArrival && !!session.current;
   status.inventory.noBaseline = !ledger.baseline;
-  if (shared) status.shared = { ...shared.status, canUpload: !!shared.token, waiting: shared.pending.length };
+  if (shared) status.shared = { ...shared.status, canUpload: !!shared.token, waiting: shared.pending.length, by: shareName() };
   return {
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
     inventoryRev: lastInventory.rev,
@@ -451,6 +453,7 @@ function teach(typed, print, image = null) {
     }
   }
   if (shared) {
+    shared.by = shareName();
     const sync = async () => {
       if (shared.token) await shared.correct(print, name);
       shared.queue(name, print);
@@ -513,20 +516,44 @@ function looksLikeAnother(name, print) {
   return { name: a.best.name, icon: (other && other.icon) || null };
 }
 
-// Everything the Items page lists: each named picture, the item it counts as, and a doubt.
-function itemsList() {
-  const row = (id, name, print, image) => {
-    const entry = name ? prices.get(name) : null;
-    return { id, name, seen: image || printPicture(print), sharp: !!image, icon: (entry && entry.icon) || null, priced: !!entry, doubt: looksLikeAnother(name, print) };
-  };
-  const mine = [];
-  learned.forEach((l, i) => { try { mine.push({ ...row(`mine:${i}`, l.name, decodePrint(l.print), l.image), auto: !!l.auto }); } catch (_) { /* skip a broken entry */ } });
-  const own = index.learned;
-  const everyone = index.shared.map((e, i) => {
-    const yours = own.find((l) => similarity(l.print, e.print) >= index.learnedThreshold);
-    return { ...row(`shared:${i}`, e.name, e.print, null), yours: yours && yours.name !== e.name ? (yours.name || 'ignored') : null };
+// The name this PC's additions to the item database are signed with.
+function shareName() {
+  let user = '';
+  try { user = os.userInfo().username; } catch (_) { /* no user name on this system */ }
+  return (String(config.shareName || '').trim() || user || 'someone').slice(0, 40);
+}
+
+// The item database as the Items page shows it: every item the app can recognise, and under
+// each the pictures of it as seen in game with who named them. Pictures kept on this PC and
+// those in the shared database are one list; the same picture in both shows once.
+function itemDatabase() {
+  const pics = [];
+  learned.forEach((l, i) => {
+    try { pics.push({ id: `mine:${i}`, name: l.name, print: decodePrint(l.print), image: l.image || null, auto: !!l.auto, local: true, shared: false, by: '', over: null }); } catch (_) { /* skip a broken entry */ }
   });
-  return { mine, shared: everyone, canUpload: !!(shared && shared.token) };
+  index.shared.forEach((e, i) => {
+    const twin = pics.find((p) => p.local && similarity(p.print, e.print) > 0.95);
+    if (twin && twin.name === e.name) { twin.shared = true; twin.by = e.by || ''; twin.auto = !!e.auto; return; }
+    // Your own name for the same picture differs: yours is the one used on this PC.
+    pics.push({ id: `shared:${i}`, name: e.name, print: e.print, image: null, auto: !!e.auto, local: false, shared: true, by: e.by || '', over: twin ? (twin.name || 'ignored') : null });
+  });
+  const downloaded = new Set(index.art.map((e) => e.name));
+  const rows = new Map();
+  const rowOf = (name) => {
+    if (!rows.has(name)) {
+      const entry = name ? prices.get(name) : null;
+      rows.set(name, { name, icon: (entry && entry.icon) || null, category: (entry && entry.category) || '', chaos: entry ? entry.chaos : null, official: downloaded.has(name), pictures: [] });
+    }
+    return rows.get(name);
+  };
+  for (const e of prices.iconEntries()) rowOf(e.name);
+  for (const p of pics) {
+    rowOf(p.name).pictures.push({
+      id: p.id, seen: p.image || printPicture(p.print), sharp: !!p.image, by: p.by, auto: p.auto,
+      onlyHere: p.local && !p.shared, over: p.over, doubt: looksLikeAnother(p.name, p.print),
+    });
+  }
+  return { me: shareName(), canUpload: !!(shared && shared.token), rows: [...rows.values()] };
 }
 
 // The closest names as kept with a slot: [{ name, score (percent), source }].
@@ -544,7 +571,7 @@ function autoLearn(cells) {
     learned.push({ name: c.name, print: encodePrint(c.print), image: thumbnail(c.rgb), auto: true });
     index.addLearned(c.name, c.print, { sharp: sharpPrint(c.rgb), auto: true });
     // Offered to the shared list too, for items it has no picture of yet (needs the token).
-    if (shared && shared.token) shared.queue(c.name, c.print, { auto: true });
+    if (shared && shared.token) { shared.by = shareName(); shared.queue(c.name, c.print, { auto: true }); }
     added++;
   }
   if (added) {
@@ -781,11 +808,29 @@ function applyName(k, item, name, entry, print) {
   say(`Counting ${entry.name}${item.stackSize > 1 ? ` ×${item.stackSize}` : ''} in that slot: ${Math.round(entry.chaos * (item.stackSize || 1) * 10) / 10}c. It shows up in the loot at the next inventory read.`);
 }
 
+// With an upload token, the pictures kept on this PC that the shared database lacks are sent
+// to it: one database for everyone. The database's own limits decide what is taken.
+async function offerLocalItems() {
+  if (!shared || !shared.token || shared.status.error) return;
+  shared.by = shareName();
+  for (const l of learned) {
+    if (!l.name) continue;
+    try { shared.queue(l.name, decodePrint(l.print), { auto: !!l.auto }); } catch (_) { /* skip a broken entry */ }
+  }
+  // Only what the database does not hold yet is worth a request.
+  shared.pending = shared.pending.filter((p) => !shared.items.some((e) => similarity(e.print, p.print) > 0.97));
+  if (!shared.pending.length) return;
+  await shared.flush();
+  index.setShared(shared.items); itemsRev++; push();
+}
+
 async function loadShared() {
   if (!shared) return;
   await shared.load();
   index.setShared(shared.items);
+  itemsRev++;
   push();
+  await offerLocalItems();
 }
 
 // Writes what the app saw and what it compared against to a file on the Desktop, for tuning.
@@ -1303,7 +1348,10 @@ function applyConfig(patch) {
   if (typeof patch.token === 'string') {
     const token = patch.token.trim();
     patch.shareToken = token && safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(token).toString('base64') : '';
-    if (shared) { shared.token = token && patch.shareToken ? token : ''; shared.status.error = token && !patch.shareToken ? 'This PC cannot store the token safely, so it was not saved.' : null; }
+    if (shared) {
+      shared.token = token && patch.shareToken ? token : ''; shared.status.error = token && !patch.shareToken ? 'This PC cannot store the token safely, so it was not saved.' : null;
+      if (shared.token) setTimeout(() => offerLocalItems().catch((e) => console.error('offer failed', e.message)), 500);
+    }
     delete patch.token;
   }
   config = {
@@ -1406,27 +1454,39 @@ const actions = {
     applyConfig({ customPrices: next });
   },
   uploadShared: async () => { if (shared) { await shared.flush(); index.setShared(shared.items); itemsRev++; } },
-  // One named picture gets another name. id: "mine:3" (your own list) or "shared:5" (the list
-  // everyone downloads; your name is then kept on this PC and, with a token, sent to the list).
-  renameItem: async (a) => {
+  // A picture in the item database gets another name, or goes. id: "mine:3" for one kept on
+  // this PC, "shared:5" for one that is only in the shared database.
+  renameItem: (a) => {
     const [list, n] = String(a.id || '').split(':');
     const typed = String(a.name || '').trim();
     if (!typed) { say('Type the item name first.', true); return; }
-    const entry = prices.get(typed);
-    const name = entry ? entry.name : typed;
+    let print = null, image = null;
+    try {
+      if (list === 'mine' && learned[n]) { print = decodePrint(learned[n].print); image = learned[n].image || null; }
+      else if (list === 'shared' && index.shared[n]) print = index.shared[n].print;
+    } catch (_) { /* a broken entry */ }
+    if (!print) { say('That picture is no longer in the database.', true); return; }
+    const t = teach(typed, print, image);
+    const fixed = recheckMaps(true);
+    const also = fixed.slots ? ` Corrected ${fixed.slots} ${fixed.slots === 1 ? 'slot' : 'slots'} in ${fixed.maps} ${fixed.maps === 1 ? 'map' : 'maps'} of this session.` : '';
+    const where = shared && shared.token ? ', here and for everyone' : ' on this PC';
+    say(t.entry ? `That picture now counts as ${t.name}${where}.${also}` : `Saved as "${t.name}", but no price is known under that name, so it counts as 0c.`, !t.entry);
+  },
+  forgetItem: async (a) => {
+    const [list, n] = String(a.id || '').split(':');
     let print = null;
-    if (list === 'mine' && learned[n]) {
-      print = decodePrint(learned[n].print);
-      learned[n].name = name;
-      delete learned[n].auto;
-    } else if (list === 'shared' && index.shared[n]) {
-      print = index.shared[n].print;
-      learned.push({ name, print: encodePrint(print) });
-    }
-    if (!print) { say('That item is no longer in the list.', true); return; }
-    relearn();
-    say(entry ? `That picture now counts as ${name}.` : `Saved as "${name}", but no price is known under that name, so it counts as 0c.`, !entry);
-    if (shared && shared.token && await shared.correct(print, name)) { index.setShared(shared.items); itemsRev++; say(`That picture now counts as ${name}, here and in the shared list for everyone.`); }
+    try {
+      if (list === 'mine' && learned[n]) { print = decodePrint(learned[n].print); learned.splice(Number(n), 1); relearn(); }
+      else if (list === 'shared' && index.shared[n]) print = index.shared[n].print;
+    } catch (_) { /* a broken entry */ }
+    if (!print) return;
+    if (shared && shared.token) {
+      const gone = await shared.remove(print);
+      index.setShared(shared.items); itemsRev++;
+      say(gone ? 'That picture is removed from the database for everyone.' : 'That picture is removed from this PC.');
+    } else if (list === 'shared') {
+      say('Removing a picture for everyone needs an upload token (Settings). You can still rename it, which applies on this PC.', true);
+    } else say('That picture is removed from this PC.');
   },
   // A slot was read wrong, or not at all, and you say what it is. id: "inv:<slot>" for the
   // inventory as last read, "snap:<trip>:<slot>" with runId for a map's kept picture.
@@ -1458,12 +1518,6 @@ const actions = {
     }
     const also = fixed.slots ? ` Corrected ${fixed.slots} ${fixed.slots === 1 ? 'slot' : 'slots'} in ${fixed.maps} ${fixed.maps === 1 ? 'map' : 'maps'} of this session.` : '';
     say(`Fixed: that picture counts as ${t.name} from now on.${also}${t.entry ? '' : ' No price is known under that name, so it counts as 0c.'}`, !t.entry);
-  },
-  forgetItem: (a) => {
-    const [list, n] = String(a.id || '').split(':');
-    if (list !== 'mine' || !learned[n]) return;
-    learned.splice(Number(n), 1);
-    relearn();
   },
   forget: (a) => {
     const name = a.name === '(ignored items)' ? '' : a.name;
@@ -1535,7 +1589,7 @@ function setupIpc() {
       })),
     };
   });
-  ipcMain.handle('items-list', () => itemsList());
+  ipcMain.handle('items-list', () => itemDatabase());
   ipcMain.handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
   ipcMain.handle('price-categories', () => {
     const counts = prices.categoryCounts();
@@ -1625,6 +1679,7 @@ app.whenReady().then(() => {
   }, 5000);
 
   shared = new SharedItems({ fetchImpl: webFetch, token: readToken() });
+  shared.by = shareName();
   loadShared();
   setInterval(loadShared, SHARED_REFRESH_MS);
 

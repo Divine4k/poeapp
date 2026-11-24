@@ -94,12 +94,11 @@
       <ul class="unknown" id="unknown"></ul>
     </section>
     <section>
-      <div class="list-head"><h2 id="learned-title">Items known on this PC</h2><input id="learned-filter" type="search" placeholder="Filter" aria-label="Filter named items"></div>
-      <p class="hint small">On the left, the picture as it looked in your inventory. Next to it, the item the app counts it as. If the two are not the same item, rename it. Items you named and items the app learned by itself from clear reads are both listed. Pictures saved before version 0.16 were only kept as a blur.</p>
-      <ul class="known" id="learned"></ul>
-      <div class="list-head"><h2 id="shared-title">Shared by everyone</h2></div>
-      <p class="hint small" id="shared-hint">Pictures other players named. Renaming one changes it on this PC.</p>
-      <ul class="known" id="shared-items"></ul>
+      <div class="list-head"><h2 id="db-title">Item database</h2><input id="learned-filter" type="search" placeholder="Search items" aria-label="Search the item database"></div>
+      <p class="hint small" id="db-hint"></p>
+      <div class="db-filters" id="db-filters" role="tablist" aria-label="Which items to show"></div>
+      <ul class="db" id="db-rows"></ul>
+      <button type="button" id="db-more" hidden>Show more</button>
     </section>
   </div>
 </main>
@@ -260,10 +259,11 @@
     </fieldset>
 
     <fieldset>
-      <legend>Shared item list</legend>
+      <legend>Item database</legend>
       <p class="fine" id="shared-line"></p>
-      <label>GitHub token, for uploading the items you name and sending reports (optional) <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
-      <p class="fine">Everyone gets the shared list without a token. Uploading needs a fine-grained GitHub token limited to the poeapp repository with "Contents: read and write". It is stored encrypted on this PC and only ever sent to GitHub. Reports go to the same public repository; they hold the inventory slots as the app saw them, nothing else from your screen.</p>
+      <label>Your name in the item database, shown next to the items you name <input name="shareName" maxlength="40"></label>
+      <label>GitHub token, for adding to the database and sending reports (optional) <input name="token" type="password" autocomplete="off" placeholder="Leave empty to keep the current one"></label>
+      <p class="fine">Everyone gets the database without a token. Adding to it needs a fine-grained GitHub token limited to the poeappitemdata repository with "Contents: read and write". That repository holds only item data, so the token cannot change the app. It is stored encrypted on this PC and only ever sent to GitHub. Reports go to the same public repository; they hold the inventory slots as the app saw them, nothing else from your screen.</p>
       <label class="check"><input type="checkbox" name="clearToken"> Remove the saved token</label>
     </fieldset>
 
@@ -307,7 +307,7 @@
     <label class="wide">Or type its name <input id="fix-name" list="price-names" placeholder="Item name"></label>
     <p class="fine">The app remembers the picture under the name you give. Maps of this session where it was read wrong are corrected too.</p>
     <div class="dialog-actions">
-      <span></span>
+      <button type="button" class="link" id="fix-remove" hidden>Remove this picture</button>
       <span class="row"><button type="button" id="fix-cancel">Cancel</button><button type="submit" class="primary" value="save">Save</button></span>
     </div>
   </form>
