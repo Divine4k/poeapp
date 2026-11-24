@@ -609,7 +609,12 @@ async function readInventory() {
     const frame = await captureFrame(config.inventory.displayId);
     const rect = gridRect(frame.width, frame.height);
     status.inventory.error = null;
+    const wasOpen = status.inventory.open;
     status.inventory.open = isInventoryOpen(frame, rect);
+    // The inventory was seen open and now closed some other way (Space, a click on its cross):
+    // the window goes too. Only on that change, so a screen the reader cannot make out never
+    // closes it.
+    if (wasOpen && !status.inventory.open && checkPanel && checkPanel.visible) closeCheckPanel();
     if (!status.inventory.open) return;
     // With the mouse over the inventory a tooltip covers some slots; the reader keeps what it
     // knew about those and reads the rest.
@@ -691,6 +696,18 @@ function syncKeyHook() {
     if (code === undefined) status.inventory.keyHook = 'badkey';
     else lib.uIOhook.on('keydown', (e) => { if (e.keycode === code) setTimeout(readInventory, 200); });
   }
+  // The price check window over the game goes with the game's own panels: Escape, or the
+  // inventory key (the item was checked in the open inventory, so the key closes it). The key
+  // still reaches the game as well; the app only listens.
+  const invRaw = String(config.inventory.key || 'Tab').trim();
+  const invCode = lib.UiohookKey[KEY_ALIASES[invRaw.toLowerCase()] || (invRaw.length === 1 ? invRaw.toUpperCase() : invRaw)];
+  lib.uIOhook.on('keydown', (e) => {
+    if (!checkPanel || !checkPanel.visible) return;
+    if (e.keycode !== lib.UiohookKey.Escape && (invCode === undefined || e.keycode !== invCode)) return;
+    if (trouble) trouble.event('checkPanel', { closed: e.keycode === lib.UiohookKey.Escape ? 'Escape' : 'inventory key' });
+    closeCheckPanel();
+    push();
+  });
   // Back from a map, each of your clicks (moving loot to the stash) is followed by one read, so
   // the app sees the inventory as you leave it. A quick run of clicks gets one read at its end.
   if (config.inventory.onClick) {
@@ -1195,6 +1212,7 @@ async function checkHovered({ count = true } = {}) {
       // With Alt the game copies its fuller text, which also names each modifier's tier.
       if (trouble) trouble.ownKeys(300);
       await copyItem(hook);
+      if (trouble) trouble.ownKeys(20); // the last released keys arrive a moment later; yours after that are yours
       let text = '';
       for (let i = 0; i < 16 && !text; i++) { await sleep(25); text = clipboard.readText(); }
       if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }
@@ -1217,6 +1235,8 @@ async function checkHovered({ count = true } = {}) {
   changed();
 }
 
+// The price check window over the game goes; the search stays on the Prices page.
+function closeCheckPanel() { if (checkPanel) checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; }
 // What the check key just did, in a line or two, shown in game for a moment.
 function showCheckToast(started) {
   if (tradeCheck && tradeCheck.at >= started && tradeCheck.inGame) return; // its own window is on screen
@@ -1752,7 +1772,7 @@ const actions = {
   },
   tradeClose: () => { tradeCheck = null; if (checkPanel) checkPanel.hide(); },
   // The cross on the window in game: the search stays on the Prices page.
-  checkPanelClose: () => { if (checkPanel) checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; },
+  checkPanelClose: () => closeCheckPanel(),
   tradeOpen: () => { if (tradeCheck && /^https:\/\/www\.pathofexile\.com\//.test(tradeCheck.url)) shell.openExternal(tradeCheck.url); },
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),
