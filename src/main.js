@@ -2,7 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
-const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, nativeImage, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, safeStorage } = require('electron');
 
 // Settings and saved sessions always live in the same folder, however the app was started
 // (start.bat or the installed program), so nothing is lost when switching between them.
@@ -15,7 +15,7 @@ const { parseItemText, priceName } = require('./core/itemText');
 const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
 const { Session } = require('./core/session');
 const { CANON, COLS, ROWS, gridRect, isInventoryOpen, extractCell, isEmptyCell } = require('./core/inventory/grid');
-const { IconIndex, similarity, fingerprint, encodePrint, decodePrint, printPixels, SIDE, sharpPrint, sharpShifts, packPrint, unpackPrint } = require('./core/inventory/icons');
+const { IconIndex, similarity, fingerprint, encodePrint, decodePrint, sharpPrint, sharpShifts, packPrint, unpackPrint } = require('./core/inventory/icons');
 const { readStack } = require('./core/inventory/digits');
 const { InventoryReader, SINGLE_ART_SCORE, learnable } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
@@ -39,53 +39,13 @@ const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize } = require('./core/tradeQuery');
 const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tradeApi');
 const { movedDefault } = require('./ui/keys');
+const { DEFAULT_CONFIG, mergeTrade } = require('./config');
+const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
 const SHARED_REFRESH_MS = 10 * 60 * 1000;
 const CLOUD_RETRY_MS = 10 * 60 * 1000; // uploads that could not be sent are tried again this often
-
-const DEFAULT_CONFIG = {
-  league: '',
-  logPath: '',
-  characterName: '',
-  // clipboard: check the hovered item and, over the inventory, name or count its slot.
-  // priceCheck: only check its price; nothing is named or counted. Held only while the game is in front.
-  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D' },
-  checkToast: true, // after the check key, say in game for a moment what was read
-  // auto: checking an item searches the trade site straight away (two web requests).
-  // overlay: show the search on top of the game, beside the inventory or stash.
-  priceSearch: { auto: true, overlay: true },
-  // key: the key that opens your inventory in game. onKey: read once each time you press it.
-  // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
-  // autoCopy: the check hotkey presses Ctrl+Alt+C in the game for you (one copy per key press).
-  inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: false, intervalMs: 1000, autoCopy: true },
-  mapRules: DEFAULT_RULES,
-  loadout: [],
-  // What you are farming: each has a name and an atlas tree link, and its own sessions.
-  strategies: [{ id: 'default', name: 'Default', atlasUrl: '' }],
-  activeStrategy: 'default',
-  customPrices: {}, // name -> chaos, for items poe.ninja does not list
-  ignoredItems: [], // names of items never to count, whatever the picture
-  navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
-  // Trade offers from whispers. overlay: show them on top of the game. position and offsets:
-  // where on the game's screen. hotkeys.next does the next step for the oldest offer (one chat
-  // line per press); hotkeys.dismiss removes the oldest offer. hotkeys.layout opens layout mode
-  // for the whole overlay; it is kept here because that is where settings saved so far have it.
-  trade: {
-    enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: true,
-    // invite, trade, busy, still and whisper act on the newest buyer and are unset until you
-    // choose them. hideout and remaining type /hideout and /remaining; they are only held while
-    // the game is in front, so F5 still refreshes a browser page.
-    hotkeys: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' },
-    // Steps taken without a key press once the game reports "Trade accepted", and around it.
-    // All off unless switched on: GGG's rule is one action per key press or click.
-    auto: { thankSold: false, kickSold: false, thankBought: false, leaveBought: false, homeBought: false, joinHideout: false, ignoreSold: false, closeBoughtSec: 0 },
-    messages: { ...DEFAULT_MESSAGES },
-  },
-  // Where each thing on the overlay sits, once it has been dragged in layout mode: id -> { x, y, grow }.
-  overlayLayout: {},
-};
 
 let win = null;
 let config = null;
@@ -154,11 +114,6 @@ function readJson(name, fallback) {
 }
 function writeJson(name, value) {
   try { fs.writeFileSync(dataFile(name), JSON.stringify(value)); } catch (e) { console.error('save failed', name, e.message); }
-}
-
-function mergeTrade(base, patch) {
-  const p = patch || {};
-  return { ...base, ...p, hotkeys: { ...base.hotkeys, ...(p.hotkeys || {}) }, messages: { ...base.messages, ...(p.messages || {}) }, auto: { ...base.auto, ...(p.auto || {}) } };
 }
 
 function loadConfig() {
@@ -372,52 +327,6 @@ async function refreshPrices() {
 }
 
 // ---- inventory reading -----------------------------------------------------------
-function thumbnail(rgb) {
-  const bgra = Buffer.alloc(CANON * CANON * 4);
-  for (let p = 0; p < CANON * CANON; p++) {
-    bgra[p * 4] = rgb[p * 3 + 2]; bgra[p * 4 + 1] = rgb[p * 3 + 1]; bgra[p * 4 + 2] = rgb[p * 3]; bgra[p * 4 + 3] = 255;
-  }
-  return nativeImage.createFromBitmap(bgra, { width: CANON, height: CANON }).toDataURL();
-}
-
-// The whole inventory as one picture, for keeping with a map. cells: [{ cell, rgb }].
-const EMPTY_SLOT = [16, 19, 23];
-function gridPicture(cells) {
-  const w = COLS * CANON, h = ROWS * CANON;
-  const bgra = Buffer.alloc(w * h * 4);
-  for (let p = 0; p < w * h; p++) { bgra[p * 4] = EMPTY_SLOT[2]; bgra[p * 4 + 1] = EMPTY_SLOT[1]; bgra[p * 4 + 2] = EMPTY_SLOT[0]; bgra[p * 4 + 3] = 255; }
-  for (const c of cells) {
-    const x0 = (c.cell % COLS) * CANON, y0 = Math.floor(c.cell / COLS) * CANON;
-    for (let y = 0; y < CANON; y++) {
-      for (let x = 0; x < CANON; x++) {
-        const s = (y * CANON + x) * 3, d = ((y0 + y) * w + x0 + x) * 4;
-        bgra[d] = c.rgb[s + 2]; bgra[d + 1] = c.rgb[s + 1]; bgra[d + 2] = c.rgb[s];
-      }
-    }
-  }
-  const jpeg = nativeImage.createFromBitmap(bgra, { width: w, height: h }).toJPEG(93);
-  return `data:image/jpeg;base64,${jpeg.toString('base64')}`;
-}
-
-// The slots of a kept inventory picture, cut back out of it: cell number -> pixels.
-function cellsOfPicture(dataUrl) {
-  const img = nativeImage.createFromDataURL(dataUrl);
-  const { width, height } = img.getSize();
-  if (width !== COLS * CANON || height !== ROWS * CANON) return null;
-  const bgra = img.toBitmap();
-  return (cell) => {
-    const x0 = (cell % COLS) * CANON, y0 = Math.floor(cell / COLS) * CANON;
-    const rgb = Buffer.alloc(CANON * CANON * 3);
-    for (let y = 0; y < CANON; y++) {
-      for (let x = 0; x < CANON; x++) {
-        const s = ((y0 + y) * width + x0 + x) * 4, d = (y * CANON + x) * 3;
-        rgb[d] = bgra[s + 2]; rgb[d + 1] = bgra[s + 1]; rgb[d + 2] = bgra[s];
-      }
-    }
-    return rgb;
-  };
-}
-
 // Looks at the kept pictures of every map in the open session again, with the item pictures
 // and names known now, and corrects the loot that was counted under a wrong name or not at all.
 function recheckMaps(quiet = false) {
@@ -502,18 +411,6 @@ function teach(typed, print, image = null) {
   return { name, entry, was };
 }
 
-// A kept slot picture (data URL, 52x52) back as RGB pixels, or null.
-function pixelsOfThumb(dataUrl) {
-  try {
-    const img = nativeImage.createFromDataURL(dataUrl);
-    const { width, height } = img.getSize();
-    if (width !== CANON || height !== CANON) return null;
-    const bgra = img.toBitmap(), rgb = Buffer.alloc(CANON * CANON * 3);
-    for (let p = 0; p < CANON * CANON; p++) { rgb[p * 3] = bgra[p * 4 + 2]; rgb[p * 3 + 1] = bgra[p * 4 + 1]; rgb[p * 3 + 2] = bgra[p * 4]; }
-    return rgb;
-  } catch (_) { return null; }
-}
-
 // Gives one entry of the named-items list to the matcher, with its sharp print when the slot
 // picture was kept.
 function indexLearned(l) {
@@ -530,14 +427,6 @@ function relearn() {
   itemsRev++;
   writeJson('learned.json', learned);
   reader.forgetCells();
-}
-
-// A fingerprint as a small picture, for named items whose slot picture was not kept.
-function printPicture(print) {
-  const rgb = printPixels(print);
-  const bgra = Buffer.alloc(SIDE * SIDE * 4);
-  for (let p = 0; p < SIDE * SIDE; p++) { bgra[p * 4] = rgb[p * 3 + 2]; bgra[p * 4 + 1] = rgb[p * 3 + 1]; bgra[p * 4 + 2] = rgb[p * 3]; bgra[p * 4 + 3] = 255; }
-  return nativeImage.createFromBitmap(bgra, { width: SIDE, height: SIDE }).toDataURL();
 }
 
 // Does a named picture look clearly more like another item's official picture than like the

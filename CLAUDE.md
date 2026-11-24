@@ -17,15 +17,17 @@ npm run test:<area>  one area: core, inventory, trade, keys, store, cloud, updat
 npm start            run the app (needs npm install; Electron)
 node scripts/build-stats.js <stats.ndjson>   rebuild trade-site stat list at a new league
 ```
-The whole suite is fast, so `npm run t` after any change is fine. Tests cover `src/core`, `src/shared.js`, `src/cloud.js`, `src/updater.js`, `src/ui/keys.js`; `main.js` and the UI pages have no tests, so check those by reading the change carefully.
+The whole suite is fast, so `npm run t` after any change is fine. Tests cover `src/core`, `src/shared.js`, `src/cloud.js`, `src/updater.js`, `src/ui/keys.js`; `main.js` and the UI pages have no unit tests. For UI changes, the page can be opened in a browser with demo data (`src/ui/index.html`, see demo.js). To boot the real app on Linux: `npm install`, then `xvfb-run -a npx electron --no-sandbox .` with `HOME` set to a temp folder (the network is mostly blocked here; that is fine).
 
 ## File map
 | Path | What |
 |---|---|
-| `src/main.js` | Main process: config (`DEFAULT_CONFIG`, `loadConfig`), state sent to the window (`buildState`), game log watching, prices, inventory reading and naming items, account/uploads, updates, hotkeys (`registerHotkeys`, `syncKeyHook`), price check + trade search, trade offers and chat lines, overlay layout (`WIDGETS`), the IPC `actions` table, startup. Sections are marked `// ---- name ----`; grep for them. |
+| `src/main.js` | Main process (~1,800 lines, one shared state; deliberately not split further): config loading (`loadConfig`), state sent to the window (`buildState`), game log watching, prices, inventory reading and naming items, account/uploads, updates, hotkeys (`registerHotkeys`, `syncKeyHook`), price check + trade search, trade offers and chat lines, overlay layout (`WIDGETS`), the IPC `actions` table, startup. Sections are marked `// ---- name ----`: `grep -n '^// ----' src/main.js`, then read only that range. |
+| `src/config.js` | `DEFAULT_CONFIG` (every setting's default) and `mergeTrade` |
+| `src/pictures.js` | Inventory picture conversions (thumbnails, grid picture per map, back to pixels) |
 | `src/preload.js` | The `window.api` bridge (getState, onState, setConfig, action, account, search...) |
-| `src/ui/index.html` | Main window markup; scripts load demo.js, keys.js, tradecard.js, app.js |
-| `src/ui/app.js` | Main window logic, one IIFE. Sections (`// ---- name ----`): status bar, map pictures, attention list, current map, items page, session, strategies, tools (map check, costs, price check), trade search, inventory tab, trade page, sidebar order, events, game log check, price browser, strategy dialog, settings (`KEY_GROUPS` = every key), account |
+| `src/ui/index.html` | Main window markup; loads demo.js, keys.js, tradecard.js, then `app/*.js` in order |
+| `src/ui/app/*.js` | Main window logic, split by page. Classic scripts sharing ONE global scope, loaded in the order of the `<script>` tags (core first, start last). Top-level names are visible to later files; code that runs while loading may only use earlier files. `api` is the global `window.api` (never redeclare it: in Electron it is fixed and `const api` breaks the page). Files: `core` (state, helpers like `$`, `esc`, `fmtValue`, `act`), `mapping` (status bar, map pictures, attention list, current map), `items`, `session` (+ strategy tabs), `tools` (map check, costs, price check, trade search), `inventory`, `trade`, `render` (`render()`, `setState`, sidebar, `showTab`), `events` (page-wide click handler), `logcheck`, `forms` (run buttons, add loot/costs), `prices`, `strategy-dialog`, `settings` (`KEY_GROUPS` = every key), `account`, `start` |
 | `src/ui/style.css`, `tradecard.css` | Main window styles |
 | `src/ui/demo.js` | Fake state when index.html is opened in a plain browser (preview without Electron) |
 | `src/ui/keys.js` | Key names shared by page and main process |
@@ -52,8 +54,8 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `test/*.test.js` | node:test unit tests; `test/server.js` fake server; `test/fixtures/` captures |
 
 ## Conventions
-- Settings: every setting is on the Settings page (`#tab-settings`), bound with `data-cfg="path.in.config"`, saved on change, no Save buttons. Every key goes in `KEY_GROUPS` in app.js only. New config keys get a default in `DEFAULT_CONFIG` (main.js).
-- UI actions go through `api.action({ type, ... })` to the `actions` table in main.js; main pushes the whole state back (`push()`), the page redraws in `render()`.
+- Settings: every setting is on the Settings page (`#tab-settings`), bound with `data-cfg="path.in.config"`, saved on change, no Save buttons. Every key goes in `KEY_GROUPS` (src/ui/app/settings.js) only. New config keys get a default in `DEFAULT_CONFIG` (src/config.js).
+- UI actions go through `api.action({ type, ... })` to the `actions` table in main.js; main pushes the whole state back (`push()`), the page redraws in `render()` (app/render.js).
 - Plain English in user-facing text, no jargon. Comments explain why, in the same plain style.
 - Nothing is typed into the game without the user's own key press or click (see README "Rules and risk"); keep it that way.
 

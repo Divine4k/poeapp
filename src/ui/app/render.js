@@ -1,0 +1,95 @@
+'use strict';
+// Drawing everything from a new state, sidebar order, switching pages.
+// Part of the main window script: all files in src/ui/app/ share one scope, loaded in the order of index.html.
+
+function render() {
+  if (!state) return;
+  renderTrade();
+  renderStatus(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderSettings();
+}
+
+function setState(s) {
+  const hadCheck = state && state.mapCheck ? state.mapCheck.at : 0;
+  const hadPrice = state && state.priceCheck ? state.priceCheck.at : 0;
+  const hadTrade = state && state.tradeCheck ? state.tradeCheck.at : 0;
+  const first = !state;
+  state = s; receivedAt = Date.now();
+  applyNavOrder(s.config.navOrder);
+  // The check key's answer shows in game. Only without that message does the app turn to the
+  // page holding the answer; otherwise the page you were on stays put.
+  if (s.config.checkToast === false) {
+    if (!first && s.mapCheck && s.mapCheck.at !== hadCheck) showTab('mapcheck');
+    else if (!first && s.priceCheck && s.priceCheck.at !== hadPrice) showTab('prices');
+  }
+  // Without its window in game, a trade search is shown on its page: the listings do not fit
+  // in the short message.
+  if (!first && s.tradeCheck && s.tradeCheck.at !== hadTrade && !s.tradeCheck.inGame) showTab('prices');
+  render();
+}
+
+// ---- sidebar order: drag a page up or down --------------------------------------------
+const sidenav = document.querySelector('.sidenav');
+let navApplied = null;
+let dragging = null;
+
+function applyNavOrder(order) {
+  const key = (order || []).join(',');
+  if (key === navApplied || dragging) return;
+  navApplied = key;
+  const byTab = new Map([...sidenav.querySelectorAll('.navi')].map((b) => [b.dataset.tab, b]));
+  // Listed pages first, in the saved order; any page not listed (a new one) keeps its place after them.
+  for (const tab of order || []) { const b = byTab.get(tab); if (b) { sidenav.appendChild(b); byTab.delete(tab); } }
+  for (const b of byTab.values()) sidenav.appendChild(b);
+}
+
+const clearDropMarks = () => { for (const b of sidenav.querySelectorAll('.drop-before, .drop-after')) b.classList.remove('drop-before', 'drop-after'); };
+for (const b of sidenav.querySelectorAll('.navi')) b.draggable = true;
+
+sidenav.addEventListener('dragstart', (e) => {
+  const b = e.target.closest('.navi');
+  if (!b) return;
+  dragging = b;
+  b.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', b.dataset.tab);
+});
+sidenav.addEventListener('dragover', (e) => {
+  if (!dragging) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  clearDropMarks();
+  const over = e.target.closest('.navi');
+  if (!over || over === dragging) return;
+  const r = over.getBoundingClientRect();
+  over.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-before' : 'drop-after');
+});
+sidenav.addEventListener('drop', (e) => {
+  if (!dragging) return;
+  e.preventDefault();
+  const over = e.target.closest('.navi');
+  if (over && over !== dragging) {
+    const r = over.getBoundingClientRect();
+    sidenav.insertBefore(dragging, e.clientY < r.top + r.height / 2 ? over : over.nextSibling);
+    const order = [...sidenav.querySelectorAll('.navi')].map((b) => b.dataset.tab);
+    navApplied = order.join(',');
+    api.setConfig({ navOrder: order });
+  }
+});
+sidenav.addEventListener('dragend', () => {
+  if (dragging) dragging.classList.remove('dragging');
+  dragging = null;
+  clearDropMarks();
+});
+
+$('learned-filter').addEventListener('input', () => renderItems());
+
+function showTab(name) {
+  if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
+  for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
+  for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'settings']) $(`tab-${id}`).hidden = id !== name;
+  if (name === 'inventory') renderInventory(true);
+  if (name === 'items') { refreshKnown(); renderKnown(); }
+  if (name === 'prices') renderPrices(true);
+  if (name === 'settings') renderSettings();
+}
