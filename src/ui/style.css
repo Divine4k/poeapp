@@ -147,8 +147,9 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 /* a panel: one level only, never a box inside a box */
 .panel { min-height: 0; display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--slab); box-shadow: var(--panel-shadow); }
 .p-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 42px; padding: 8px 18px 2px; }
-.p-head h2 { margin: 0; font-size: 13px; color: var(--bone); }
-.p-head h2 small { margin-left: 8px; font-size: 12px; font-weight: 500; color: var(--ash); }
+.p-head h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -0.005em; color: var(--bone); }
+.p-head h2 small { margin-left: 10px; font-size: 12px; font-weight: 500; color: var(--faint); }
+.p-head h2 small b { color: var(--soft); font-weight: 600; }
 .p-head .link { font-size: 12.5px; }
 
 /* item pictures: dark glass, with a soft glow of the item's worth under it */
@@ -231,11 +232,11 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .panel.sess { flex: 1; min-height: 0; }
 
 /* the inventory as last read: sockets, each showing its own square of the kept picture */
-.invgrid { --inv: none; display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin: 2px 18px 10px; padding: 6px; border-radius: var(--r-md); background: var(--well); box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line); }
-.invgrid .sk { position: relative; display: block; aspect-ratio: 1; border-radius: 4px; background: color-mix(in srgb, var(--bone) 3%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 4%, transparent); }
+.invgrid { --inv: none; display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin: 4px 18px 12px; padding: 8px; border-radius: var(--r-md); background: var(--well); box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line); }
+.invgrid .sk { position: relative; display: block; aspect-ratio: 1; border-radius: 6px; background: color-mix(in srgb, var(--bone) 2.5%, transparent); }
 .invgrid .sk.pic { background: var(--inv) no-repeat; background-size: 1200% 500%; background-position: calc(var(--cx) * 100% / 11) calc(var(--cy) * 100% / 4); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 8%, transparent), 0 0 10px color-mix(in srgb, var(--gold) 10%, transparent); }
-.invgrid .sk.unknown { box-shadow: inset 0 0 0 1.5px var(--blood); }
-.invgrid .sk.remembered { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--gold) 70%, transparent); }
+.invgrid .sk.unknown { box-shadow: inset 0 0 0 1px var(--blood), 0 0 10px color-mix(in srgb, var(--blood) 25%, transparent); }
+.invgrid .sk.remembered { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 65%, transparent); }
 .invgrid .sk.carried { opacity: 0.3; box-shadow: none; }
 .invgrid .sk.fixable { cursor: pointer; }
 .invgrid .sk.fixable:hover { outline: 2px solid var(--bone); outline-offset: -1px; opacity: 1; }
@@ -253,8 +254,8 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .statbar > div { flex: 1 1 0; min-width: 0; padding: 0 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .statbar > div:first-child { padding-left: 0; flex-grow: 1.2; }
 .statbar > div + div { box-shadow: inset 1px 0 0 var(--line); }
-.statbar small { display: block; font-size: 11.5px; color: var(--ash); font-weight: 560; }
-.statbar b { font: 600 19px/1.25 var(--display); letter-spacing: -0.02em; }
+.statbar small { display: block; margin-bottom: 2px; font-size: 11.5px; color: var(--faint); font-weight: 560; }
+.statbar b { font: 650 20px/1.25 var(--display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .statbar .lead b { color: var(--gold); text-shadow: 0 0 20px color-mix(in srgb, var(--gold) 25%, transparent); }
 .statbar .lead.neg b { color: var(--blood); text-shadow: none; }
 .statbar .rate b { color: var(--moss); }
@@ -299,8 +300,8 @@ tr.run:hover td { background: color-mix(in srgb, var(--bone) 3%, transparent); }
 tr.run.open td { background: var(--raise); }
 tr.detail td { background: var(--raise); padding: 10px 14px; font-size: 13px; color: var(--ash); }
 tr.detail b { color: var(--bone); font-weight: 500; }
-.runs-table th { background: var(--slab); height: 30px; padding-top: 0; padding-bottom: 0; }
-.runs-table td { height: 38px; padding-top: 4px; padding-bottom: 4px; font-size: 13.5px; }
+.runs-table th { background: var(--slab); height: 30px; padding-top: 0; padding-bottom: 0; font-size: 11.5px; font-weight: 560; color: var(--faint); }
+.runs-table td { height: 40px; padding-top: 4px; padding-bottom: 4px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
 .runs-table th:first-child, .runs-table td:first-child { padding-left: 18px; }
 .runs-table th:last-child, .runs-table td:last-child { padding-right: 10px; }
 .runs-table .nm { white-space: nowrap; }
@@ -311,8 +312,10 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .runs-table .live-dot { display: inline-block; margin-right: 8px; vertical-align: 1px; }
 .runs-table .t { color: var(--ash); }
 .runs-table .vs { font-size: 12.5px; }
-.runs-table .vs .up { color: var(--moss); }
-.runs-table .vs .down { color: var(--blood); }
+.runs-table .vs span { display: inline-block; padding: 2px 8px; border-radius: 999px; }
+.runs-table .vs .up { color: var(--moss); background: color-mix(in srgb, var(--moss) 11%, transparent); }
+.runs-table .vs .down { color: var(--blood); background: color-mix(in srgb, var(--blood) 11%, transparent); }
+.runs-table .vs .dim { padding: 0; color: var(--faint); }
 .runs-table .net { font-weight: 650; color: var(--bone); }
 .runs-table .net.gold { color: var(--gold); }
 .runs-table tr.live td { background: color-mix(in srgb, var(--gold) 6%, transparent); }
@@ -332,17 +335,20 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 #add-loot { padding: 0 18px 10px; }
 #add-loot input, #add-loot button { padding: 6px 10px; font-size: 13px; }
 #now-uncounted:empty { display: none; }
-.uncounted { margin: -2px 18px 8px; font-size: 12.5px; color: var(--gold); }
+.uncounted { display: flex; align-items: baseline; gap: 8px; margin: -4px 18px 10px; font-size: 12px; line-height: 1.45; color: var(--ash); }
+.uncounted::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); transform: translateY(-1px); }
 
 /* this map's loot: two columns, picture, name, count, value */
-.loot2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; margin: 0 18px 12px; border-top: 1px solid var(--line); }
-.loot2 li { display: grid; grid-template-columns: 32px 1fr auto 14px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); min-width: 0; }
-.loot2 .it { width: 32px; height: 32px; border-radius: 8px; }
-.loot2 li.top .it { --gc: var(--gold); }
+.loot2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; margin: 0 18px 12px; }
+.loot2 li { position: relative; display: grid; grid-template-columns: 30px 1fr auto 14px; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.loot2 .it { width: 30px; height: 30px; border-radius: 8px; background: none; box-shadow: none; }
+.loot2 .it img { width: 100%; height: 100%; }
+/* a detail: the best drops get a soft gold light behind their picture */
+.loot2 li.top .it { background: radial-gradient(circle, color-mix(in srgb, var(--gold) 30%, transparent), transparent 70%); }
 .loot2 .nm { min-width: 0; line-height: 1.3; }
-.loot2 .nm b { display: block; font-weight: 580; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.loot2 .nm small { display: block; font-size: 11.5px; color: var(--ash); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.loot2 .val { font-weight: 650; font-size: 13px; white-space: nowrap; }
+.loot2 .nm b { display: block; font-weight: 560; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot2 .nm small { display: block; font-size: 11.5px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loot2 .val { font-weight: 650; font-size: 13.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .loot2 li.top .val { color: var(--gold); }
 .loot2 .val.dim { color: var(--ash); font-weight: 500; }
 .loot2 .x { font-size: 15px; line-height: 1; opacity: 0; padding: 0; }
@@ -1275,3 +1281,12 @@ progress::-webkit-progress-value { background: var(--moss); border-radius: 3px; 
 .jw-verdict.poor b { color: var(--blood); }
 /* a short window: no room for the bars under the maps */
 @media (max-height: 800px) { .sess-bars { display: none; } }
+/* narrower windows: numbers and buttons stay on one line instead of being cut or wrapped */
+.ask-line .chips button, .p-head .link, .p-head h2 small { white-space: nowrap; }
+.ask-line .chips { overflow: hidden; }
+@media (max-width: 1150px) {
+  .statbar { padding: 12px 14px; }
+  .statbar > div { padding: 0 9px; text-overflow: clip; }
+  .statbar b { font-size: 16px; }
+  .p-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
