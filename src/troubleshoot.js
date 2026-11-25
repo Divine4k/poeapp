@@ -70,7 +70,7 @@ class Troubleshoot {
     return {
       recording: !!this.current, busy: this.busy, startedAt: this.current ? this.current.startedAt : 0,
       video: this.current ? !!this.current.video : false, maxMs: MAX_MS, sending: this.sending,
-      unseen: this.unseen, remoteError: this.remoteError, marking: [...this.marking],
+      unseen: this.unseen, remoteError: this.remoteError, marking: [...this.marking], marksRev: this.marksRev,
     };
   }
 
@@ -255,13 +255,13 @@ class Troubleshoot {
       try { this.fixed = JSON.parse(fs.readFileSync(path.join(this.dir, 'status-marks.json'), 'utf8')) || {}; } catch (_) { /* none yet */ }
     }
     const f = this.fixed[id];
-    return f ? { state: f.state || '', type: f.type || '', by: f.by || '', at: f.at || 0 } : null;
+    return f ? { state: f.state || '', type: f.type || '', issue: f.issue || null, by: f.by || '', at: f.at || 0 } : null;
   }
   // What the list and the page show: the type, and the state when it is not open.
   standing(m) {
     const st = this.statusOf(m.id);
     const type = (st && st.type) || m.type || 'problem';
-    return { type, state: st ? st.state : '', statusBy: st ? st.by : '', statusAt: st ? st.at : 0 };
+    return { type, state: st ? st.state : '', issue: st ? st.issue : null, statusBy: st ? st.by : '', statusAt: st ? st.at : 0 };
   }
   keepMarks(all) {
     this.fixed = all; this.marksLoaded = true;
@@ -286,7 +286,7 @@ class Troubleshoot {
         if (known[e.sha] && known[e.sha].id === m[1]) { all[m[1]] = known[e.sha].f; continue; }
         const f = await read(e.sha);
         const state = folder === 'fixed' ? 'fixed' : STATES.includes(f.state) ? f.state : '';
-        all[m[1]] = { state, type: TYPES.includes(f.type) ? f.type : '', by: f.by || '', at: f.at || 0, sha: e.sha, ...(folder === 'fixed' ? { old: e.path } : {}) };
+        all[m[1]] = { state, type: TYPES.includes(f.type) ? f.type : '', issue: Number.isInteger(f.issue) && f.issue > 0 ? f.issue : null, by: f.by || '', at: f.at || 0, sha: e.sha, ...(folder === 'fixed' ? { old: e.path } : {}) };
       }
     }
     return all;
@@ -307,6 +307,7 @@ class Troubleshoot {
       if (!m.remote && !m.sent) return 'Send it first: only what is on GitHub can be marked.';
       if (change.state !== undefined && !STATES.includes(change.state)) return 'Unknown status.';
       if (change.type !== undefined && !TYPES.includes(change.type)) return 'Unknown type.';
+      if (change.issue !== undefined && change.issue !== null && !(Number.isInteger(change.issue) && change.issue > 0)) return 'Unknown tracker item.';
       const gh = await this.cloud.github();
       if (gh.error) throw new Error(gh.error);
       const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
@@ -314,7 +315,7 @@ class Troubleshoot {
       const all = await this.marksFrom(where, tree);
       const files = [];
       const has = (p) => tree.some((e) => e.path === p);
-      const write = (mid, f) => files.push({ path: `status/${mid}.json`, data: Buffer.from(`${JSON.stringify({ state: f.state || '', ...(f.type ? { type: f.type } : {}), by: f.by, at: f.at })}\n`) });
+      const write = (mid, f) => files.push({ path: `status/${mid}.json`, data: Buffer.from(`${JSON.stringify({ state: f.state || '', ...(f.type ? { type: f.type } : {}), ...(f.issue ? { issue: f.issue } : {}), by: f.by, at: f.at })}\n`) });
       // Older marks move into status/ in the same commit.
       if (has('status.json')) files.push({ path: 'status.json', remove: true });
       for (const [mid, f] of Object.entries(all)) {
@@ -322,17 +323,20 @@ class Troubleshoot {
         if (f.old !== 'status.json' && has(f.old)) files.push({ path: f.old, remove: true });
         if (mid !== id) write(mid, f);
       }
-      const was = all[id] || { state: '', type: '' };
-      const next = { state: change.state !== undefined ? change.state : was.state || '', type: change.type !== undefined ? change.type : was.type || '', by: this.who().name || '', at: Date.now() };
-      // Back to open, with the type it was sent with: nothing left to keep.
-      if (!next.state && (!next.type || next.type === (m.type || 'problem'))) {
+      const was = all[id] || { state: '', type: '', issue: null };
+      const next = {
+        state: change.state !== undefined ? change.state : was.state || '', type: change.type !== undefined ? change.type : was.type || '',
+        issue: change.issue !== undefined ? change.issue : was.issue || null, by: this.who().name || '', at: Date.now(),
+      };
+      // Back to open, with the type it was sent with and no tracker item: nothing left to keep.
+      if (!next.state && !next.issue && (!next.type || next.type === (m.type || 'problem'))) {
         if (has(`status/${id}.json`)) files.push({ path: `status/${id}.json`, remove: true });
         delete all[id];
       } else {
         write(id, next);
         all[id] = next;
       }
-      if (files.length) await uploadFolder({ ...where, folder: '', files, message: `${next.state ? STATE_NAMES[next.state] : 'Open'}${next.type ? ` (${next.type})` : ''}: ${id}` });
+      if (files.length) await uploadFolder({ ...where, folder: '', files, message: `${next.state ? STATE_NAMES[next.state] : 'Open'}${next.type ? ` (${next.type})` : ''}${next.issue ? ` #${next.issue}` : ''}: ${id}` });
       for (const f of Object.values(all)) delete f.old;
       this.marksRev++;
       this.keepMarks(all);

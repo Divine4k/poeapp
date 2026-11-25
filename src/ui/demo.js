@@ -199,7 +199,7 @@
     },
     troubleList: async () => [
       { id: '20261124-201500-Divine4k', kind: 'note', images: 0, startedAt: now - 120000, endedAt: now - 120000, by: 'Divine4k', note: 'The Items page shows last league.', sent: null, events: 0, videoBytes: 0 },
-      { id: '20261124-170509-Divine4k', startedAt: now - 3600000, endedAt: now - 3600000 + 95000, by: 'Divine4k', note: 'Timer kept running after I went to the hideout.\nIt only stopped when I entered the next map.', sent: { at: now - 3000000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-170509-Divine4k' }, events: 412, videoBytes: 9123456, state: 'fixed', statusBy: 'Divine4k', statusAt: now - 1000000 },
+      { id: '20261124-170509-Divine4k', startedAt: now - 3600000, endedAt: now - 3600000 + 95000, by: 'Divine4k', note: 'Timer kept running after I went to the hideout.\nIt only stopped when I entered the next map.', sent: { at: now - 3000000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-170509-Divine4k' }, events: 412, videoBytes: 9123456, state: 'fixed', statusBy: 'Divine4k', statusAt: now - 1000000, issue: 12 },
       { id: '20261124-190000-Marek', startedAt: now - 300000, endedAt: now - 300000 + 63000, by: 'Marek', note: 'Overlay covers my flasks after I resize the game.', sent: { at: now - 240000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-190000-Marek' }, events: 230, videoBytes: 6400000, remote: true, seen: false, type: 'suggestion', state: 'in progress', statusBy: 'Divine4k', statusAt: now - 50000 },
       { id: '20261124-181200-Divine4k', startedAt: now - 600000, endedAt: now - 600000 + 41000, by: 'Divine4k', note: '', sent: null, events: 96, videoBytes: 0, videoProblem: 'The screen could not be recorded.' },
     ],
@@ -239,7 +239,7 @@
         mk(20, 'Board view', 'testing', 'normal', '', 1, { parent: 11 }),
         mk(21, 'Map view with lines', 'doing', 'high', '', 1, { parent: 11 }),
         mk(15, 'Heist contract value in the price check', 'considering', 'low', '', 3),
-        mk(12, 'Price checker', 'todo', 'high', 'Read a whole stash tab and price it.\n\n- [x] Find the tab grid\n- [ ] Read the items\n- [ ] Show the total', 9),
+        mk(12, 'Price checker', 'todo', 'high', 'Read a whole stash tab and price it.\n\n- [x] Find the tab grid\n- [ ] Read the items\n- [ ] Show the total', 9, { recordings: ['20261124-170509-Divine4k'] }),
         mk(16, 'More map pictures (Crimson Temple, Cemetery)', 'hold', 'normal', '', 2, { labels: ['look'] }),
         mk(11, 'Tracker page', 'doing', 'high', '- [x] Issues on GitHub\n- [x] The board\n- [ ] Claude works from it', 1),
         mk(9, 'Bundle Inter font', 'done', 'normal', '', 20),

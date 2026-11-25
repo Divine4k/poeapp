@@ -1179,6 +1179,8 @@ async function trackerAction(a) {
     if (a.type === 'parent') return { item: await tracker.setParent({ ...base, number: a.number, parent: a.parent }) };
     if (a.type === 'update') return { item: await tracker.updateItem({ ...base, number: a.number, patch: a.patch || {} }) };
     if (a.type === 'delete') return await tracker.deleteItem({ ...base, number: a.number });
+    if (a.type === 'record') return { item: await tracker.addRecording({ ...base, number: a.number, rec: a.rec }) };
+    if (a.type === 'unrecord') return { item: await tracker.removeRecording({ ...base, number: a.number, id: a.id }) };
   } catch (e) { return { error: e.message || String(e) }; }
   return { error: 'Unknown request.' };
 }
@@ -2047,6 +2049,36 @@ const actions = {
     if (a.kind !== undefined) change.type = String(a.kind || '');
     const error = await trouble.setStatus(String(a.id || ''), change);
     say(error ? `Not changed: ${error}` : 'Changed, for everyone.', !!error);
+  },
+  // Connects a sent recording or report to a box in the tracker (admins): to one that is there
+  // (a line with its link goes into the box's text), or to a new box under one. The recording
+  // remembers the box in its status, so everyone sees where it went.
+  troubleTrack: async (a) => {
+    if (!trouble || !isAdmin()) { say('Only admins can use the tracker.', true); return; }
+    const id = String(a.id || '');
+    const d = trouble.details(id);
+    if (!d || !d.sent) { say('Send it first: only what is on GitHub can go into the tracker.', true); return; }
+    const first = String(d.note || '').trim().split('\n')[0].slice(0, 120);
+    const rec = { id, type: d.type, by: d.by, title: first || id, url: d.sent.url };
+    let r;
+    if (a.make) {
+      const title = String(a.title || '').trim() || first || `Recording ${id}`;
+      r = await trackerAction({ type: 'add', title, body: `${String(d.note || '').trim()}\n\n${tracker.recordingLine(rec)}\n`, status: d.type === 'suggestion' ? 'idea' : 'todo', parent: a.parent == null ? null : Number(a.parent) });
+    } else {
+      r = await trackerAction({ type: 'record', number: Number(a.issue), rec });
+    }
+    if (r.error) { say(`Not put in the tracker: ${r.error}`, true); return; }
+    const error = await trouble.setStatus(id, { issue: r.item.number });
+    say(error ? `It is in the tracker as #${r.item.number}, but the recording could not remember it: ${error}` : `${a.make ? 'New box' : 'Connected to'} #${r.item.number} in the tracker.`, !!error);
+  },
+  troubleUntrack: async (a) => {
+    if (!trouble || !isAdmin()) return;
+    const id = String(a.id || '');
+    const st = trouble.statusOf(id);
+    if (!st || !st.issue) return;
+    const r = await trackerAction({ type: 'unrecord', number: st.issue, id });
+    const error = r.error || await trouble.setStatus(id, { issue: null });
+    say(error ? `Not taken out: ${error}` : `Taken out of #${st.issue}.`, !!error);
   },
   // Problem or suggestion, chosen before sending.
   troubleType: (a) => { if (trouble) trouble.setType(String(a.id || ''), String(a.kind || '')); },

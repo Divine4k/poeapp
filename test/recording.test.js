@@ -447,12 +447,18 @@ test('a suggestion is chosen before sending; status and type are shared, and the
   assert.ok(!b.setType(bug, 'suggestion'), 'someone else\'s type is changed through the status, not before sending');
 
   assert.strictEqual(await b.setStatus(idea, { state: 'planned' }), '');
+  // Put in the tracker: the box is remembered, and back to open keeps it while it is there.
+  assert.strictEqual(await b.setStatus(idea, { issue: 12, state: '' }), '');
+  assert.deepStrictEqual(JSON.parse(gh.blobs[gh.tree()[`status/${idea}.json`]].toString()).issue, 12);
+  assert.match(await b.setStatus(idea, { issue: -1 }), /Unknown tracker item/);
+  assert.strictEqual(await b.setStatus(idea, { issue: null, state: 'planned' }), '');
+  assert.ok(!('issue' in JSON.parse(gh.blobs[gh.tree()[`status/${idea}.json`]].toString())));
   assert.strictEqual(await b.setStatus(bug, { type: 'suggestion' }), '');
   assert.match(await b.setStatus(bug, { state: 'maybe' }), /Unknown status/);
   const tree = gh.tree();
   assert.ok(!(`fixed/${bug}.json` in tree), 'the old mark moved');
   assert.deepStrictEqual(JSON.parse(gh.blobs[tree[`status/${bug}.json`]].toString()).state, 'fixed');
   await a.syncRemote();
-  assert.deepStrictEqual([byId(a)[idea].state, byId(a)[bug].type, byId(a)[bug].state], ['planned', 'suggestion', 'fixed']);
+  assert.deepStrictEqual([byId(a)[idea].state, byId(a)[idea].issue, byId(a)[bug].type, byId(a)[bug].state], ['planned', null, 'suggestion', 'fixed']);
   for (const t of [a, b]) fs.rmSync(t.dir, { recursive: true, force: true });
 });

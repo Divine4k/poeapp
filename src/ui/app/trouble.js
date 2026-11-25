@@ -64,7 +64,7 @@ async function trLoadList() {
       <span class="tr-item-note${first ? '' : ' dim'}">${esc(first || 'No note yet')}</span>${tag ? `<span class="tr-item-tags">${tag}</span>` : ''}</button></li>`;
   }).join('') : '<li class="empty">Nothing yet. Press Record and show the problem in game, or write a report.</li>');
   if (trSel && !trList.some((r) => r.id === trSel)) trOpen(null);
-  else if (trSel && trDetail) { const m = trList.find((r) => r.id === trSel); Object.assign(trDetail, { sent: m.sent, state: m.state, type: m.type, statusBy: m.statusBy, statusAt: m.statusAt }); trSendLine(); }
+  else if (trSel && trDetail) { const m = trList.find((r) => r.id === trSel); Object.assign(trDetail, { sent: m.sent, state: m.state, type: m.type, issue: m.issue, statusBy: m.statusBy, statusAt: m.statusAt }); trSendLine(); }
 }
 
 async function trOpen(id) {
@@ -236,6 +236,12 @@ function trSendLine() {
   $('tr-fixed').hidden = !trDetail.state && !busy;
   $('tr-fixed').className = `tr-fixed st-${(trDetail.state || '').replace(' ', '-')}`;
   $('tr-fixed').textContent = busy ? 'Saving…' : trDetail.state ? `${trStateName(trDetail.state, type)}${trDetail.statusBy && trDetail.statusAt ? ` (set by ${trDetail.statusBy}, ${trWhen(trDetail.statusAt)})` : ''}.` : '';
+  // The tracker (admins): connect it to a box, or show the box it is in.
+  const admin = !!state.trouble.admin;
+  $('tr-trackbtn').hidden = !(admin && onGithub && trDetail.sent && !trDetail.issue);
+  $('tr-tracked').hidden = !trDetail.issue;
+  $('tr-tracklink').textContent = trDetail.issue ? `#${trDetail.issue}` : '';
+  $('tr-untrack').hidden = !admin;
   const sug = type === 'suggestion';
   $('tr-note-title').textContent = sug ? 'What is the idea?' : 'What went wrong?';
   $('tr-note-hint').textContent = sug ? 'What it should do, and why it would help. Pictures or a video help.'
@@ -381,3 +387,66 @@ $('tr-delete').addEventListener('click', () => {
 // Called when the page is opened.
 // Also looks on GitHub right away for recordings sent since the last look.
 function troubleShown() { trListRev = -1; renderTrouble(); if (state.trouble && state.trouble.can) act({ type: 'troubleSync', quiet: true }); }
+
+// ---- putting a recording in the tracker (admins) ----
+let trBoxes = [];
+let trBoxPick = null; // the box chosen in the dialog; 'root' = straight under the app
+function trBoxesDraw() {
+  const make = $('tr-trackform').elements.how.value === 'make';
+  const q = $('tr-trackfind').value.trim().toLowerCase();
+  const byNo = new Map(trBoxes.map((i) => [i.number, i]));
+  // Each box with the path above it, so two boxes with the same name can be told apart.
+  const path = (i) => { const out = []; let p = i.parent, n = 0; while (p != null && byNo.has(p) && n++ < 8) { out.unshift(byNo.get(p).title); p = byNo.get(p).parent; } return out.join(' › '); };
+  const open = trBoxes.filter((i) => i.status !== 'done' && i.status !== 'dropped')
+    .filter((i) => !q || `#${i.number} ${i.title}`.toLowerCase().includes(q)).slice(0, 200);
+  const rows = (make ? [{ number: 'root', title: 'Straight under the app' }] : []).concat(open);
+  if (trBoxPick != null && !rows.some((r) => String(r.number) === String(trBoxPick))) trBoxPick = null;
+  setHtml($('tr-trackboxes'), rows.length ? rows.map((i) => {
+    const p = i.number === 'root' ? '' : path(i);
+    return `<li><label class="tr-trackbox${String(trBoxPick) === String(i.number) ? ' on' : ''}"><input type="radio" name="box" value="${i.number}"${String(trBoxPick) === String(i.number) ? ' checked' : ''}>
+      <span><b>${i.number === 'root' ? '' : `#${i.number} `}${esc(i.title)}</b>${p ? `<small class="dim">${esc(p)}</small>` : ''}</span></label></li>`;
+  }).join('') : '<li class="empty">No box by that name.</li>');
+  $('tr-trackok').disabled = trBoxPick == null;
+  $('tr-tracktitle').hidden = !make;
+}
+$('tr-trackbtn').addEventListener('click', async () => {
+  if (!trDetail) return;
+  const f = $('tr-trackform');
+  f.elements.title.value = String(trDetail.note || '').trim().split('\n')[0].slice(0, 120);
+  // A suggestion usually becomes its own box; a problem usually belongs to one that is there.
+  f.elements.how.value = trDetail.type === 'suggestion' ? 'make' : 'attach';
+  $('tr-trackfind').value = '';
+  trBoxPick = null;
+  $('tr-trackerr').hidden = true;
+  setHtml($('tr-trackboxes'), '<li class="empty">Loading the tracker…</li>');
+  $('tr-trackok').disabled = true;
+  $('tr-trackdlg').showModal();
+  const r = await api.tracker({ type: 'list' });
+  if (r.error) { $('tr-trackerr').textContent = r.error; $('tr-trackerr').hidden = false; setHtml($('tr-trackboxes'), ''); return; }
+  trBoxes = r.items || [];
+  trBoxesDraw();
+});
+$('tr-trackform').addEventListener('change', (e) => {
+  if (e.target.name === 'box') trBoxPick = e.target.value;
+  trBoxesDraw();
+});
+$('tr-trackfind').addEventListener('input', trBoxesDraw);
+$('tr-trackcancel').addEventListener('click', () => $('tr-trackdlg').close());
+$('tr-trackform').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!trSel || trBoxPick == null) return;
+  const f = e.currentTarget;
+  const make = f.elements.how.value === 'make';
+  act(make
+    ? { type: 'troubleTrack', id: trSel, make: true, title: f.elements.title.value, parent: trBoxPick === 'root' ? null : Number(trBoxPick) }
+    : { type: 'troubleTrack', id: trSel, issue: Number(trBoxPick) });
+  $('tr-trackdlg').close();
+});
+$('tr-untrack').addEventListener('click', () => {
+  if (trSel && window.confirm('Take this recording out of its box in the tracker? The box stays.')) act({ type: 'troubleUntrack', id: trSel });
+});
+// The box it is in: the tracker opens on it.
+$('tr-tracklink').addEventListener('click', (e) => {
+  e.preventDefault();
+  if (trDetail && trDetail.issue) trackerOpenItem(trDetail.issue);
+});

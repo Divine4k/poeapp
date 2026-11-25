@@ -189,3 +189,24 @@ test('deleting needs admin rights, and then the item is gone', async () => {
   assert.strictEqual(plain.issues.length, 1);
   await assert.rejects(deleteItem({ ...b2, number: 9 }), /does not know|Not Found/);
 });
+
+test('a troubleshooting recording is connected to an item by a line in its text, once, and taken out again', async () => {
+  const { addRecording, removeRecording, recordingsIn, recordingLine } = require('../src/tracker');
+  const gh = fakeGithub();
+  const base = { fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/poeapp' };
+  await addItem({ ...base, title: 'Stash regexes', body: 'Notes first.\n\n- [ ] save them' });
+  const rec = { id: '20261125-203200-RaQner', type: 'suggestion', by: 'RaQner', title: 'Save regexes', url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261125-203200-RaQner' };
+  assert.strictEqual(recordingLine(rec), '- Suggestion from RaQner: [Save regexes](https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261125-203200-RaQner)');
+  const a = await addRecording({ ...base, number: 1, rec });
+  assert.deepStrictEqual(a.recordings, ['20261125-203200-RaQner']);
+  assert.deepStrictEqual(a.progress, { done: 0, total: 1 }, 'the steps are untouched');
+  const again = await addRecording({ ...base, number: 1, rec });
+  assert.strictEqual(again.body, a.body, 'connected only once');
+  const other = { ...rec, id: '20261125-205000-DIVINE', type: 'problem', by: 'DIVINE', url: rec.url.replace('203200-RaQner', '205000-DIVINE') };
+  const both = await addRecording({ ...base, number: 1, rec: other });
+  assert.deepStrictEqual(both.recordings, ['20261125-203200-RaQner', '20261125-205000-DIVINE']);
+  const out = await removeRecording({ ...base, number: 1, id: '20261125-203200-RaQner' });
+  assert.deepStrictEqual(out.recordings, ['20261125-205000-DIVINE']);
+  assert.match(out.body, /^Notes first\./);
+  assert.deepStrictEqual(recordingsIn('nothing here'), []);
+});

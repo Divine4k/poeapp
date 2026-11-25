@@ -73,9 +73,43 @@ function toItem(issue) {
     dropped: issue.state === 'closed' && issue.state_reason === 'not_planned',
     labels: names(issue).filter((n) => !MANAGED.has(n)),
     progress: progress(issue.body),
+    // Troubleshooting recordings connected to it: lines with a link to recordings/<id>.
+    recordings: recordingsIn(issue.body),
     url: issue.html_url || '', by: issue.user ? issue.user.login : '',
     created: Date.parse(issue.created_at) || 0, updated: Date.parse(issue.updated_at) || 0, closed: Date.parse(issue.closed_at) || 0,
   };
+}
+
+const RECORDING = /recordings\/([0-9]{8}-[0-9]{6}-[A-Za-z0-9_-]{1,20})/g;
+function recordingsIn(body) {
+  const out = [];
+  for (const m of String(body || '').matchAll(RECORDING)) if (!out.includes(m[1])) out.push(m[1]);
+  return out;
+}
+// The line a connected recording gets in an item's text.
+const recordingLine = (rec) => `- ${rec.type === 'suggestion' ? 'Suggestion' : 'Recording'} from ${rec.by || 'someone'}: [${rec.title || rec.id}](${rec.url})`;
+
+// Connects a troubleshooting recording to an item: a line in its text, kept below the notes
+// (GitHub shows it as a link). Nothing changes when it is there already.
+async function addRecording({ fetchImpl, token, repo, number, rec }) {
+  checkRepo(repo);
+  const n = Number(number);
+  if (!Number.isInteger(n) || n < 1) throw new Error('Unknown item.');
+  const now = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`);
+  if (recordingsIn(now.body).includes(rec.id)) return toItem(now);
+  const body = `${String(now.body || '').replace(/\s+$/, '')}${now.body && now.body.trim() ? '\n\n' : ''}${recordingLine(rec)}\n`;
+  return toItem(await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${n}`, { body }));
+}
+
+// Takes a connected recording's line out of an item's text again.
+async function removeRecording({ fetchImpl, token, repo, number, id }) {
+  checkRepo(repo);
+  const n = Number(number);
+  if (!Number.isInteger(n) || n < 1) throw new Error('Unknown item.');
+  const now = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`);
+  if (!recordingsIn(now.body).includes(id)) return toItem(now);
+  const body = String(now.body || '').split('\n').filter((l) => !l.includes(`recordings/${id}`)).join('\n').replace(/\n{3,}/g, '\n\n');
+  return toItem(await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${n}`, { body }));
 }
 
 // The labels an issue gets: its own other labels kept, the status and priority ones replaced.
@@ -185,4 +219,4 @@ async function deleteItem({ fetchImpl, token, repo, number }) {
   return { number: n };
 }
 
-module.exports = { listItems, addItem, updateItem, setParent, deleteItem, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };
+module.exports = { listItems, addItem, updateItem, setParent, deleteItem, addRecording, removeRecording, recordingsIn, recordingLine, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };

@@ -96,8 +96,17 @@ function renderTracker() {
   if (!admin) { tkLoaded = false; tkItems = []; tkChanged(); if (!$('tab-tracker').hidden) showTab('mapping'); return; }
   // Another repository was set in Developer tools: the list is read again when the page shows.
   if (tkLoaded && state.config.trackerRepo !== tkCfg) tkLoaded = false;
+  // A recording was put in a box (or taken out) since the list was read: read it again.
+  if (tkLoaded && state.trouble && state.trouble.marksRev !== tkMarks) tkLoaded = false;
 }
+let tkMarks = -1;
 function trackerShown() { if (tkLoaded) tkDraw(); else tkLoad(); }
+// Opens the tracker on one box (from a recording on the Troubleshooting page).
+async function trackerOpenItem(number) {
+  showTab('tracker');
+  if (!tkLoaded) await tkLoad();
+  if (tkFind(number)) tkOpenItem(number);
+}
 
 function tkError(text) { $('tk-error').textContent = text || ''; $('tk-error').hidden = !text; }
 
@@ -113,6 +122,7 @@ async function tkLoad() {
   if (r.error) { tkError(r.error); if (!tkLoaded) { setHtml($('tk-board'), ''); setHtml($('tk-nodes'), ''); } return; }
   tkError('');
   tkItems = r.items; tkRepo = r.repo; tkCfg = cfg; tkLoaded = true; tkChanged();
+  tkMarks = state.trouble ? state.trouble.marksRev : -1;
   tkDraw();
 }
 
@@ -122,6 +132,8 @@ function tkSort(col) {
     : (a, b) => TK_PRI[b.priority] - TK_PRI[a.priority] || b.updated - a.updated;
 }
 
+// How many troubleshooting recordings are connected to a box.
+const tkRecTag = (i) => ((i.recordings || []).length ? `<span class="tag tk-rec" title="${i.recordings.length} recording${i.recordings.length === 1 ? '' : 's'} or report${i.recordings.length === 1 ? '' : 's'} connected">▶ ${i.recordings.length}</span>` : '');
 function tkCard(i, col) {
   const p = i.progress;
   const tags = [
@@ -131,7 +143,7 @@ function tkCard(i, col) {
   ].join('');
   return `<li><button type="button" class="tk-card pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}" draggable="true" data-tk="${i.number}">
     <span class="tk-ctitle">${esc(i.title)}</span>
-    <span class="tk-cmeta"><span class="dim num">#${i.number}</span>${tags}</span>
+    <span class="tk-cmeta"><span class="dim num">#${i.number}</span>${tkRecTag(i)}${tags}</span>
     ${p.total ? `<span class="tk-prog"><progress max="${p.total}" value="${p.done}"></progress><small class="num">${p.done}/${p.total}</small></span>` : ''}
   </button></li>`;
 }
@@ -202,6 +214,10 @@ function tkOpenItem(number) {
   f.elements.parent.innerHTML = `<option value="">Nothing: straight under the app</option>${opts.map((i) => `<option value="${i.number}">#${i.number} ${esc(i.title)}</option>`).join('')}`;
   f.elements.parent.value = it.parent != null && tkFind(it.parent) ? String(it.parent) : '';
   tkSteps = parts.steps;
+  // The recordings connected to it, each opened on the Troubleshooting page.
+  const recs = it.recordings || [];
+  $('tk-recs').hidden = !recs.length;
+  setHtml($('tk-reclist'), recs.map((id) => `<li><button type="button" class="link" data-watch="${esc(id)}">${esc(id)}</button></li>`).join(''));
   $('tk-dtitle').textContent = `#${it.number}`;
   $('tk-dlink').href = it.url;
   const day = (ts) => new Date(ts).toLocaleDateString();
@@ -395,7 +411,7 @@ function tkMapDraw() {
     const p = i.progress, inside = tkKids(i.number), open = inside.filter((c) => !tkClosed(c)).length;
     return `<div class="tk-node st-${i.status} pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}${own ? ' focus' : ''}${own || tkMatchDeep(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
       <span class="tk-ntitle">${esc(i.title)}</span>
-      <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${TK_STATUS[i.status]}</span>${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
+      <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${TK_STATUS[i.status]}</span>${tkRecTag(i)}${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
       ${p.total ? `<progress max="${p.total}" value="${p.done}"></progress>` : ''}
       ${!own && inside.length ? `<button type="button" class="tk-into" data-into="${i.number}" title="Open what hangs under this">${inside.length} inside${open < inside.length ? `, ${inside.length - open} finished` : ''} <span aria-hidden="true">›</span></button>` : ''}
       <button type="button" class="tk-plus" data-plus="${i.number}" title="Add something under this" aria-label="Add something under #${i.number}">+</button>
@@ -604,3 +620,14 @@ async function tkLink(number, parent) {
   tkMerge(it, r.item);
   tkDraw();
 }
+
+// A connected recording: the dialog closes and the Troubleshooting page opens on it.
+$('tk-reclist').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-watch]');
+  if (!b) return;
+  $('tk-dialog').close();
+  showTab('trouble');
+  await trLoadList();
+  if (trList.some((r) => r.id === b.dataset.watch)) trOpen(b.dataset.watch);
+  else act({ type: 'troubleSync' }); // not on this PC yet: it is fetched, then it can be opened
+});
