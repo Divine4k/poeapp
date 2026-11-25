@@ -195,6 +195,9 @@ class CheckPanel {
     this.send(data);
   }
 
+  // A press of the left mouse button seen by the app at this spot of the window (see check.js).
+  press(x, y) { if (this.wanted && this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.webContents.send('check-press', { x, y }); }
+
   // While a number is typed in, the window takes the keyboard; otherwise it never does.
   takeKeys(on) {
     this.typing = !!on;

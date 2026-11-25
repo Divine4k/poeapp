@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   overlaySize: (height) => ipcRenderer.send('overlay-size', height),
   // the price check window on top of the game
   onCheck: (cb) => ipcRenderer.on('check', (_e, data) => cb(data)),
+  onCheckPress: (cb) => ipcRenderer.on('check-press', (_e, p) => cb(p)), // a press of the mouse the app saw land in the window
   checkSize: (height) => ipcRenderer.send('check-size', height),
   checkKeys: (on) => ipcRenderer.send('check-keys', !!on), // a number is being typed: the window needs the keyboard
 });

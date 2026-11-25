@@ -836,6 +836,13 @@ function syncKeyHook() {
     closeCheckPanel();
     push();
   });
+  // A press of the left button inside the price check window is passed on to it: over the game
+  // the window does not always get the press itself (see pressOn in ui/check.js).
+  lib.uIOhook.on('mousedown', (e) => {
+    if (e.button !== 1 || !checkPanel || !checkPanel.visible || !checkPanel.rect || checkPanel.typing) return;
+    const p = screen.getCursorScreenPoint(), r = checkPanel.rect;
+    if (p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height) checkPanel.press(p.x - r.x, p.y - r.y);
+  });
   // Back from a map, each of your clicks (moving loot to the stash) is followed by one read, so
   // the app sees the inventory as you leave it. A quick run of clicks gets one read at its end.
   if (config.inventory.onClick) {

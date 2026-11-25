@@ -71,7 +71,7 @@
     const tiers = (r.tiers || []).map((t) => `<small class="pc-tier${t === 1 ? ' best' : ''}" title="Tier ${t}: tier 1 is the best this modifier can be">T${t}</small>`).join('');
     const kind = r.kind && r.mk !== 'pseudo' ? `<small class="k-${r.mk}">${r.kind}</small>` : '';
     return `<li class="${r.enabled ? 'on' : 'off'}" data-row="${i}">
-      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}" title="${esc(r.label)}">${esc(r.label)}</span>${kind}${tiers}</label>${num}</li>`;
+      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}">${esc(r.label)}</span>${kind}${tiers}</label>${num}</li>`;
   }
 
   // An item's picture as the game shows it: no frame, the sockets and their links drawn over it.
@@ -441,16 +441,29 @@
   // Ticks and chips answer the press of the mouse, not the click. A click only counts when the
   // button goes down and comes up on the same thing, and going quickly down a list the mouse is
   // already on its way to the next row when the button comes up: those clicks were lost.
-  panel.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    const chip = e.target.closest('.pc-chip');
-    if (chip) { const r = rows[Number(chip.dataset.row)]; r.enabled = !r.enabled; setOn(chip, r.enabled); choicesChanged(); return; }
-    const tick = e.target.closest('.pc-tick');
+  //
+  // A press reaches the window two ways: as its own pointerdown, and from the app, which sees
+  // every press of the mouse on the screen and passes on those that land in this window
+  // ('hook'). Over the game the window's own events do not always come: in a recording, eleven
+  // presses in a row on one line with the mouse held still did nothing, though the app saw
+  // every one. Whichever way comes first does the work; the same press coming the other way
+  // within a moment is left alone.
+  let lastPress = null; // { key, source, at }
+  function pressOn(target, source) {
+    const chip = target && target.closest('.pc-chip');
+    const tick = !chip && target && target.closest('.pc-tick');
     const box = tick && tick.querySelector('input[type=checkbox]');
-    if (!box || box.disabled) return;
+    if (!chip && (!box || box.disabled)) return;
+    const key = chip ? `chip:${chip.dataset.row}` : box.dataset.craft ? `craft:${box.dataset.craft}` : `row:${tick.closest('[data-row]').dataset.row}`;
+    const now = performance.now();
+    if (lastPress && lastPress.key === key && lastPress.source !== source && now - lastPress.at < 150) { lastPress = null; return; }
+    lastPress = { key, source, at: now };
+    if (chip) { const r = rows[Number(chip.dataset.row)]; r.enabled = !r.enabled; setOn(chip, r.enabled); choicesChanged(); return; }
     box.checked = !box.checked;
     box.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  }
+  panel.addEventListener('pointerdown', (e) => { if (e.button === 0) pressOn(e.target, 'page'); });
+  if (api.onCheckPress) api.onCheckPress((p) => { if (!typing) pressOn(document.elementFromPoint(p.x, p.y), 'hook'); });
   panel.addEventListener('click', (e) => {
     // The click that follows such a press has been dealt with (detail 0: made by the keyboard, not the mouse).
     if (e.detail > 0 && e.target.closest('.pc-tick, .pc-chip')) { e.preventDefault(); return; }

@@ -142,7 +142,7 @@
   };
   window.api = {
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
-    onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, sockets: true, league: 'Keepers', coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {}, checkKeys: () => {},
+    onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, sockets: true, league: 'Keepers', coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {}, checkKeys: () => {}, onCheckPress: (cb) => { window.demoPress = cb; },
     // Settings changed in the preview are kept for as long as the page is open, as the app would keep them.
     getState: async () => state, onState: (cb) => { listener = cb; },
     // The Jewels page needs the real tree and tables: scripts/demo-server.js answers these when
