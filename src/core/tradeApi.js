@@ -152,7 +152,7 @@ function statValue(item, ids) {
   for (const [type, list] of Object.entries(hashes)) {
     for (const [id, where] of list || []) {
       if (!ids.includes(id)) continue;
-      const line = ((item[`${type}Mods`] || [])[(where || [])[0]]) || '';
+      const line = plainText(modText(((item[`${type}Mods`] || [])[(where || [])[0]]) || ''));
       const nums = (line.match(/\d+(\.\d+)?/g) || []).map(Number);
       if (nums.length) return nums.reduce((a, b) => a + b, 0) / nums.length;
     }
@@ -184,6 +184,15 @@ function readListing(raw, chaosOf = () => null, compare = null) {
   };
 }
 
+// A modifier as the site sends it: usually a line of text, but some answers carry an object
+// with the line in one of its fields. Whatever the shape, the line of text in it.
+function modText(t) {
+  if (typeof t === 'string') return t;
+  if (!t || typeof t !== 'object') return '';
+  for (const k of ['text', 'description', 'mod', 'line', 'value', 'name']) if (typeof t[k] === 'string' && t[k]) return t[k];
+  for (const v of Object.values(t)) if (typeof v === 'string' && /\s/.test(v)) return v;
+  return '';
+}
 // The site writes some words as links: "[Life|maximum Life]" or "[Armour]". Only the words shown.
 const plainText = (t) => String(t || '').replace(/\[(?:[^\]|]*\|)?([^\]]*)\]/g, '$1');
 const RARITY = ['normal', 'magic', 'rare', 'unique'];
@@ -198,7 +207,14 @@ function itemDetail(it) {
     props.push([name, plainText(v)]);
   }
   const mods = [];
-  const add = (list, kind) => { for (const t of list || []) for (const line of plainText(t).split('\n')) if (line.trim()) mods.push({ text: line, kind }); };
+  const add = (list, kind) => {
+    for (const t of Array.isArray(list) ? list : []) {
+      const text = plainText(modText(t));
+      // nothing readable: the raw shape is kept for the line's hover text, so it can be reported
+      if (!text) { mods.push({ text: '(a modifier the app could not read)', kind, raw: JSON.stringify(t).slice(0, 300) }); continue; }
+      for (const line of text.split('\n')) if (line.trim()) mods.push({ text: line, kind });
+    }
+  };
   add(it.enchantMods, 'enchant'); add(it.implicitMods, 'implicit'); add(it.fracturedMods, 'fractured');
   add(it.explicitMods, 'explicit'); add(it.craftedMods, 'crafted');
   return {

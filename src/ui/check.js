@@ -166,7 +166,7 @@
       // a line between the implicits and the rest, as in game
       const sep = last && (last === 'implicit' || last === 'enchant') !== (m.kind === 'implicit' || m.kind === 'enchant') ? '<hr>' : '';
       last = m.kind;
-      return `${sep}<p class="pd-mod m-${esc(m.kind)}">${esc(m.text)}${m.kind === 'crafted' || m.kind === 'fractured' || m.kind === 'enchant' ? `<small>${m.kind}</small>` : ''}</p>`;
+      return `${sep}<p class="pd-mod m-${esc(m.kind)}"${m.raw ? ` title="${esc(m.raw)}"` : ''}>${esc(m.text)}${m.kind === 'crafted' || m.kind === 'fractured' || m.kind === 'enchant' ? `<small>${m.kind}</small>` : ''}</p>`;
     }).join('');
     const flags = [x.corrupted ? '<p class="pd-flag corrupted">Corrupted</p>' : '', x.mirrored ? '<p class="pd-flag">Mirrored</p>' : '', x.split ? '<p class="pd-flag">Split</p>' : ''].join('');
     return `<li class="pc-detail">${art(l.icon, l.sockets, l.w, l.h, 'big')}<div class="pd-text r-${esc(x.rarity)}">
