@@ -355,6 +355,17 @@ function tkCurve(x1, y1, x2, y2) {
   const d = Math.max(40, Math.abs(x2 - x1) / 2);
   return `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
 }
+// The lines between boxes: straight out of the parent, a wide rounded bend, straight into the
+// child. Children of one box bend at the same place, so their lines run together like a trunk.
+function tkBranchPath(x1, y1, x2, y2) {
+  if (x2 < x1 + 16) return tkCurve(x1, y1, x2, y2); // child moved left of its parent: a plain curve
+  const dy = y2 - y1;
+  if (Math.abs(dy) < 1) return `M${x1},${y1} H${x2}`;
+  const mx = x1 + Math.min(44, (x2 - x1) / 2); // where the bend is (halfway when boxes are close)
+  // Wide, round bends up to 26px, eased with a cubic so they flow into the straight parts.
+  const r = Math.min(26, Math.abs(dy) / 2, mx - x1, x2 - mx), s = Math.sign(dy), k = r * 0.6;
+  return `M${x1},${y1} H${mx - r} C${mx - r + k},${y1} ${mx},${y1 + s * (r - k)} ${mx},${y1 + s * r} V${y2 - s * r} C${mx},${y2 - s * (r - k)} ${mx + r - k},${y2} ${mx + r},${y2} H${x2}`;
+}
 function tkBox(key) {
   const el = $('tk-nodes').querySelector(`[data-node="${key}"]`);
   return el ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : null;
@@ -368,7 +379,7 @@ function tkLines(temp) {
   const paths = tkItems.map((i) => {
     const a = tkBox(tkParentKey(i)), b = tkBox(i.number);
     if (!a || !b) return '';
-    const d = tkCurve(a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2);
+    const d = tkBranchPath(a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2);
     // A wide see-through line under the drawn one, so it is easy to click.
     return `<path class="tk-hit" data-line="${i.number}" d="${d}"><title>Click to take #${i.number} off here</title></path><path class="tk-line st-${i.status}" d="${d}"/>`;
   });

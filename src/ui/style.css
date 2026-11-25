@@ -1026,7 +1026,7 @@ progress::-webkit-progress-value { background: var(--moss); border-radius: 3px; 
 .tk-map[hidden], .tk-board[hidden] { display: none; }
 .tk-canvas { position: relative; min-width: 100%; min-height: 100%; }
 .tk-lines { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
-.tk-line { fill: none; stroke: color-mix(in srgb, var(--ash) 55%, transparent); stroke-width: 1.6; }
+.tk-line { fill: none; stroke: color-mix(in srgb, var(--ash) 45%, transparent); stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
 .tk-line.st-doing { stroke: color-mix(in srgb, var(--gold) 70%, transparent); }
 .tk-line.st-done { stroke: color-mix(in srgb, var(--moss) 45%, transparent); }
 .tk-line.temp { stroke: var(--gold); stroke-dasharray: 5 4; }
