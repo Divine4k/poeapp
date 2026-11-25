@@ -93,7 +93,7 @@ function tkMatchDeep(i, q, seen = new Set()) {
 function renderTracker() {
   const admin = !!(state.trouble && state.trouble.admin);
   // Moderators have only Troubleshooting in Developer tools: no page switch for them.
-  for (const g of document.querySelectorAll('.dev-tabs')) g.hidden = !admin;
+  $('dev-bar').hidden = !admin || ($('tab-trouble').hidden && $('tab-tracker').hidden);
   if (!admin) { tkLoaded = false; tkItems = []; tkChanged(); if (!$('tab-tracker').hidden) showTab('mapping'); return; }
   // Another repository was set in Developer tools: the list is read again when the page shows.
   if (tkLoaded && state.config.trackerRepo !== tkCfg) tkLoaded = false;

@@ -156,7 +156,8 @@ function showTab(name) {
   if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
   const side = DEV_TABS.includes(name) ? 'devtools' : name;
   for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === side));
-  for (const b of document.querySelectorAll('.dev-tabs [data-tab]')) b.setAttribute('aria-pressed', String(b.dataset.tab === name));
+  for (const b of document.querySelectorAll('#dev-bar [data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  $('dev-bar').hidden = !DEV_TABS.includes(name) || !(state.trouble && state.trouble.admin);
   if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
   for (const id of TABS) $(`tab-${id}`).hidden = id !== name;
   $('strat').hidden = name !== 'mapping'; // strategies sit in the top bar, for the Mapping page only

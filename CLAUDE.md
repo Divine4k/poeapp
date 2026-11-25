@@ -75,7 +75,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 
 ## Roles and troubleshooting
 - Roles come from the server (`users.admin` = admin, `users.role` = 'moderator'). `cloud.role` in the app; `canTrouble()` / `isAdmin()` in main.js.
-- The sidebar has one **Developer tools** entry (`#nav-dev`, `data-tab="devtools"`) holding two pages switched by the `.dev-tabs` buttons at their top: Troubleshooting (`#tab-trouble`) and Tracker (`#tab-tracker`, admins only; moderators see no switch). `showTab('devtools')` opens the one last used (`devTab`, localStorage `devTab`; `DEV_TABS` in app/render.js).
+- The sidebar has one **Developer tools** entry (`#nav-dev`, `data-tab="devtools"`) holding two pages switched by the tabs in the top bar (`#dev-bar`, shown on those two pages): Troubleshooting (`#tab-trouble`) and Tracker (`#tab-tracker`, admins only; moderators see no switch). `showTab('devtools')` opens the one last used (`devTab`, localStorage `devTab`; `DEV_TABS` in app/render.js).
 - Admins and moderators: the Troubleshooting page (`#tab-trouble`) and the record key (`hotkeys.record`, Shift+F9). Admins: Settings, Developer tools (`#set-dev`): reports repository, GitHub token, every user's role.
 - The GitHub token and repository are kept on the server (D1 `meta`, key `github`), handed to admins and moderators when they send. Recordings go to the reports repository, not to this one.
 - Admins and moderators also see everyone's recordings: `trouble.syncRemote()` looks in the reports repository once a minute (and when the page opens) and fetches facts and events of new ones; the video is fetched when one is opened (`videoFor`). Removed ones are listed in `recordings/hidden.json` so they are not fetched again.
