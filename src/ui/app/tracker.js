@@ -6,7 +6,11 @@
 // in config.trackerLayout. Steps are the "- [ ]" lines of an issue (src/ui/steps.js).
 // Part of the main window script: all files in src/ui/app/ share one scope, loaded in the order of index.html.
 
-const TK_COLS = [['idea', 'Ideas'], ['todo', 'To do'], ['doing', 'In progress'], ['done', 'Done']];
+// Every status in order, and the board's four columns: each holds a few statuses, the first is
+// what a card dropped into the column gets.
+const TK_STATUS = { idea: 'Idea', considering: 'Considering', todo: 'To do', doing: 'In progress', testing: 'Testing', hold: 'On hold', blocked: 'Blocked', done: 'Done', dropped: 'Dropped' };
+const TK_COLS = [['idea', 'Ideas', ['idea', 'considering']], ['todo', 'To do', ['todo', 'blocked', 'hold']], ['doing', 'In progress', ['doing', 'testing']], ['done', 'Done', ['done', 'dropped']]];
+const tkClosed = (i) => i.status === 'done' || i.status === 'dropped';
 const TK_PRI = { high: 3, normal: 2, low: 1 };
 let tkItems = [];
 let tkLoaded = false;
@@ -25,7 +29,6 @@ try { tkView = localStorage.getItem('trackerView') === 'board' ? 'board' : 'map'
 // A box with items under it has an "N inside" button to go in; the path above the map goes back.
 let tkFocus = 'root';
 try { const f = Number(localStorage.getItem('trackerFocus')); if (f > 0) tkFocus = f; } catch (_) { /* start at the top */ }
-const TK_STATUS = { idea: 'Idea', todo: 'To do', doing: 'In progress', done: 'Done' };
 
 // An update from GitHub. Its parent is only taken when GitHub said it (src/tracker.js).
 function tkMerge(it, item) {
@@ -104,14 +107,14 @@ function tkSort(col) {
     : (a, b) => TK_PRI[b.priority] - TK_PRI[a.priority] || b.updated - a.updated;
 }
 
-function tkCard(i) {
+function tkCard(i, col) {
   const p = i.progress;
   const tags = [
     i.priority === 'high' ? '<span class="tag warn">High</span>' : i.priority === 'low' ? '<span class="tag dimmed">Low</span>' : '',
-    i.dropped ? '<span class="tag dimmed">Dropped</span>' : '',
+    i.status !== col ? `<span class="tag tk-sttag st-${i.status}">${TK_STATUS[i.status]}</span>` : '',
     ...i.labels.map((l) => `<span class="tag">${esc(l)}</span>`),
   ].join('');
-  return `<li><button type="button" class="tk-card pri-${i.priority}${i.dropped ? ' dropped' : ''}" draggable="true" data-tk="${i.number}">
+  return `<li><button type="button" class="tk-card pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}" draggable="true" data-tk="${i.number}">
     <span class="tk-ctitle">${esc(i.title)}</span>
     <span class="tk-cmeta"><span class="dim num">#${i.number}</span>${tags}</span>
     ${p.total ? `<span class="tk-prog"><progress max="${p.total}" value="${p.done}"></progress><small class="num">${p.done}/${p.total}</small></span>` : ''}
@@ -135,11 +138,11 @@ function tkDraw() {
 function tkBoardDraw() {
   const q = $('tk-filter').value.trim().toLowerCase();
   const shown = tkItems.filter((i) => tkMatch(i, q));
-  setHtml($('tk-board'), TK_COLS.map(([col, label]) => {
-    const list = shown.filter((i) => i.status === col).sort(tkSort(col));
+  setHtml($('tk-board'), TK_COLS.map(([col, label, has]) => {
+    const list = shown.filter((i) => has.includes(i.status)).sort(tkSort(col));
     return `<section class="tk-col panel" data-col="${col}" aria-label="${label}">
       <header class="tk-chead"><b>${label}</b><span class="tk-count num">${list.length}</span></header>
-      <ul class="tk-list">${list.length ? list.map(tkCard).join('') : `<li class="empty">${q ? 'Nothing found.' : col === 'done' ? 'Nothing finished yet.' : 'Empty.'}</li>`}</ul>
+      <ul class="tk-list">${list.length ? list.map((i) => tkCard(i, col)).join('') : `<li class="empty">${q ? 'Nothing found.' : col === 'done' ? 'Nothing finished yet.' : 'Empty.'}</li>`}</ul>
     </section>`;
   }).join(''));
 }
@@ -147,9 +150,10 @@ function tkBoardDraw() {
 // Moves an item to another column at once; GitHub is told behind it.
 async function tkMove(number, status) {
   const it = tkItems.find((i) => i.number === number);
-  if (!it || it.status === status) return;
-  const was = { status: it.status, closed: it.closed };
-  Object.assign(it, { status, closed: status === 'done' ? Date.now() : 0 });
+  const col = TK_COLS.find((c) => c[0] === status);
+  if (!it || it.status === status || (col && col[2].includes(it.status))) return; // already in that column
+  const was = { status: it.status, closed: it.closed, dropped: it.dropped };
+  Object.assign(it, { status, dropped: status === 'dropped', closed: status === 'done' || status === 'dropped' ? Date.now() : 0 });
   tkDraw();
   const r = await api.tracker({ type: 'update', number, patch: { status } });
   if (r.error) { Object.assign(it, was); tkDraw(); tkError(r.error); return; }
@@ -186,7 +190,8 @@ function tkOpenItem(number) {
   $('tk-dtitle').textContent = `#${it.number}`;
   $('tk-dlink').href = it.url;
   const day = (ts) => new Date(ts).toLocaleDateString();
-  $('tk-dby').textContent = `Added${it.by ? ` by ${it.by}` : ''} on ${day(it.created)}${it.closed ? `, finished on ${day(it.closed)}` : ''}`;
+  $('tk-dby').textContent = `Added${it.by ? ` by ${it.by}` : ''} on ${day(it.created)}${it.closed ? `, ${it.status === 'dropped' ? 'dropped' : 'finished'} on ${day(it.closed)}` : ''}`;
+  $('tk-delete').disabled = false;
   $('tk-derror').hidden = true;
   $('tk-save').disabled = false;
   $('tk-stepnew').value = '';
@@ -224,6 +229,21 @@ $('tk-form').addEventListener('submit', async (e) => {
   tkDraw();
 });
 $('tk-cancel').addEventListener('click', () => $('tk-dialog').close());
+// Delete for good (GitHub needs admin rights on the token for this; src/tracker.js deleteItem).
+$('tk-delete').addEventListener('click', async () => {
+  const it = tkFind(tkOpen);
+  if (!it) return;
+  const inside = tkKids(it.number).length;
+  if (!window.confirm(`Delete #${it.number} "${it.title}" for good? It cannot be brought back.${inside ? ` The ${inside} item${inside === 1 ? '' : 's'} under it move to the top of the map.` : ''}\n\nTo keep it but put it aside, set it to Dropped instead.`)) return;
+  $('tk-delete').disabled = true;
+  const r = await api.tracker({ type: 'delete', number: it.number });
+  $('tk-delete').disabled = false;
+  if (r.error) { $('tk-derror').textContent = r.error; $('tk-derror').hidden = false; return; }
+  for (const c of tkItems) if (c.parent === it.number) c.parent = null;
+  tkItems = tkItems.filter((i) => i !== it);
+  $('tk-dialog').close();
+  tkDraw();
+});
 $('tk-stepbtn').addEventListener('click', tkAddStep);
 $('tk-stepnew').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tkAddStep(); } });
 $('tk-steps').addEventListener('change', (e) => {
@@ -353,19 +373,19 @@ function tkMapDraw() {
   const q = $('tk-filter').value.trim().toLowerCase();
   const focus = tkLayer();
   const saved = { ...(state.config.trackerLayout || {}), ...tkMoved };
-  const kids = tkKids(focus).sort((a, b) => (a.status === 'done') - (b.status === 'done') || a.number - b.number);
+  const kids = tkKids(focus).sort((a, b) => tkClosed(a) - tkClosed(b) || a.number - b.number);
   const node = (i, own) => {
-    const p = i.progress, inside = tkKids(i.number), open = inside.filter((c) => c.status !== 'done').length;
-    return `<div class="tk-node st-${i.status} pri-${i.priority}${i.dropped ? ' dropped' : ''}${own ? ' focus' : ''}${own || tkMatchDeep(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
+    const p = i.progress, inside = tkKids(i.number), open = inside.filter((c) => !tkClosed(c)).length;
+    return `<div class="tk-node st-${i.status} pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}${own ? ' focus' : ''}${own || tkMatchDeep(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
       <span class="tk-ntitle">${esc(i.title)}</span>
-      <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${i.dropped ? 'Dropped' : TK_STATUS[i.status]}</span>${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
+      <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${TK_STATUS[i.status]}</span>${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
       ${p.total ? `<progress max="${p.total}" value="${p.done}"></progress>` : ''}
-      ${!own && inside.length ? `<button type="button" class="tk-into" data-into="${i.number}" title="Open what hangs under this">${inside.length} inside${open < inside.length ? `, ${inside.length - open} done` : ''} <span aria-hidden="true">›</span></button>` : ''}
+      ${!own && inside.length ? `<button type="button" class="tk-into" data-into="${i.number}" title="Open what hangs under this">${inside.length} inside${open < inside.length ? `, ${inside.length - open} finished` : ''} <span aria-hidden="true">›</span></button>` : ''}
       <button type="button" class="tk-plus" data-plus="${i.number}" title="Add something under this" aria-label="Add something under #${i.number}">+</button>
       <span class="tk-plug" data-plug="${i.number}" title="Drag onto another box to hang it under this one"></span>
     </div>`;
   };
-  const all = tkItems.filter((i) => i.status !== 'done').length;
+  const all = tkItems.filter((i) => !tkClosed(i)).length;
   const head = focus === 'root'
     ? `<div class="tk-node root" data-node="root" tabindex="0" role="button" aria-label="Map Companion">
       <span class="tk-ntitle">Map Companion</span>

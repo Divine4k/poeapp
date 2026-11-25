@@ -1049,6 +1049,7 @@ async function trackerAction(a) {
     if (a.type === 'add') return { item: await tracker.addItem({ ...base, title: a.title, body: a.body, status: a.status, priority: a.priority, parent: a.parent }) };
     if (a.type === 'parent') return { item: await tracker.setParent({ ...base, number: a.number, parent: a.parent }) };
     if (a.type === 'update') return { item: await tracker.updateItem({ ...base, number: a.number, patch: a.patch || {} }) };
+    if (a.type === 'delete') return await tracker.deleteItem({ ...base, number: a.number });
   } catch (e) { return { error: e.message || String(e) }; }
   return { error: 'Unknown request.' };
 }

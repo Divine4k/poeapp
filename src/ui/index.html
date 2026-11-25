@@ -349,7 +349,7 @@
   <form class="tk-add" id="tk-add" autocomplete="off">
     <span class="tk-under" id="tk-under" hidden>Under <b id="tk-under-name"></b><button type="button" class="link" id="tk-under-clear" title="Put it straight under the app instead" aria-label="Not under this one">×</button></span>
     <input name="title" maxlength="200" placeholder="A new idea, feature or fix…" aria-label="Title of the new item" required>
-    <select name="status" aria-label="Where it goes"><option value="idea">Ideas</option><option value="todo">To do</option><option value="doing">In progress</option></select>
+    <select name="status" aria-label="Where it goes"><option value="idea">Idea</option><option value="considering">Considering</option><option value="todo">To do</option><option value="doing">In progress</option></select>
     <button type="submit" class="primary">Add</button>
   </form>
   <p class="warn" id="tk-error" hidden></p>
@@ -693,7 +693,7 @@
     <div class="tk-dhead"><h2 id="tk-dtitle">Item</h2><a id="tk-dlink" target="_blank" rel="noreferrer">Open on GitHub</a></div>
     <div class="settings-grid">
       <label class="wide">Title <input name="title" maxlength="200" required></label>
-      <label>Where it stands <select name="status"><option value="idea">Idea</option><option value="todo">To do</option><option value="doing">In progress</option><option value="done">Done</option></select></label>
+      <label>Where it stands <select name="status"><option value="idea">Idea</option><option value="considering">Considering: not decided yet</option><option value="todo">To do</option><option value="doing">In progress</option><option value="testing">Testing: built, being checked</option><option value="hold">On hold: paused for now</option><option value="blocked">Blocked: waiting on something else</option><option value="done">Done</option><option value="dropped">Dropped: decided against it</option></select></label>
       <label>Priority <select name="priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
       <label class="wide">Part of <select name="parent"></select></label>
       <label class="wide">Notes <textarea name="notes" rows="5" maxlength="20000" placeholder="What it is, why, how it should work…"></textarea></label>
@@ -703,7 +703,7 @@
     <div class="row tk-stepadd"><input id="tk-stepnew" maxlength="300" placeholder="Add a step and press Enter" aria-label="New step"><button type="button" id="tk-stepbtn">Add step</button></div>
     <p class="warn" id="tk-derror" hidden></p>
     <div class="dialog-actions">
-      <span class="dim tk-dby" id="tk-dby"></span>
+      <span class="tk-dleft"><button type="button" class="link tk-del" id="tk-delete">Delete</button><span class="dim tk-dby" id="tk-dby"></span></span>
       <span class="row"><button type="button" id="tk-cancel">Cancel</button><button type="submit" class="primary" id="tk-save" value="save">Save</button></span>
     </div>
   </form>

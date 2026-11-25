@@ -4,10 +4,11 @@
 // and close the same list while working on the app ("Closes #12" in a commit moves it to Done).
 //
 // Where an item stands is told by GitHub itself:
-//   closed issue                -> Done
-//   open, label "in progress"   -> In progress
-//   open, label "idea"          -> Ideas
-//   open, neither               -> To do
+//   closed as completed          -> Done
+//   closed as not planned        -> Dropped
+//   open, with one of the labels -> idea: Idea, considering: Considering, in progress: In progress,
+//                                   testing: Testing, on hold: On hold, blocked: Blocked
+//   open, none of them           -> To do
 // Priority is a label too: "priority: high" or "priority: low" (none = normal).
 // How items hang together (the Tracker map's lines) is GitHub's own sub-issues: an item's parent
 // is the issue it is a sub-issue of. The map's box positions are not kept here (config.trackerLayout).
@@ -17,8 +18,11 @@
 const { progress } = require('./ui/steps');
 
 const API = 'https://api.github.com';
-const STATUSES = ['idea', 'todo', 'doing', 'done'];
-const STATUS_LABEL = { idea: 'idea', doing: 'in progress' };
+const STATUSES = ['idea', 'considering', 'todo', 'doing', 'testing', 'hold', 'blocked', 'done', 'dropped'];
+const STATUS_LABEL = { idea: 'idea', considering: 'considering', doing: 'in progress', testing: 'testing', hold: 'on hold', blocked: 'blocked' };
+const CLOSED = { done: 'completed', dropped: 'not_planned' }; // the closed statuses and GitHub's reason for each
+// When an open issue carries more than one status label, the one furthest along wins.
+const LABEL_ORDER = ['doing', 'testing', 'blocked', 'hold', 'considering', 'idea'];
 const PRIORITY_LABEL = { high: 'priority: high', low: 'priority: low' };
 const MANAGED = new Set([...Object.values(STATUS_LABEL), ...Object.values(PRIORITY_LABEL)]);
 const DONE_KEPT = 40; // closed items shown in Done; older ones stay on GitHub
@@ -50,11 +54,9 @@ const numberIn = (url) => { const m = /\/issues\/(\d+)$/.exec(String(url || ''))
 const names = (issue) => (issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name)).filter(Boolean);
 
 function statusOf(issue) {
-  if (issue.state === 'closed') return 'done';
+  if (issue.state === 'closed') return issue.state_reason === 'not_planned' ? 'dropped' : 'done';
   const l = names(issue);
-  if (l.includes(STATUS_LABEL.doing)) return 'doing';
-  if (l.includes(STATUS_LABEL.idea)) return 'idea';
-  return 'todo';
+  return LABEL_ORDER.find((st) => l.includes(STATUS_LABEL[st])) || 'todo';
 }
 function priorityOf(issue) {
   const l = names(issue);
@@ -139,7 +141,7 @@ async function addItem({ fetchImpl, token, repo, title, body = '', status = 'ide
   if (!title) throw new Error('Give it a title first.');
   if (!STATUSES.includes(status)) status = 'idea';
   let issue = await call(fetchImpl, token, 'POST', `/repos/${repo}/issues`, { title, body: String(body || ''), labels: labelsFor([], status, priority) });
-  if (status === 'done') issue = await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' });
+  if (CLOSED[status]) issue = await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${issue.number}`, { state: 'closed', state_reason: CLOSED[status] });
   if (parent != null) return setParent({ fetchImpl, token, repo, number: issue.number, parent });
   return toItem(issue);
 }
@@ -156,9 +158,31 @@ async function updateItem({ fetchImpl, token, repo, number, patch }) {
   const body = { labels: labelsFor(names(now), status, priority) };
   if (patch.title !== undefined) { const t = String(patch.title).trim(); if (!t) throw new Error('The title cannot be empty.'); body.title = t; }
   if (patch.body !== undefined) body.body = String(patch.body);
-  if (status === 'done' && now.state !== 'closed') Object.assign(body, { state: 'closed', state_reason: 'completed' });
-  if (status !== 'done' && now.state === 'closed') Object.assign(body, { state: 'open', state_reason: 'reopened' });
+  // Done and Dropped are GitHub's two ways of closing; every other status is an open issue.
+  if (CLOSED[status] && (now.state !== 'closed' || now.state_reason !== CLOSED[status])) Object.assign(body, { state: 'closed', state_reason: CLOSED[status] });
+  if (!CLOSED[status] && now.state === 'closed') Object.assign(body, { state: 'open', state_reason: 'reopened' });
   return toItem(await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${n}`, body));
 }
 
-module.exports = { listItems, addItem, updateItem, setParent, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };
+// Deletes an issue for good. GitHub's REST API has no way to do it, only GraphQL, and only for
+// someone with admin rights on the repository: a fine-grained token needs "Administration: read
+// and write" there. Items under it lose their parent and hang straight under the app.
+async function deleteItem({ fetchImpl, token, repo, number }) {
+  checkRepo(repo);
+  const n = Number(number);
+  if (!Number.isInteger(n) || n < 1) throw new Error('Unknown item.');
+  const issue = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`);
+  const res = await fetchImpl(`${API}/graphql`, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'poeapp', 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' },
+    body: JSON.stringify({ query: 'mutation($id: ID!) { deleteIssue(input: { issueId: $id }) { clientMutationId } }', variables: { id: issue.node_id } }),
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* an answer without a body */ }
+  const problem = !res.ok ? (data && data.message) || `GitHub answered ${res.status}` : data && data.errors && data.errors.length ? data.errors.map((e) => e.message).join(' ') : '';
+  if (problem) throw new Error(`GitHub would not delete #${n} (${problem}). Deleting needs admin rights: give the token "Administration: Read and write" on ${repo}, or set the item to Dropped instead.`);
+  return { number: n };
+}
+
+module.exports = { listItems, addItem, updateItem, setParent, deleteItem, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };

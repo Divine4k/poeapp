@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { parseSteps, joinSteps, progress } = require('../src/ui/steps');
-const { listItems, addItem, updateItem, setParent, statusOf, labelsFor } = require('../src/tracker');
+const { listItems, addItem, updateItem, setParent, deleteItem, statusOf, labelsFor } = require('../src/tracker');
 
 test('steps are lifted out of the text and put back after the notes', () => {
   const body = 'Read a stash tab.\r\n\r\n- [x] Find the grid\n- [ ] Read the items\n* [X] Bundle data\nMore notes';
@@ -46,6 +46,16 @@ function fakeGithub(token = 'good', { withParent = true } = {}) {
     const reply = (status, data) => ({ ok: status < 300, status, json: async () => data });
     if (opt.headers.Authorization !== `Bearer ${token}`) return reply(401, { message: 'Bad credentials' });
     const body = opt.body ? JSON.parse(opt.body) : null;
+    if (u.pathname === '/graphql') {
+      // deleteIssue: only a token with admin rights ('admin') may.
+      if (token !== 'admin' && opt.headers.Authorization !== 'Bearer admin') return reply(200, { errors: [{ message: 'Divine4k does not have the correct permissions to execute `DeleteIssue`' }] });
+      const at = issues.findIndex((x) => x.node_id === body.variables.id);
+      if (at < 0) return reply(200, { errors: [{ message: 'Could not resolve to a node' }] });
+      const [gone] = issues.splice(at, 1);
+      parentOf.delete(gone.number);
+      for (const [k, v] of [...parentOf]) if (v === gone.number) parentOf.delete(k);
+      return reply(200, { data: { deleteIssue: { clientMutationId: null } } });
+    }
     const sub = /^\/repos\/Divine4k\/poeapp\/issues\/(\d+)\/(parent|sub_issues|sub_issue)$/.exec(u.pathname);
     if (sub) {
       const n = Number(sub[1]);
@@ -68,7 +78,8 @@ function fakeGithub(token = 'good', { withParent = true } = {}) {
       return reply(200, issues.filter((i) => i.state === state).map(show));
     }
     if (!m[1] && opt.method === 'POST') {
-      const i = { number: issues.length + 1, id: 9000 + issues.length + 1, title: body.title, body: body.body, state: 'open', state_reason: null, labels: body.labels.map((name) => ({ name })), user: { login: 'Divine4k' }, html_url: `https://github.com/Divine4k/poeapp/issues/${issues.length + 1}`, created_at: at, updated_at: at, closed_at: null };
+      const num = Math.max(0, ...issues.map((x) => x.number)) + 1;
+      const i = { number: num, id: 9000 + num, node_id: `I_${num}`, title: body.title, body: body.body, state: 'open', state_reason: null, labels: body.labels.map((name) => ({ name })), user: { login: 'Divine4k' }, html_url: `https://github.com/Divine4k/poeapp/issues/${num}`, created_at: at, updated_at: at, closed_at: null };
       issues.push(i);
       return reply(201, show(i));
     }
@@ -140,4 +151,41 @@ test('items hang together as GitHub sub-issues, read back either way GitHub answ
     assert.strictEqual(edited.parent, withParent ? 1 : undefined);
     await assert.rejects(setParent({ ...base, number: 2, parent: 2 }), /part of itself/);
   }
+});
+
+test('every status reads back from GitHub as it was set', async () => {
+  assert.strictEqual(statusOf({ state: 'closed', state_reason: 'not_planned', labels: [] }), 'dropped');
+  assert.strictEqual(statusOf({ state: 'closed', state_reason: 'completed', labels: [] }), 'done');
+  assert.strictEqual(statusOf({ state: 'open', labels: ['considering', 'idea'] }), 'considering');
+  assert.strictEqual(statusOf({ state: 'open', labels: ['blocked', 'on hold'] }), 'blocked');
+  const gh = fakeGithub();
+  const base = { fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/poeapp' };
+  const a = await addItem({ ...base, title: 'Loot filter', status: 'considering', priority: 'high' });
+  assert.strictEqual(a.status, 'considering');
+  for (const st of ['idea', 'todo', 'doing', 'testing', 'hold', 'blocked', 'dropped', 'done', 'dropped', 'considering']) {
+    const it = await updateItem({ ...base, number: a.number, patch: { status: st } });
+    assert.strictEqual(it.status, st, st);
+    assert.strictEqual(it.priority, 'high'); // the priority label stays
+  }
+  assert.deepStrictEqual(gh.issues[0].labels.map((l) => l.name).sort(), ['considering', 'priority: high']);
+  assert.strictEqual(gh.issues[0].state, 'open');
+  const d = await addItem({ ...base, title: 'Old idea', status: 'dropped' });
+  assert.strictEqual(d.status, 'dropped');
+  assert.strictEqual(gh.issues[1].state_reason, 'not_planned');
+});
+
+test('deleting needs admin rights, and then the item is gone', async () => {
+  const gh = fakeGithub('admin');
+  const base = { fetchImpl: gh.fetch, token: 'admin', repo: 'Divine4k/poeapp' };
+  await addItem({ ...base, title: 'Parent' });
+  await addItem({ ...base, title: 'Child', parent: 1 });
+  await deleteItem({ ...base, number: 1 });
+  assert.deepStrictEqual((await listItems(base)).map((i) => [i.number, i.parent]), [[2, null]]);
+  // Without admin rights GitHub refuses, and the message says what to do.
+  const plain = fakeGithub();
+  const b2 = { fetchImpl: plain.fetch, token: 'good', repo: 'Divine4k/poeapp' };
+  await addItem({ ...b2, title: 'Keep me' });
+  await assert.rejects(deleteItem({ ...b2, number: 1 }), /Administration: Read and write.*Dropped/);
+  assert.strictEqual(plain.issues.length, 1);
+  await assert.rejects(deleteItem({ ...b2, number: 9 }), /does not know|Not Found/);
 });

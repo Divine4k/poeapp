@@ -1102,6 +1102,27 @@ progress::-webkit-progress-value { background: var(--moss); border-radius: 3px; 
 .tk-node.st-doing .tk-st { color: var(--gold); }
 .tk-node.st-done .tk-st { color: var(--moss); }
 .tk-node.st-idea .tk-st { color: var(--portal); }
+/* The other statuses: considering a paler blue than an idea, testing between gold and green,
+   on hold quiet, blocked red, dropped grey and struck through (.dropped). */
+.tk-node.st-considering::before { background: color-mix(in srgb, var(--portal) 55%, var(--ash)); }
+.tk-node.st-considering .tk-st { color: color-mix(in srgb, var(--portal) 60%, var(--ash)); }
+.tk-node.st-testing::before { background: color-mix(in srgb, var(--gold) 50%, var(--moss)); }
+.tk-node.st-testing .tk-st { color: color-mix(in srgb, var(--gold) 50%, var(--moss)); }
+.tk-node.st-hold::before { background: var(--faint); }
+.tk-node.st-hold { opacity: 0.8; }
+.tk-node.st-blocked::before { background: var(--blood); }
+.tk-node.st-blocked .tk-st { color: var(--blood); }
+.tk-node.st-dropped::before { background: var(--faint); }
+.tk-node.st-dropped { opacity: 0.6; }
+.tk-line.st-testing { stroke: color-mix(in srgb, var(--gold) 50%, var(--moss)); stroke-opacity: 0.6; }
+.tk-line.st-blocked { stroke: color-mix(in srgb, var(--blood) 55%, transparent); }
+.tk-line.st-dropped, .tk-line.st-hold { stroke-dasharray: 3 4; }
+.tk-sttag.st-considering, .tk-sttag.st-idea { border-color: var(--portal); color: var(--portal); }
+.tk-sttag.st-testing { border-color: var(--moss); color: var(--moss); }
+.tk-sttag.st-blocked { border-color: var(--blood); color: var(--blood); }
+.tk-dleft { display: flex; align-items: center; gap: 12px; }
+button.tk-del { color: var(--blood); padding: 0; }
+button.tk-del:hover { color: var(--blood); text-decoration: underline; }
 .tk-node progress { flex: none; width: 100%; }
 .tk-plus { position: absolute; right: 6px; top: 6px; width: 20px; height: 20px; padding: 0; line-height: 1; font-size: 15px; border-radius: 6px; opacity: 0; }
 .tk-node:hover .tk-plus, .tk-node:focus-within .tk-plus, .tk-plus:focus-visible { opacity: 1; }
