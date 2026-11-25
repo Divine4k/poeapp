@@ -35,8 +35,23 @@ function tkMerge(it, item) {
   const { parent, ...rest } = item;
   Object.assign(it, rest);
   if (parent !== undefined) it.parent = parent;
+  tkChanged();
 }
-const tkFind = (n) => tkItems.find((i) => i.number === n);
+// Look-ups by number and by parent. Built once after the list changes (tkChanged) and used by
+// every draw, search and drag, so none of them scans the whole list for each box.
+let tkIdx = null;
+function tkIndex() {
+  if (tkIdx && tkIdx.list === tkItems && tkIdx.size === tkItems.length) return tkIdx;
+  const by = new Map(tkItems.map((i) => [i.number, i])), kids = new Map();
+  for (const i of tkItems) {
+    const k = i.parent != null && by.has(i.parent) ? i.parent : 'root';
+    if (kids.has(k)) kids.get(k).push(i); else kids.set(k, [i]);
+  }
+  return (tkIdx = { list: tkItems, size: tkItems.length, by, kids });
+}
+// Call after an item's parent changes or the list is replaced.
+function tkChanged() { tkIdx = null; }
+const tkFind = (n) => tkIndex().by.get(n);
 // The item's parent, if that one is in the list; otherwise it hangs straight under the app.
 const tkParentKey = (i) => (i.parent != null && tkFind(i.parent) ? i.parent : 'root');
 // Is item a under item b (at any depth)?
@@ -49,7 +64,7 @@ function tkUnderOf(a, b) {
   return false;
 }
 // What hangs straight under a box ('root': under the app).
-const tkKids = (key) => tkItems.filter((i) => tkParentKey(i) === key);
+const tkKids = (key) => (tkIndex().kids.get(key) || []).slice();
 // The layer being shown; back to the top when its item is gone.
 function tkLayer() {
   if (tkFocus !== 'root' && !tkFind(tkFocus)) tkFocus = 'root';
@@ -78,7 +93,7 @@ function tkMatchDeep(i, q, seen = new Set()) {
 function renderTracker() {
   const admin = !!(state.trouble && state.trouble.admin);
   $('nav-tracker').hidden = !admin;
-  if (!admin) { tkLoaded = false; tkItems = []; if (!$('tab-tracker').hidden) showTab('mapping'); return; }
+  if (!admin) { tkLoaded = false; tkItems = []; tkChanged(); if (!$('tab-tracker').hidden) showTab('mapping'); return; }
   // Another repository was set in Developer tools: the list is read again when the page shows.
   if (tkLoaded && state.config.trackerRepo !== tkCfg) tkLoaded = false;
 }
@@ -97,7 +112,7 @@ async function tkLoad() {
   $('tk-refresh').disabled = false; $('tk-refresh').classList.remove('busy');
   if (r.error) { tkError(r.error); if (!tkLoaded) { setHtml($('tk-board'), ''); setHtml($('tk-nodes'), ''); } return; }
   tkError('');
-  tkItems = r.items; tkRepo = r.repo; tkCfg = cfg; tkLoaded = true;
+  tkItems = r.items; tkRepo = r.repo; tkCfg = cfg; tkLoaded = true; tkChanged();
   tkDraw();
 }
 
@@ -174,7 +189,7 @@ function tkStepsDraw() {
 }
 
 function tkOpenItem(number) {
-  const it = tkItems.find((i) => i.number === number);
+  const it = tkFind(number);
   if (!it) return;
   tkOpen = number;
   const f = $('tk-form'), parts = Steps.parseSteps(it.body);
@@ -274,6 +289,7 @@ $('tk-add').addEventListener('submit', async (e) => {
   tkError('');
   f.elements.title.value = '';
   tkItems.push({ ...r.item, parent: r.item.parent !== undefined ? r.item.parent : parent });
+  tkChanged();
   tkUnder = null;
   tkDraw();
 });
@@ -398,8 +414,10 @@ function tkMapDraw() {
   tkCrumbs();
   tkUnderLine();
   // Laid out once the boxes are drawn, so each one's real height is known.
-  const els = new Map([...$('tk-nodes').querySelectorAll('[data-node]')].map((el) => [tkKey(el.dataset.node), el]));
-  const auto = tkAutoLayout((k) => (els.get(k) ? els.get(k).offsetHeight : 60), focus, kids);
+  const els = tkEls = new Map([...$('tk-nodes').querySelectorAll('[data-node]')].map((el) => [tkKey(el.dataset.node), el]));
+  // Measured once per draw (the only time a box changes size); moving boxes never measures.
+  tkSize = new Map([...els].map(([k, el]) => [k, [el.offsetWidth, el.offsetHeight]]));
+  const auto = tkAutoLayout((k) => (tkSize.has(k) ? tkSize.get(k)[1] : 60), focus, kids);
   // A box moved by hand keeps its place; one never moved sits where the layout puts it,
   // shifted as far as the layer's own box was moved, so the layer stays together.
   const own = (k) => (Array.isArray(saved[tkLayoutKey(k)]) ? saved[tkLayoutKey(k)].slice(0, 2) : null);
@@ -408,10 +426,12 @@ function tkMapDraw() {
   const shift = [tkPos[focus][0] - auto[focus][0], tkPos[focus][1] - auto[focus][1]];
   for (const c of kids) tkPos[c.number] = own(c.number) || [auto[c.number][0] + shift[0], Math.max(0, auto[c.number][1] + shift[1])];
   for (const el of els.values()) tkPlace(el);
-  tkLines();
+  tkLinesNow();
 }
 
 const tkKey = (v) => (v === 'root' ? 'root' : Number(v));
+let tkEls = new Map();   // the boxes on the map right now: number or 'root' -> element
+let tkSize = new Map();  // their sizes: number or 'root' -> [width, height]
 function tkPlace(el) {
   const [x, y] = tkPos[tkKey(el.dataset.node)] || [40, 40];
   el.style.left = `${x}px`; el.style.top = `${y}px`;
@@ -433,25 +453,43 @@ function tkBranchPath(x1, y1, x2, y2) {
   const r = Math.min(26, Math.abs(dy) / 2, mx - x1, x2 - mx), s = Math.sign(dy), k = r * 0.6;
   return `M${x1},${y1} H${mx - r} C${mx - r + k},${y1} ${mx},${y1 + s * (r - k)} ${mx},${y1 + s * r} V${y2 - s * r} C${mx},${y2 - s * (r - k)} ${mx + r - k},${y2} ${mx + r},${y2} H${x2}`;
 }
+// Where a box is, from what the map already knows: no measuring, so it costs nothing while dragging.
 function tkBox(key) {
-  const el = $('tk-nodes').querySelector(`[data-node="${key}"]`);
-  return el ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : null;
+  const p = tkPos[key], z = tkSize.get(key);
+  return p && z ? { x: p[0], y: p[1], w: z[0], h: z[1] } : null;
 }
+let tkCanvasSize = '';
 function tkLines(temp) {
   let maxX = 0, maxY = 0;
-  for (const el of $('tk-nodes').querySelectorAll('[data-node]')) { maxX = Math.max(maxX, el.offsetLeft + el.offsetWidth); maxY = Math.max(maxY, el.offsetTop + el.offsetHeight); }
+  for (const k of tkSize.keys()) { const b = tkBox(k); if (b) { maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h); } }
   const canvas = $('tk-canvas'), svg = $('tk-lines');
-  canvas.style.width = `${maxX + 240}px`; canvas.style.height = `${maxY + 160}px`;
-  svg.setAttribute('width', maxX + 240); svg.setAttribute('height', maxY + 160);
-  const paths = tkItems.map((i) => {
-    const a = tkBox(tkParentKey(i)), b = tkBox(i.number);
-    if (!a || !b) return '';
+  const size = `${maxX + 240}x${maxY + 160}`;
+  if (size !== tkCanvasSize) {
+    tkCanvasSize = size;
+    canvas.style.width = `${maxX + 240}px`; canvas.style.height = `${maxY + 160}px`;
+    svg.setAttribute('width', maxX + 240); svg.setAttribute('height', maxY + 160);
+  }
+  // Only the boxes of the layer shown have lines; the rest of the list is not on the map.
+  const paths = [];
+  for (const k of tkSize.keys()) {
+    const i = k === 'root' ? null : tkFind(k);
+    if (!i) continue;
+    const a = tkBox(tkParentKey(i)), b = tkBox(k);
+    if (!a || !b) continue;
     const d = tkBranchPath(a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2);
     // A wide see-through line under the drawn one, so it is easy to click.
-    return `<path class="tk-hit" data-line="${i.number}" d="${d}"><title>Click to take #${i.number} off here</title></path><path class="tk-line st-${i.status}" d="${d}"/>`;
-  });
+    paths.push(`<path class="tk-hit" data-line="${i.number}" d="${d}"><title>Click to take #${i.number} off here</title></path><path class="tk-line st-${i.status}" d="${d}"/>`);
+  }
   svg.innerHTML = paths.join('') + (temp ? `<path class="tk-line temp" d="${temp}"/>` : '');
 }
+// While a box or a line is dragged the lines are drawn once per screen refresh, however many
+// pointer movements arrive in between.
+let tkLinesFrame = 0, tkLinesTemp;
+function tkLinesSoon(temp) {
+  tkLinesTemp = temp;
+  if (!tkLinesFrame) tkLinesFrame = requestAnimationFrame(() => { tkLinesFrame = 0; tkLines(tkLinesTemp); });
+}
+function tkLinesNow(temp) { if (tkLinesFrame) { cancelAnimationFrame(tkLinesFrame); tkLinesFrame = 0; } tkLines(temp); }
 
 // Pointer on the map: move a box (and what hangs under it), connect from a dot, take a line
 // off, or drag the empty map around.
@@ -495,18 +533,19 @@ $('tk-map').addEventListener('pointermove', (e) => {
     g.moved = true;
     for (const [k, [sx, sy]] of Object.entries(g.start)) {
       tkPos[tkKey(k)] = [Math.max(0, Math.round(sx + dx)), Math.max(0, Math.round(sy + dy))];
-      const el = $('tk-nodes').querySelector(`[data-node="${k}"]`);
-      if (el) { tkPlace(el); el.classList.add('dragging'); }
+      const el = tkEls.get(tkKey(k));
+      if (el) { tkPlace(el); if (!g.marked) el.classList.add('dragging'); }
     }
-    tkLines();
+    g.marked = true;
+    tkLinesSoon();
     return;
   }
   // Connecting: a line follows the pointer, the box under it lights up.
   const a = tkBox(g.from), [x, y] = tkCanvasPoint(e);
   const t = tkTargetAt(e);
-  for (const el of $('tk-nodes').querySelectorAll('.drop')) el.classList.remove('drop');
-  if (t != null && t !== 'root' && t !== g.from) { const el = $('tk-nodes').querySelector(`[data-node="${t}"]`); if (el) el.classList.add('drop'); }
-  if (a) tkLines(tkCurve(a.x + a.w, a.y + a.h / 2, x, y));
+  const over = t != null && t !== 'root' && t !== g.from ? tkEls.get(t) : null;
+  if (over !== g.over) { if (g.over) g.over.classList.remove('drop'); if (over) over.classList.add('drop'); g.over = over; }
+  if (a) tkLinesSoon(tkCurve(a.x + a.w, a.y + a.h / 2, x, y));
 });
 function tkGestureEnd(e, cancelled) {
   const g = tkGesture;
@@ -516,13 +555,14 @@ function tkGestureEnd(e, cancelled) {
   for (const el of $('tk-nodes').querySelectorAll('.drop, .dragging')) el.classList.remove('drop', 'dragging');
   if (g.kind === 'move') {
     if (!g.moved) { if (!cancelled && g.key !== 'root') tkOpenItem(g.key); return; }
+    tkLinesNow();
     const layout = { ...(state.config.trackerLayout || {}) };
     for (const k of Object.keys(g.start)) layout[tkLayoutKey(k)] = tkMoved[tkLayoutKey(k)] = tkPos[tkKey(k)];
     api.setConfig({ trackerLayout: layout });
     return;
   }
   if (g.kind !== 'link') return;
-  tkLines();
+  tkLinesNow();
   const t = cancelled ? null : tkTargetAt(e);
   if (t == null || t === 'root' || t === g.from) return;
   if (g.from !== 'root' && tkUnderOf(g.from, t)) { tkError(`#${g.from} already hangs under #${t}, so #${t} cannot go under it. Move #${g.from} somewhere else first.`); return; }
@@ -555,10 +595,10 @@ async function tkLink(number, parent) {
   const it = tkFind(number);
   if (!it || (it.parent ?? null) === parent) return;
   const was = it.parent;
-  it.parent = parent;
+  it.parent = parent; tkChanged();
   tkDraw();
   const r = await api.tracker({ type: 'parent', number, parent });
-  if (r.error) { it.parent = was; tkDraw(); tkError(r.error); return; }
+  if (r.error) { it.parent = was; tkChanged(); tkDraw(); tkError(r.error); return; }
   tkError('');
   tkMerge(it, r.item);
   tkDraw();
