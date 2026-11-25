@@ -289,7 +289,7 @@
         <label class="pc-tick"><input type="checkbox" data-craft="${esc(i.stat)}" ${on ? 'checked' : ''} ${i.priced ? '' : 'disabled'}><span class="m-crafted">${esc(i.text)}</span><small>${esc(i.slot)}</small></label>${right}</li>`;
     }).join('');
     const note = c.ideas.length > 1 ? ' · one at a time' : '';
-    return `<div class="pc-craft"><p><b>Possible bench crafts</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
+    return `<div class="pc-craft"><p><b>Possibly good bench crafts</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
   }
 
   function draw() {
