@@ -4,10 +4,10 @@
 // as in Awakened PoE Trade. Plain logic, no Electron.
 
 // The game's stash search box takes at most this many characters; a longer search is cut.
-const GAME_LIMIT = 50;
+const GAME_LIMIT = 250; // Path of Exile 1 (Path of Exile 2 still takes 50)
 const MAX_SEARCHES = 60;
 const MAX_NAME = 60;
-const MAX_TEXT = 250; // kept even when too long for the game, so nothing typed is lost
+const MAX_TEXT = 500; // kept even when too long for the game, so nothing typed is lost
 const MENU_WIDTH = 280;
 
 // The list as saved in config.json: [{ name, text }]. Rows being written (empty) are kept, so

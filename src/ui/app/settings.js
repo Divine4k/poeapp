@@ -277,7 +277,7 @@ $('custom-base').addEventListener('change', (e) => { const id = e.target.value; 
 // ---- Stash searches ----------------------------------------------------------------------
 // One row per saved search: its name, the search, up, down and remove. Saved on each change,
 // as the whole list. A row being typed in is not drawn again under the cursor.
-const SS_LIMIT = 50; // the game's search box (GAME_LIMIT in src/core/stashSearch.js)
+const SS_LIMIT = 250; // the game's search box (GAME_LIMIT in src/core/stashSearch.js)
 let ssDrawn = ''; // the list as last drawn: a save of what was typed does not draw it again
 const ssList = () => (Array.isArray(state.config.stashSearches) ? state.config.stashSearches : []).map((x) => ({ name: x.name || '', text: x.text || '' }));
 function renderSearches() {
@@ -289,7 +289,7 @@ function renderSearches() {
   ssDrawn = key;
   setHtml(box, list.length ? list.map((x, i) => `<div class="ss-row">
       <input type="text" class="ss-in-name" data-ss="${i}" data-ss-field="name" value="${esc(x.name)}" placeholder="Name, such as Maps 16" maxlength="60" aria-label="Name of search ${i + 1}">
-      <input type="text" class="ss-in-text" data-ss="${i}" data-ss-field="text" value="${esc(x.text)}" placeholder="The search, such as &quot;m q.*1[6-9]&quot;" maxlength="250" spellcheck="false" autocomplete="off" aria-label="Search ${i + 1}">
+      <input type="text" class="ss-in-text" data-ss="${i}" data-ss-field="text" value="${esc(x.text)}" placeholder="The search, such as &quot;m q.*1[6-9]&quot;" maxlength="500" spellcheck="false" autocomplete="off" aria-label="Search ${i + 1}">
       <span class="ss-btns"><button type="button" class="link" data-ss-move="${i}" data-dir="-1" ${i ? '' : 'disabled'} aria-label="Move up">Up</button><button type="button" class="link" data-ss-move="${i}" data-dir="1" ${i < list.length - 1 ? '' : 'disabled'} aria-label="Move down">Down</button><button type="button" class="link" data-ss-del="${i}" aria-label="Remove this search">Remove</button></span>
       ${x.text.length > SS_LIMIT ? `<small class="ss-warn" role="alert">${x.text.length} characters: the game keeps only the first ${SS_LIMIT}.</small>` : ''}</div>`).join('')
     : '<p class="set-off">No searches yet. Add one below, then open them in game with the key.</p>');
