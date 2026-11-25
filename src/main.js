@@ -1190,7 +1190,12 @@ async function trackerAction(a) {
     if (a.type === 'add') return { item: await tracker.addItem({ ...base, title: a.title, body: a.body, status: a.status, priority: a.priority, parent: a.parent }) };
     if (a.type === 'parent') return { item: await tracker.setParent({ ...base, number: a.number, parent: a.parent }) };
     if (a.type === 'update') return { item: await tracker.updateItem({ ...base, number: a.number, patch: a.patch || {} }) };
-    if (a.type === 'delete') return await tracker.deleteItem({ ...base, number: a.number });
+    if (a.type === 'delete') {
+      const r = await tracker.deleteItem({ ...base, number: a.number });
+      // Recordings that pointed at the deleted box forget it, so they can be put somewhere else.
+      if (trouble) for (const id of r.recordings || []) { const st = trouble.statusOf(id); if (st && Number(st.issue) === r.number) await trouble.setStatus(id, { issue: null }); }
+      return r;
+    }
     if (a.type === 'record') return { item: await tracker.addRecording({ ...base, number: a.number, rec: a.rec }) };
     if (a.type === 'unrecord') return { item: await tracker.removeRecording({ ...base, number: a.number, id: a.id }) };
   } catch (e) { return { error: e.message || String(e) }; }
@@ -2121,7 +2126,7 @@ const actions = {
     if (!st || !st.issue) return;
     const r = await trackerAction({ type: 'unrecord', number: st.issue, id });
     const error = r.error || await trouble.setStatus(id, { issue: null });
-    say(error ? `Not taken out: ${error}` : `Taken out of #${st.issue}.`, !!error);
+    say(error ? `Not taken out: ${error}` : r.item && r.item.gone ? `#${st.issue} was deleted from the tracker; the recording no longer points at it.` : `Taken out of #${st.issue}.`, !!error);
   },
   // Problem or suggestion, chosen before sending.
   troubleType: (a) => { if (trouble) trouble.setType(String(a.id || ''), String(a.kind || '')); },

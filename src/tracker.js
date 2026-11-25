@@ -36,7 +36,7 @@ async function call(fetchImpl, token, method, route, body, { missingOk = false }
   });
   let data = null;
   try { data = await res.json(); } catch (_) { /* an answer without a body */ }
-  if (missingOk && res.status === 404) return null;
+  if (missingOk && (res.status === 404 || res.status === 410)) return null; // 410: the issue was deleted
   if (!res.ok) throw new Error(explain(res.status, data, route.split('/').slice(2, 4).join('/')));
   return data;
 }
@@ -106,7 +106,8 @@ async function removeRecording({ fetchImpl, token, repo, number, id }) {
   checkRepo(repo);
   const n = Number(number);
   if (!Number.isInteger(n) || n < 1) throw new Error('Unknown item.');
-  const now = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`);
+  const now = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`, null, { missingOk: true });
+  if (!now) return { number: n, gone: true }; // the box was deleted: nothing left to take the line out of
   if (!recordingsIn(now.body).includes(id)) return toItem(now);
   const body = String(now.body || '').split('\n').filter((l) => !l.includes(`recordings/${id}`)).join('\n').replace(/\n{3,}/g, '\n\n');
   return toItem(await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${n}`, { body }));
@@ -216,7 +217,7 @@ async function deleteItem({ fetchImpl, token, repo, number }) {
   try { data = await res.json(); } catch (_) { /* an answer without a body */ }
   const problem = !res.ok ? (data && data.message) || `GitHub answered ${res.status}` : data && data.errors && data.errors.length ? data.errors.map((e) => e.message).join(' ') : '';
   if (problem) throw new Error(`GitHub would not delete #${n} (${problem}). Deleting needs admin rights: give the token "Administration: Read and write" on ${repo}, or set the item to Dropped instead.`);
-  return { number: n };
+  return { number: n, recordings: recordingsIn(issue.body) };
 }
 
 module.exports = { listItems, addItem, updateItem, setParent, deleteItem, addRecording, removeRecording, recordingsIn, recordingLine, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };

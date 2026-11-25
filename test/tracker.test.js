@@ -209,4 +209,6 @@ test('a troubleshooting recording is connected to an item by a line in its text,
   assert.deepStrictEqual(out.recordings, ['20261125-205000-DIVINE']);
   assert.match(out.body, /^Notes first\./);
   assert.deepStrictEqual(recordingsIn('nothing here'), []);
+  // A deleted box (GitHub answers 404 or 410): nothing to take out, the recording just lets go.
+  assert.deepStrictEqual(await removeRecording({ ...base, number: 75, id: rec.id }), { number: 75, gone: true });
 });
