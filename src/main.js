@@ -1181,6 +1181,12 @@ function bulkCheck(item, always) {
   showCheckPanel();
   if (want && always && (config.priceSearch || {}).auto !== false) runBulkSearch();
 }
+// The one price shown at the top: the average of the five cheapest real listings (as the
+// crafts are compared), or the cheapest when fewer than three are listed.
+function withTypical(summary, listings) {
+  const t = typicalPrice(listings.map((l) => l.chaos)).value;
+  return { ...summary, typical: t !== null ? t : summary.low };
+}
 async function runBulkSearch() {
   const tc = tradeCheck;
   if (!tc || tc.kind !== 'bulk' || !tc.want || tc.state === 'searching') return;
@@ -1193,7 +1199,7 @@ async function runBulkSearch() {
     tc.listings = offers;
     tc.total = r.total;
     tc.url = r.queryId ? exchangeUrl(config.league, r.queryId) : '';
-    tc.summary = summarize(r.total, offers);
+    tc.summary = withTypical(summarize(r.total, offers), offers);
     tc.state = 'done'; tc.searchedAt = Date.now();
   } catch (e) {
     tc.state = 'error'; tc.error = e.message || String(e);
@@ -1330,7 +1336,7 @@ async function runTradeSearch(announce) {
     if (same) { if (!tc.icon) tc.icon = same.icon; if (same.w) { tc.iconW = same.w; tc.iconH = same.h; } }
     tc.total = r.total;
     tc.url = r.queryId ? searchUrl(config.league, r.queryId) : '';
-    tc.summary = summarize(r.total, tc.listings.filter((l) => !l.bait)); // a bait price is not what it sells for
+    tc.summary = withTypical(summarize(r.total, tc.listings.filter((l) => !l.bait)), tc.listings.filter((l) => !l.bait)); // a bait price is not what it sells for
     tc.state = 'done'; tc.searchedAt = Date.now();
   } catch (e) {
     tc.state = 'error'; tc.error = e.message || String(e);
@@ -1356,7 +1362,7 @@ function coinIcons(listings) {
 // price; a stack counts whole.
 function checkPrice(tc) {
   if (!tc) return null;
-  const low = tc.summary && tc.summary.low !== null && tc.summary.low !== undefined ? tc.summary.low : null;
+  const low = tc.summary && tc.summary.typical !== null && tc.summary.typical !== undefined ? tc.summary.typical : null;
   const each = low !== null ? low : (tc.ninja !== null && tc.ninja !== undefined ? tc.ninja : null);
   if (each === null) return null;
   return tc.kind === 'bulk' ? each * (tc.qty || 1) : each;

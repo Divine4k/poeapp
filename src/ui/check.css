@@ -242,3 +242,4 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-craft em.up { color: var(--moss); }
 .pc-craft .pc-lp small { margin: 0 4px 0 0; color: var(--faint); }
 .pc-craft .pc-lp.rough { opacity: 0.6; }
+.pc-about-sign { font: 500 26px/1 var(--display); color: color-mix(in srgb, var(--gold) 70%, transparent); margin-right: -2px; }

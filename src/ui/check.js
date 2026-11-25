@@ -107,7 +107,7 @@
   function priceHtml(c, c2) {
     const divine = data ? data.divine : 0;
     const inDiv = divine > 0 && c >= divine;
-    const f = (v) => { const x = inDiv ? v / divine : v; return x >= 100 ? Math.round(x).toLocaleString() : x < 1 ? num(x) : String(Math.round(x * (inDiv ? 100 : 10)) / (inDiv ? 100 : 10)); };
+    const f = (v) => { const x = inDiv ? v / divine : v; return x >= 100 || (!inDiv && x >= 10) ? Math.round(x).toLocaleString() : x < 1 ? num(x) : String(Math.round(x * (inDiv ? 100 : 10)) / (inDiv ? 100 : 10)); };
     const a = f(c), b = c2 != null ? f(c2) : a;
     return `<b>${a === b ? a : `${a}–${b}`}</b>${coin(inDiv ? 'divine' : 'chaos')}`;
   }
@@ -120,14 +120,16 @@
     const ninja = d.ninja !== null && d.ninja !== undefined ? `poe.ninja <b>${fmtValue(d.ninja)}</b>` : '';
     const s = d.summary || {};
     // what the whole stack is worth, at the cheapest offer (or poe.ninja's price before a search)
-    const each = s.low !== null && s.low !== undefined ? s.low : d.ninja;
-    const stack = d.qty > 1 && each ? `your ${d.qty.toLocaleString()} <b>${fmtValue(each * d.qty)}</b>` : '';
+    const each = s.typical !== null && s.typical !== undefined ? s.typical : (s.low !== null && s.low !== undefined ? s.low : d.ninja);
+    const stack = d.qty > 1 && each ? `your ${d.qty.toLocaleString()} <b>~${fmtValue(each * d.qty)}</b>` : '';
     if (bulk && !d.want) return `<div class="pc-price">${d.title === 'Chaos Orb' && d.divine ? `<b>${num(d.divine)}</b>${coin('chaos')}<small>for one divine</small>` : priceHtml(d.ninja)}</div><p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>`;
     if (d.state !== 'done') return `<p class="pc-say">${bulk ? 'Press Search to see what the bulk exchange offers.' : 'Tick what matters, then press Search.'}</p>${ninja || stack ? `<p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>` : ''}${extrasHtml(d)}`;
     if (!d.total) return `<p class="pc-say">${bulk ? 'Nobody offers it on the bulk exchange right now.' : 'Nothing like it is listed. Switch a stat off or lower a number.'}</p>${ninja ? `<p class="pc-sub">${ninja}</p>` : ''}${extrasHtml(d)}`;
     const sub = [`<b>${d.total.toLocaleString()}</b> ${bulk ? 'offers' : 'listed'}`, ninja, stack, d.searchedAt ? `searched ${ago(d.searchedAt, true)}` : ''].filter(Boolean).join('<i>·</i>');
     if (s.low === null) return `<p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
-    return `<div class="pc-price">${priceHtml(s.low, s.median)}<small>${s.low === s.median ? 'cheapest' : 'cheapest – typical'}${bulk ? ' each' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
+    // one price, more or less: the average of the five cheapest real listings
+    const typ = s.typical !== null && s.typical !== undefined ? s.typical : s.low;
+    return `<div class="pc-price" title="The average of the five cheapest listings, bait left out (the cheapest is ${esc(fmtValue(s.low))})"><span class="pc-about-sign">~</span>${priceHtml(typ)}<small>${bulk ? 'each' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
   }
   // The verdict at a glance, beside the price.
   const VERDICT_TIPS = { top: 'Worth a divine or more', sell: 'Worth listing on the trade site', vendor: 'A vendor gives more than it sells for', low: 'Sells for less than a few chaos' };
@@ -282,7 +284,7 @@
       else {
         const sure = i.n >= 5;
         const tip = `Items like it with the craft: the five cheapest average ${fmtValue(i.chaos)} (${i.n} listed)${sure ? '' : '. Few listed, so take it as a rough guess'}`;
-        right = `<span class="pc-lp${sure ? '' : ' rough'}" title="${esc(tip)}">${i.delta > 0 ? `<em class="up">+${esc(fmtValue(i.delta))}</em>` : '<em>adds ≈ 0</em>'}<small>→</small> ${priceHtml(i.chaos)}</span>`;
+        right = `<span class="pc-lp${sure ? '' : ' rough'}" title="${esc(tip)}">${i.delta > 0 ? `<em class="up">~+${esc(fmtValue(i.delta))}</em>` : '<em>~+0</em>'}</span>`;
       }
       const on = craftOn.includes(i.stat);
       return `<li class="${on ? 'on' : 'off'}" title="The usual craft for an open ${esc(i.slot)}, priced at its lowest roll. Ticked: searched as if it were already on the item.">
