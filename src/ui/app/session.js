@@ -78,7 +78,7 @@ function runsHtml(sum, { open, readonly, redraw, divine }) {
     const w = Math.max(1.5, Math.round((Math.max(0, r.net) / top) * 1000) / 10);
     const diff = r.net - avg;
     const tip = live || done.length < 2 ? '' : `${diff >= 0 ? '+' : '−'}${fmtValue(Math.abs(diff), divine)} against the session's average`;
-    let html = `<tr class="run ${live ? 'live' : ''} ${open === r.id ? 'open' : ''}" data-expand="${esc(r.id)}">
+    let html = `<tr class="run ${live ? 'live' : ''} ${live && r.segmentStart === null ? 'paused' : ''} ${open === r.id ? 'open' : ''}" data-expand="${esc(r.id)}">
         <td class="nm"${live ? ' title="The map you are in"' : ''}><span>${tierOf(r.level) ? `<span class="tier" title="Area level ${r.level}">T${tierOf(r.level)}</span>` : ''}<b>${esc(r.name)}</b>${best === r ? '<u>best</u>' : ''}${deathsHtml(r.deaths)}</span></td>
         <td class="mbar"${tip ? ` title="${esc(tip)}"` : ''}><span class="track">${avgAt !== null ? `<i class="avg" data-at="${avgAt}"></i>` : ''}<i class="fill ${cls}" data-w="${w}"></i></span></td>
         <td class="num end"${!live && r.endedAt ? ` title="${esc(`${dayOf(r.endedAt)}, ${clock(r.endedAt)}`)}"` : ''}>${live ? 'in progress' : r.endedAt ? clock(r.endedAt) : ''}</td>
