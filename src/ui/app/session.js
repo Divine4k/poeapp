@@ -98,6 +98,9 @@ function runsHtml(sum, { open, readonly, redraw, divine }) {
 function sizeBars(box) {
   for (const i of box.querySelectorAll('.track .fill[data-w]')) i.style.setProperty('--w', `${i.dataset.w}%`);
   for (const i of box.querySelectorAll('.track .avg[data-at]')) i.style.setProperty('--at', `${i.dataset.at}%`);
+  // the live row is drawn anew every second; start its pulse part-way so it carries on smoothly
+  const live = box.querySelector('tr.live td');
+  if (live) live.style.setProperty('--breathe-at', `${-(Date.now() % 2400)}ms`);
 }
 // The line under the maps: the average map.
 const runsTotal = (sum, divine) => {
