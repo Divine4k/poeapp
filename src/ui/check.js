@@ -449,12 +449,18 @@
   // every one. Whichever way comes first does the work; the same press coming the other way
   // within a moment is left alone.
   let lastPress = null; // { key, source, at }
-  function pressOn(target, source) {
+  function pressOn(target, source, y) {
     const chip = target && target.closest('.pc-chip');
-    const tick = !chip && target && target.closest('.pc-tick');
+    // The whole line is the target, from edge to edge, not only its text: anywhere on it but
+    // the number, its buttons and Match.
+    // Found by height within the list, so the rounded corners of a line and the hair between
+    // two lines belong to a line as well.
+    const list = !chip && target && !target.closest('.pc-num, .pc-match, button, input[type=text]') && target.closest('.pc-rows');
+    const line = list && [...list.children].find((li) => { const r = li.getBoundingClientRect(); return y >= r.top && y < r.bottom; });
+    const tick = line && line.querySelector('.pc-tick');
     const box = tick && tick.querySelector('input[type=checkbox]');
     if (!chip && (!box || box.disabled)) return;
-    const key = chip ? `chip:${chip.dataset.row}` : box.dataset.craft ? `craft:${box.dataset.craft}` : `row:${tick.closest('[data-row]').dataset.row}`;
+    const key = chip ? `chip:${chip.dataset.row}` : box.dataset.craft ? `craft:${box.dataset.craft}` : `row:${line.dataset.row}`;
     const now = performance.now();
     if (lastPress && lastPress.key === key && lastPress.source !== source && now - lastPress.at < 150) { lastPress = null; return; }
     lastPress = { key, source, at: now };
@@ -462,11 +468,11 @@
     box.checked = !box.checked;
     box.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  panel.addEventListener('pointerdown', (e) => { if (e.button === 0) pressOn(e.target, 'page'); });
-  if (api.onCheckPress) api.onCheckPress((p) => { if (!typing) pressOn(document.elementFromPoint(p.x, p.y), 'hook'); });
+  panel.addEventListener('pointerdown', (e) => { if (e.button === 0) pressOn(e.target, 'page', e.clientY); });
+  if (api.onCheckPress) api.onCheckPress((p) => { if (!typing) pressOn(document.elementFromPoint(p.x, p.y), 'hook', p.y); });
   panel.addEventListener('click', (e) => {
     // The click that follows such a press has been dealt with (detail 0: made by the keyboard, not the mouse).
-    if (e.detail > 0 && e.target.closest('.pc-tick, .pc-chip')) { e.preventDefault(); return; }
+    if (e.detail > 0 && (e.target.closest('.pc-tick, .pc-chip') || (e.target.closest('.pc-rows') && !e.target.closest('.pc-num, .pc-match, button')))) { e.preventDefault(); return; }
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
