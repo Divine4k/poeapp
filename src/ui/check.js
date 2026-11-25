@@ -469,7 +469,15 @@
     box.dispatchEvent(new Event('change', { bubbles: true }));
   }
   panel.addEventListener('pointerdown', (e) => { if (e.button === 0) pressOn(e.target, 'page', e.clientY); });
-  if (api.onCheckPress) api.onCheckPress((p) => { if (!typing) pressOn(document.elementFromPoint(p.x, p.y), 'hook', p.y); });
+  if (api.onCheckPress) api.onCheckPress((p) => {
+    if (typing) return;
+    const el = document.elementFromPoint(p.x, p.y);
+    // A number clicked over the game: its own click does not always come (the window never had
+    // the keyboard), so the press the app saw starts the typing.
+    const num = el && el.closest('[data-type]');
+    if (num) { startTyping(num); return; }
+    pressOn(el, 'hook', p.y);
+  });
   panel.addEventListener('click', (e) => {
     // The click that follows such a press has been dealt with (detail 0: made by the keyboard, not the mouse).
     if (e.detail > 0 && (e.target.closest('.pc-tick, .pc-chip') || (e.target.closest('.pc-rows') && !e.target.closest('.pc-num, .pc-match, button')))) { e.preventDefault(); return; }

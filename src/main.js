@@ -32,6 +32,8 @@ const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat, copyItem } = require('./chat');
+const { Focuser } = require('./focus');
+const focuser = new Focuser(); // brings the price check window or the game to the front (typing a number)
 const { Overlay, Toast, CheckPanel } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
@@ -1216,6 +1218,7 @@ function releaseEverything() {
   for (const step of [
     () => globalShortcut.unregisterAll(),
     () => watch.stop(),
+    () => focuser.stop(),
     () => { clearInterval(timedTimer); },
     () => { if (hook) { hook.uIOhook.removeAllListeners(); hook.uIOhook.stop(); hook = null; hookListening = false; } },
     () => { for (const w of BrowserWindow.getAllWindows()) w.destroy(); },
@@ -1611,7 +1614,7 @@ function registerHotkeys() {
   if (canTrouble() || (trouble && trouble.current)) reg('record', config.hotkeys.record, () => { toggleRecording(); });
   // The price check key: the same check without naming or counting anything.
   status.hotkeys.priceCheckHeld = gameKeysOn && !!config.hotkeys.priceCheck;
-  if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { checkHovered({ count: false }); });
+  if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { focuser.start(); checkHovered({ count: false }); });
   const hk = config.trade.hotkeys, taken = [];
   const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, noted('chat or trade key', accel, fn))) taken.push(accel); } catch (_) { taken.push(accel); } };
   // Layout mode places every part of the overlay (the price check window and the check message
@@ -2257,16 +2260,23 @@ function setupIpc() {
   ipcMain.on('check-keys', async (e, on) => {
     if (!checkPanel || !checkPanel.win || e.sender !== checkPanel.win.webContents) return;
     const turn = checkPanel.keyTurn = (checkPanel.keyTurn || 0) + 1;
-    if (trouble) trouble.event('check-keys', { on: !!on });
-    if (on) { checkPanel.gameHadKeys = watch.gameInFront(); checkPanel.takeKeys(true); return; }
+    if (on) {
+      checkPanel.gameHadKeys = checkPanel.gameHadKeys || watch.gameInFront();
+      checkPanel.takeKeys(true);
+      // Electron's focus() is not always allowed to take the front from the game; the helper is.
+      const got = await focuser.window(checkPanel.win);
+      if (trouble) trouble.event('check-keys', { on: true, front: got });
+      if (turn === checkPanel.keyTurn && checkPanel.win && !checkPanel.win.isDestroyed()) checkPanel.win.webContents.focus();
+      return;
+    }
     const back = checkPanel.gameHadKeys;
-    checkPanel.gameHadKeys = false;
-    // The game gets the keyboard back BEFORE this window lets go of it. Windows only lets the
-    // program in front hand the front on: letting go first put Explorer (the desktop) in front,
-    // the game could not be brought back, the check closed and its key did nothing until the
-    // game was clicked.
-    if (back) await focusGame().catch(() => {});
+    // The game gets the keyboard back BEFORE this window lets go of it. Letting go first put
+    // Explorer (the desktop) in front: the check closed and its key did nothing until the game
+    // was clicked.
+    const got = back ? await focuser.game() : 'skip';
+    if (trouble) trouble.event('check-keys', { on: false, game: got });
     if (turn !== checkPanel.keyTurn) return; // typing started again meanwhile: keep the keyboard
+    checkPanel.gameHadKeys = false;
     checkPanel.takeKeys(false);
   });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
