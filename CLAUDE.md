@@ -46,7 +46,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `src/core/trade.js` | Trade offers from whispers, next step per offer |
 | `src/core/tradeQuery.js`, `tradeStats.js`, `tradeApi.js` | Trade site search: item -> query, mod line -> stat id, the HTTP calls |
 | `src/core/dust.js`, `data/dust.json` | Thaumaturgic Dust a unique gives when disenchanted (`dustValue`; values from Awakened PoE Trade, MIT, see `data/dust.LICENSE`), shown in the price check |
-| `src/core/worth.js` | Quick judgements in the price check: `vendorRecipe` (socket recipes), `verdict` (the one-word pill: Valuable item!, Worth selling, Vendor it, Not worth selling), `craftRoom` (open prefixes/suffixes from the fuller text, the bench craft to price). main.js: `runWorth` (Price each mod: one search per ticked line without it) and `runCraft` |
+| `src/core/worth.js` | Quick judgements in the price check: `vendorRecipe` (socket recipes), `verdict` (the one-word pill: Valuable item!, Worth selling, Vendor it, Not worth selling), `craftRoom` (open prefixes/suffixes from the fuller text, the bench craft to price). main.js: `runCrafts` (after each search, by itself: the price with each suggested craft added) |
 | `src/core/checkMessage.js`, `checkPanel.js` | Text and placement of the price check result |
 | `src/core/store.js` | Per-map inventory pictures and other files beside the session |
 | `src/core/inventory/` | Screen reading: `grid` finds the grid, `reader` reads a frame, `icons` recognises items by fingerprint, `digits` stack numbers, `maps` map tiers, `ledger` loot from successive reads, `backlog` unnamed items |

@@ -1235,65 +1235,36 @@ function vendorFor(item) {
   return { ...r, icon: e ? e.icon || null : null, chaos: e ? e.chaos * r.count : 0 };
 }
 
-// What each ticked line adds to the price: the same search once more for each, with that line
-// switched off. The difference in the typical price is what the line is worth. One search after
-// another, each waiting for the trade site to allow it.
-async function runWorth(edits) {
-  const tc = tradeCheck;
-  if (!tc || !tc.filters.ok || tc.state === 'searching' || (tc.worth && tc.worth.state === 'running')) return;
-  tc.filters = applyEdits(tc.filters, edits);
-  tc.filtersRev += 1;
-  await runTradeSearch(false);
-  if (tradeCheck !== tc || tc.state !== 'done' || !tc.summary || tc.summary.median === null) return;
+// The price with each suggested bench craft added, worked out by itself after every search:
+// the same search with its total life or resistance raised by the craft's lowest roll. One
+// search after another, each waiting for the trade site to allow it; a newer search stops it.
+async function runCrafts(tc) {
+  const rev = tc.filtersRev;
+  const ideas = (tc.craft ? tc.craft.ideas : []).filter((i) => i.priced);
+  for (const i of ideas) Object.assign(i, { state: 'waiting', chaos: null, delta: null, why: '', rev });
+  if (!ideas.length || !tc.summary || tc.summary.median === null) return;
   const base = tc.summary.median;
-  const lines = [...tc.filters.props.filter((p) => p.enabled).map((p) => ({ key: `prop:${p.key}`, off: { props: { [p.key]: { enabled: false } } } })),
-    ...tc.filters.stats.filter((x) => x.enabled).map((x) => ({ key: `stat:${x.key}`, off: { stats: { [x.key]: { enabled: false } } } }))];
-  tc.worth = { state: 'running', rev: tc.filtersRev, done: 0, total: lines.length, values: {}, base };
-  tc.rev = ++tradeRev; push();
-  for (const line of lines) {
-    if (tradeCheck !== tc) return;
+  const stale = () => tradeCheck !== tc || tc.filtersRev !== rev || tc.state !== 'done';
+  for (const idea of ideas) {
+    if (stale()) return;
     const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
-    if (wait > 45000) { tc.worth.state = 'stopped'; tc.worth.why = 'The trade site asked for a long pause. Try again in a minute.'; break; }
+    if (wait > 20000) { idea.state = 'later'; continue; }
+    idea.state = 'running'; tc.rev = ++tradeRev; push();
     if (wait > 0) await sleep(wait + 150);
-    if (tradeCheck !== tc || tc.worth.rev !== tc.filtersRev) return;
+    if (stale()) return;
+    const line = tc.filters.stats.find((x) => x.key === idea.stat);
+    const min = (line.min !== null ? line.min : line.value || 0) + idea.add;
     try {
-      const r = await tradeClient.check(config.league, buildQuery(applyEdits(tc.filters, line.off)));
+      const r = await tradeClient.check(config.league, buildQuery(applyEdits(tc.filters, { stats: { [idea.stat]: { enabled: true, min } } })));
       const ls = markBait(r.listings.map((l) => readListing(l, chaosOfPrice)));
-      const s = summarize(r.total, ls.filter((l) => !l.bait));
-      tc.worth.values[line.key] = s.median === null ? null : Math.round((base - s.median) * 10) / 10;
+      const sm = summarize(r.total, ls.filter((l) => !l.bait));
+      Object.assign(idea, { state: 'done', chaos: sm.median, delta: sm.median === null ? null : Math.round((sm.median - base) * 10) / 10 });
     } catch (e) {
-      tc.worth.state = 'stopped'; tc.worth.why = e.message || String(e); break;
+      Object.assign(idea, { state: 'error', why: e.message || String(e) });
     }
-    tc.worth.done += 1; tc.rev = ++tradeRev; push();
+    if (stale()) return;
+    tc.rev = ++tradeRev; push();
   }
-  if (tc.worth.state === 'running') tc.worth.state = 'done';
-  tc.rev = ++tradeRev; push();
-}
-
-// The price with a bench craft added: the same search, its total life or resistance raised by
-// the craft's lowest roll. Shown beside today's typical price.
-async function runCraft(edits, stat) {
-  const tc = tradeCheck;
-  const idea = tc && tc.craft && tc.craft.ideas.find((i) => i.stat === stat && i.priced);
-  if (!idea || tc.state === 'searching' || (tc.worth && tc.worth.state === 'running')) return;
-  tc.filters = applyEdits(tc.filters, edits);
-  tc.filtersRev += 1;
-  if (!tc.summary || tc.state !== 'done') await runTradeSearch(false);
-  if (tradeCheck !== tc) return;
-  const line = tc.filters.stats.find((x) => x.key === stat);
-  const min = (line.min !== null ? line.min : line.value || 0) + idea.add;
-  idea.state = 'running'; tc.rev = ++tradeRev; push();
-  try {
-    const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
-    if (wait > 0) await sleep(wait + 150);
-    const r = await tradeClient.check(config.league, buildQuery(applyEdits(tc.filters, { stats: { [stat]: { enabled: true, min } } })));
-    const ls = markBait(r.listings.map((l) => readListing(l, chaosOfPrice)));
-    const sm = summarize(r.total, ls.filter((l) => !l.bait));
-    Object.assign(idea, { state: 'done', chaos: sm.median, total: r.total, rev: tc.filtersRev });
-  } catch (e) {
-    Object.assign(idea, { state: 'error', why: e.message || String(e) });
-  }
-  tc.rev = ++tradeRev; push();
 }
 
 function startTradeCheck(item, { always = false } = {}) {
@@ -1328,6 +1299,11 @@ async function runTradeSearch(announce) {
   tc.state = 'searching'; tc.error = ''; tc.rev = ++tradeRev;
   push();
   try {
+    // A craft's search may still be out, or the site may want a short pause: wait for it here
+    // rather than say no.
+    for (let i = 0; i < 50 && tradeClient.busy; i++) await sleep(100);
+    const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
+    if (wait > 0 && wait <= 10000) await sleep(wait + 150);
     const r = await tradeClient.check(config.league, buildQuery(tc.filters));
     tc.compare = compareSpec(tc.filters);
     tc.listings = markBait(r.listings.map((l) => readListing(l, chaosOfPrice, tc.compare)));
@@ -1346,6 +1322,7 @@ async function runTradeSearch(announce) {
   if (tradeCheck !== tc) return; // another item was checked meanwhile
   if (announce && !tc.inGame) showToast(tradeMessage(tc, prices.divine)); // the window in game says it itself
   push();
+  if (tc.state === 'done' && tc.craft) runCrafts(tc).catch(() => {});
 }
 
 // The price check window on top of the game. It opens beside the game panel the mouse is over.
@@ -1967,7 +1944,7 @@ const actions = {
   // The Search button: what was ticked and typed replaces the choices, then one search is sent.
   tradeSearch: async (a) => {
     if (tradeCheck && tradeCheck.kind === 'bulk') { await runBulkSearch(); return; }
-    if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching' || (tradeCheck.worth && tradeCheck.worth.state === 'running')) return;
+    if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching') return;
     tradeCheck.filters = applyEdits(tradeCheck.filters, a.edits);
     tradeCheck.filtersRev += 1; // the other window showing this item redraws its tick boxes
     await runTradeSearch(false);
@@ -1976,8 +1953,6 @@ const actions = {
   // The cross on the window in game: the search stays on the Prices page.
   checkPanelClose: () => closeCheckPanel(),
   checkPickUnique: (a) => pickChoice(String(a.name || '')),
-  tradeWorth: (a) => runWorth(a.edits),
-  tradeCraft: (a) => runCraft(a.edits, String(a.stat || '')),
   checkSite: (a) => { const url = checkSiteUrl(String(a.site || '')); if (url) shell.openExternal(url); },
   // the socket button on the price check window: shown or hidden on every item picture there
   checkSockets: () => { applyConfig({ priceSearch: { sockets: config.priceSearch.sockets === false } }); push(); },

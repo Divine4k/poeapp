@@ -71,16 +71,7 @@
     const tiers = (r.tiers || []).map((t) => `<small class="pc-tier${t === 1 ? ' best' : ''}" title="Tier ${t}: tier 1 is the best this modifier can be">T${t}</small>`).join('');
     const kind = r.kind && r.mk !== 'pseudo' ? `<small class="k-${r.mk}">${r.kind}</small>` : '';
     return `<li class="${r.enabled ? 'on' : 'off'}" data-row="${i}">
-      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}" title="${esc(r.label)}">${esc(r.label)}</span>${kind}${tiers}${worthHtml(r)}</label>${num}</li>`;
-  }
-  // What this line adds to the price, once "Price each mod" has worked it out.
-  function worthHtml(r) {
-    const w = data && data.worth;
-    if (!w || w.rev !== data.filtersRev || !r.pk || !(r.pk in w.values)) return '';
-    const v = w.values[r.pk];
-    if (v === null) return '<small class="pc-worth" title="Not enough listings without it to tell">?</small>';
-    const big = w.base > 0 && v >= w.base * 0.15;
-    return `<small class="pc-worth${big ? ' big' : v <= 0 ? ' none' : ''}" title="Without it, the typical price is ${esc(fmtValue(w.base - v))} instead of ${esc(fmtValue(w.base))}">${v > 0 ? `+${esc(fmtValue(v))}` : '≈ 0'}</small>`;
+      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}" title="${esc(r.label)}">${esc(r.label)}</span>${kind}${tiers}</label>${num}</li>`;
   }
 
   // An item's picture as the game shows it: no frame, the sockets and their links drawn over it.
@@ -256,27 +247,22 @@
       ${footHtml(d)}`;
   }
 
-  // "Price each mod": one more search per ticked line, without it.
-  function worthButton(d) {
-    const w = d.worth;
-    const running = w && w.state === 'running';
-    const label = running ? `${w.done} of ${w.total}…` : 'Price each mod';
-    const tip = w && w.state === 'stopped' ? w.why : 'One more search for each ticked line, without it: what each one adds to the price. Takes a few seconds per line (the trade site allows only so many searches).';
-    return `<button type="button" class="pc-site pc-worth-go${running ? ' busy' : ''}" data-worth ${running || d.state === 'searching' ? 'disabled' : ''} title="${esc(tip)}">${label}</button>`;
-  }
-  // Room left for a crafting bench mod, and the price with the usual craft in it.
+  // Room left for a crafting bench mod, and what the usual craft would add to the price. The
+  // app works that out by itself after each search (runCrafts in main.js).
   function craftHtml(d) {
     const c = d.craft;
     if (!c) return '';
     const open = [c.open.prefix ? `${c.open.prefix} prefix${c.open.prefix > 1 ? 'es' : ''}` : '', c.open.suffix ? `${c.open.suffix} suffix${c.open.suffix > 1 ? 'es' : ''}` : ''].filter(Boolean).join(' and ');
+    const fresh = (i) => i.rev === d.filtersRev && d.state === 'done';
     const ideas = c.ideas.map((i) => {
-      let right = '';
-      if (!i.priced) right = '<small>no line to price it on</small>';
-      else if (i.state === 'running') right = '<small>searching…</small>';
+      let right;
+      if (!i.priced) right = '<small title="The search has no total line for it to be added to">not priced</small>';
+      else if (!fresh(i) || i.state === 'waiting' || i.state === 'running') right = `<small>${d.state === 'done' ? 'working it out…' : 'after the search'}</small>`;
+      else if (i.state === 'later') right = '<small title="The trade site asked for a pause. Search again in a minute.">later</small>';
       else if (i.state === 'error') right = `<small class="bad" title="${esc(i.why)}">could not search</small>`;
-      else if (i.state === 'done') right = i.chaos === null || i.chaos === undefined ? '<small>too few listed to tell</small>' : `<span class="pc-lp"><small>with it</small> ${priceHtml(i.chaos)}</span>`;
-      else right = `<button type="button" class="pc-link" data-craft="${esc(i.stat)}">Price it with this</button>`;
-      return `<li><span>${esc(i.text)} <small>${esc(i.slot)}</small></span>${right}</li>`;
+      else if (i.chaos === null) right = '<small title="Too few items like it with the craft are listed">too few listed</small>';
+      else right = `<span class="pc-lp">${i.delta > 0 ? `<em class="up">+${esc(fmtValue(i.delta))}</em>` : '<em>adds ≈ 0</em>'}<small>→</small> ${priceHtml(i.chaos)}</span>`;
+      return `<li title="The usual craft for an open ${esc(i.slot)}, priced at its lowest roll"><span>${esc(i.text)} <small>${esc(i.slot)}</small></span>${right}</li>`;
     }).join('');
     return `<div class="pc-craft"><p><b>Bench craft</b> · ${esc(open)} open${c.crafted ? ' · already has a crafted mod' : ''}</p>${ideas ? `<ul>${ideas}</ul>` : ''}</div>`;
   }
@@ -296,7 +282,7 @@
         <button type="button" role="tab" class="pc-tab${mode === 'base' ? ' on' : ''}" aria-selected="${mode === 'base'}" data-mode="base" title="This base type at this item level, whatever is rolled on it">Base item</button></div>` : '';
     const chips = rows.map((r, i) => (r.chip ? chipHtml(r, i) : '')).join('');
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
-    const busy = d.state === 'searching' || !!(d.worth && d.worth.state === 'running');
+    const busy = d.state === 'searching';
     const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
     panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
         <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${d.picked ? 'Unidentified · <button type="button" class="pc-link" data-pick="">Not this one?</button> · ' : ''}${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
@@ -306,7 +292,7 @@
         ${stats ? `<ul class="pc-rows">${stats}</ul>` : ''}
         ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}${craftHtml(d)}</div>
       <div class="pc-go"><button type="button" class="primary" data-search ${busy ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search'}</button>
-        ${worthButton(d)}${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
+        ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
       ${listHtml(d)}
       ${footHtml(d)}`;
     sendSize(fullHeight());
@@ -400,9 +386,6 @@
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
-    if (e.target.closest('[data-worth]')) { api.action({ type: 'tradeWorth', edits: edits() }); return; }
-    const craft = e.target.closest('[data-craft]');
-    if (craft) { api.action({ type: 'tradeCraft', stat: craft.dataset.craft, edits: edits() }); return; }
     if (e.target.closest('[data-sockets]')) {
       // shown or hidden at once here; the app keeps the choice for next time
       const on = panel.classList.toggle('no-sk') === false;
