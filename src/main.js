@@ -1713,7 +1713,17 @@ async function jewelAction(a) {
     case 'radius': return svc.radius({ jewel: String(a.jewel), socket: Number(a.socket), ring: String(a.ring || ''), keystone: Number(a.keystone), taken: (a.taken || []).map(Number) });
     case 'cluster': return svc.cluster(String(a.base), String(a.skill));
     // A timeless jewel copied in game (Ctrl+C on it, then the Paste button).
-    case 'paste': return readJewelText(clipboard.readText());
+    case 'paste': {
+      const text = clipboard.readText();
+      const got = readJewelText(text);
+      if (got) return got;
+      // Say what was on the clipboard, so a jewel the reader misses can be put right.
+      if (trouble) trouble.event('jewels-paste', { text: text.slice(0, 400) });
+      const start = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 3).join(' / ').slice(0, 90);
+      return { error: text.trim()
+        ? `The copied text is not a timeless jewel. It starts with: "${start}". Hover the jewel in game, press Ctrl+C, then Paste.`
+        : 'The clipboard is empty. Hover the jewel in game, press Ctrl+C, then Paste.' };
+    }
     case 'price': {
       // The cheapest listings of this seed, from the official trade site.
       if (!config.league) throw new Error('Pick a league in Settings first.');

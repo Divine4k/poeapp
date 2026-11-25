@@ -413,8 +413,14 @@ async function jwPrice() {
 
 async function jwPaste() {
   let got = null;
-  try { got = await api.jewels({ op: 'paste' }); } catch (_) { got = null; }
-  if (!got) { jw.error = 'No timeless jewel was copied. Hover it in game, press Ctrl+C, then Paste.'; jw.result = null; jwRender(); return; }
+  try { got = await api.jewels({ op: 'paste' }); } catch (e) { got = { error: e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }; }
+  if (!got || got.error) {
+    jw.error = (got && got.error) || 'No timeless jewel was copied. Hover it in game, press Ctrl+C, then Paste.';
+    jw.result = null;
+    jw.mode = 'look'; // the message shows where the jewel will appear
+    jwRender();
+    return;
+  }
   Object.assign(jw, { jewel: got.jewel, seed: got.seed, conqueror: got.conqueror, mode: 'look', error: '' });
   if (!jw.socket) { jw.error = ''; jwRender(); $('jw-socket').focus(); }
   jwLook();

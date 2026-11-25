@@ -100,6 +100,15 @@ test('reads the jewel from the text the game copies', () => {
   assert.deepStrictEqual(T.readJewelText('Rarity: Unique\nGlorious Vanity\nTimeless Jewel\n--------\nBathed in the blood of 4521 sacrificed in the name of Ahuana\n'), { jewel: 'vanity', seed: 4521, conqueror: 'Mazcotl' });
   assert.deepStrictEqual(T.readJewelText('Commissioned 13520 coins to commemorate Caspiro'), { jewel: 'hubris', seed: 13520, conqueror: 'Caspiro' });
   assert.deepStrictEqual(T.readJewelText('Remembrancing 2400 songworthy deeds by the line of Medved'), { jewel: 'tragedy', seed: 2400, conqueror: 'Medved' });
+  // Separators in the number, Windows line ends, a written \n between lines (as the trade site shows it).
+  assert.deepStrictEqual(T.readJewelText('Item Class: Jewels\r\nRarity: Unique\r\nElegant Hubris\r\nTimeless Jewel\r\n--------\r\nCommissioned 115,080 coins to commemorate Cadiro\\nPassives in radius are Conquered by the Eternal Empire\r\n'), { jewel: 'hubris', seed: 115080, conqueror: 'Cadiro' });
+  assert.deepStrictEqual(T.readJewelText('Carved to glorify 6\u00a0248 new faithful converted by High Templar Dominus'), { jewel: 'faith', seed: 6248, conqueror: 'Dominus' });
+  // Other wording: the jewel's name and a line with a conqueror and a number are enough.
+  assert.deepStrictEqual(T.readJewelText('Lethal Pride\nTimeless Jewel\n--------\n13628 warriors follow Akoya'), { jewel: 'pride', seed: 13628, conqueror: 'Akoya' });
+  // The advanced copy (Ctrl+Alt+C), as copied by the owner.
+  const advanced = 'Item Class: Jewels\nRarity: Unique\nElegant Hubris\nTimeless Jewel\n--------\nLimited to: 1 Historic\nRadius: Large\n--------\nItem Level: 83\n--------\n{ Unique Modifier }\nCommissioned 24440(2000-160000) coins to commemorate Caspiro(...)\nPassives in radius are Conquered by the Eternal Empire\n(Conquered Passive Skills cannot be modified by other Jewels)\nHistoric \u2014 Unscalable Value\n--------\n';
+  assert.deepStrictEqual(T.readJewelText(advanced), { jewel: 'hubris', seed: 24440, conqueror: 'Caspiro' });
+  assert.deepStrictEqual(T.readJewelText('Bathed in the blood of 3200(100-8000) sacrificed in the name of Doryani(...)'), { jewel: 'vanity', seed: 3200, conqueror: 'Doryani' });
   assert.strictEqual(T.readJewelText('Rarity: Rare\nGloom Spark\nCobalt Jewel'), null);
 });
 

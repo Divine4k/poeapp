@@ -45,14 +45,33 @@ const jewelByKey = (key) => JEWELS.find((j) => j.key === key);
 const step = (j) => j.step || 1;
 const seedCount = (j) => (j.max - j.min) / step(j) + 1;
 
-// Reads a timeless jewel from the text the game copies (Ctrl+C on the item).
+// Reads a timeless jewel from the text the game copies (Ctrl+C on the item). Forgiving on
+// purpose: numbers may come with separators (115,080 or 115 080), lines may be joined by a
+// written "\n", and if the usual sentence is not found, the jewel's name plus a line with a
+// conqueror's name and a number is enough.
+const NUM = '(\\d[\\d.,\\u00a0\\u202f ]*\\d|\\d)';
+const digits = (s) => Number(String(s).replace(/\D/g, ''));
+function conquerorOf(j, word) {
+  const name = String(word || '').toLowerCase();
+  const c = j.conquerors.find((x) => x.name.toLowerCase() === name || (x.also || []).some((a) => a.toLowerCase() === name));
+  return c ? c.name : null;
+}
 function readJewelText(text) {
+  const t = String(text || '').replace(/\\n/g, '\n').replace(/\r/g, '').replace(/[\u00a0\u202f]/g, ' ')
+    // The advanced copy (Ctrl+Alt+C) writes each roll's range right after it: "24440(2000-160000)", "Caspiro(...)".
+    .replace(/(\S)\((?:[\d.,\s\u2013\u2014-]+|\.\.\.|\u2026)\)/g, '$1');
   for (const j of JEWELS) {
-    const m = j.text.exec(String(text || ''));
-    if (!m) continue;
-    const name = m[2].toLowerCase();
-    const c = j.conquerors.find((x) => x.name.toLowerCase() === name || (x.also || []).some((a) => a.toLowerCase() === name));
-    return { jewel: j.key, seed: Number(m[1]), conqueror: c ? c.name : null };
+    const m = new RegExp(j.text.source.replace('(\\d+)', NUM), 'i').exec(t);
+    if (m) return { jewel: j.key, seed: digits(m[1]), conqueror: conquerorOf(j, m[2]) };
+  }
+  // The sentence was not found: look for the jewel's name and a line naming one of its conquerors.
+  for (const j of JEWELS) {
+    if (!t.toLowerCase().includes(j.name.toLowerCase())) continue;
+    for (const line of t.split('\n')) {
+      const c = j.conquerors.find((x) => [x.name, ...(x.also || [])].some((n) => new RegExp(`\\b${n}\\b`, 'i').test(line)));
+      const n = new RegExp(NUM).exec(line);
+      if (c && n) return { jewel: j.key, seed: digits(n[1]), conqueror: c.name };
+    }
   }
   return null;
 }
