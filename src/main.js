@@ -2254,12 +2254,20 @@ function setupIpc() {
   ipcMain.on('check-size', (e, h) => { if (checkPanel && checkPanel.win && e.sender === checkPanel.win.webContents) checkPanel.setHeight(h); });
   // A number typed in the price check window: it takes the keyboard for that moment, then the
   // game gets it back (only when the game had it before).
-  ipcMain.on('check-keys', (e, on) => {
+  ipcMain.on('check-keys', async (e, on) => {
     if (!checkPanel || !checkPanel.win || e.sender !== checkPanel.win.webContents) return;
+    const turn = checkPanel.keyTurn = (checkPanel.keyTurn || 0) + 1;
+    if (trouble) trouble.event('check-keys', { on: !!on });
     if (on) { checkPanel.gameHadKeys = watch.gameInFront(); checkPanel.takeKeys(true); return; }
-    checkPanel.takeKeys(false);
-    if (checkPanel.gameHadKeys) focusGame().catch(() => {});
+    const back = checkPanel.gameHadKeys;
     checkPanel.gameHadKeys = false;
+    // The game gets the keyboard back BEFORE this window lets go of it. Windows only lets the
+    // program in front hand the front on: letting go first put Explorer (the desktop) in front,
+    // the game could not be brought back, the check closed and its key did nothing until the
+    // game was clicked.
+    if (back) await focusGame().catch(() => {});
+    if (turn !== checkPanel.keyTurn) return; // typing started again meanwhile: keep the keyboard
+    checkPanel.takeKeys(false);
   });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('trouble-list', () => (trouble ? trouble.list() : []));
