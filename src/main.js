@@ -39,6 +39,7 @@ const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
 const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
 const { dustValue } = require('./core/dust');
+const { vendorRecipe, verdict, craftRoom } = require('./core/worth');
 const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
@@ -1226,6 +1227,75 @@ function pickChoice(name) {
   if (ch && tc.filters.ok && (config.priceSearch || {}).auto !== false) runTradeSearch(false);
 }
 
+// A socket recipe's reward with its picture and value, or null.
+function vendorFor(item) {
+  const r = vendorRecipe(item);
+  if (!r) return null;
+  const e = prices.get(r.name);
+  return { ...r, icon: e ? e.icon || null : null, chaos: e ? e.chaos * r.count : 0 };
+}
+
+// What each ticked line adds to the price: the same search once more for each, with that line
+// switched off. The difference in the typical price is what the line is worth. One search after
+// another, each waiting for the trade site to allow it.
+async function runWorth(edits) {
+  const tc = tradeCheck;
+  if (!tc || !tc.filters.ok || tc.state === 'searching' || (tc.worth && tc.worth.state === 'running')) return;
+  tc.filters = applyEdits(tc.filters, edits);
+  tc.filtersRev += 1;
+  await runTradeSearch(false);
+  if (tradeCheck !== tc || tc.state !== 'done' || !tc.summary || tc.summary.median === null) return;
+  const base = tc.summary.median;
+  const lines = [...tc.filters.props.filter((p) => p.enabled).map((p) => ({ key: `prop:${p.key}`, off: { props: { [p.key]: { enabled: false } } } })),
+    ...tc.filters.stats.filter((x) => x.enabled).map((x) => ({ key: `stat:${x.key}`, off: { stats: { [x.key]: { enabled: false } } } }))];
+  tc.worth = { state: 'running', rev: tc.filtersRev, done: 0, total: lines.length, values: {}, base };
+  tc.rev = ++tradeRev; push();
+  for (const line of lines) {
+    if (tradeCheck !== tc) return;
+    const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
+    if (wait > 45000) { tc.worth.state = 'stopped'; tc.worth.why = 'The trade site asked for a long pause. Try again in a minute.'; break; }
+    if (wait > 0) await sleep(wait + 150);
+    if (tradeCheck !== tc || tc.worth.rev !== tc.filtersRev) return;
+    try {
+      const r = await tradeClient.check(config.league, buildQuery(applyEdits(tc.filters, line.off)));
+      const ls = markBait(r.listings.map((l) => readListing(l, chaosOfPrice)));
+      const s = summarize(r.total, ls.filter((l) => !l.bait));
+      tc.worth.values[line.key] = s.median === null ? null : Math.round((base - s.median) * 10) / 10;
+    } catch (e) {
+      tc.worth.state = 'stopped'; tc.worth.why = e.message || String(e); break;
+    }
+    tc.worth.done += 1; tc.rev = ++tradeRev; push();
+  }
+  if (tc.worth.state === 'running') tc.worth.state = 'done';
+  tc.rev = ++tradeRev; push();
+}
+
+// The price with a bench craft added: the same search, its total life or resistance raised by
+// the craft's lowest roll. Shown beside today's typical price.
+async function runCraft(edits, stat) {
+  const tc = tradeCheck;
+  const idea = tc && tc.craft && tc.craft.ideas.find((i) => i.stat === stat && i.priced);
+  if (!idea || tc.state === 'searching' || (tc.worth && tc.worth.state === 'running')) return;
+  tc.filters = applyEdits(tc.filters, edits);
+  tc.filtersRev += 1;
+  if (!tc.summary || tc.state !== 'done') await runTradeSearch(false);
+  if (tradeCheck !== tc) return;
+  const line = tc.filters.stats.find((x) => x.key === stat);
+  const min = (line.min !== null ? line.min : line.value || 0) + idea.add;
+  idea.state = 'running'; tc.rev = ++tradeRev; push();
+  try {
+    const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
+    if (wait > 0) await sleep(wait + 150);
+    const r = await tradeClient.check(config.league, buildQuery(applyEdits(tc.filters, { stats: { [stat]: { enabled: true, min } } })));
+    const ls = markBait(r.listings.map((l) => readListing(l, chaosOfPrice)));
+    const sm = summarize(r.total, ls.filter((l) => !l.bait));
+    Object.assign(idea, { state: 'done', chaos: sm.median, total: r.total, rev: tc.filtersRev });
+  } catch (e) {
+    Object.assign(idea, { state: 'error', why: e.message || String(e) });
+  }
+  tc.rev = ++tradeRev; push();
+}
+
 function startTradeCheck(item, { always = false } = {}) {
   tradeCheck = null;
   if (!searchable(item)) { bulkCheck(item, always); return; }
@@ -1242,6 +1312,8 @@ function startTradeCheck(item, { always = false } = {}) {
   tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques
   tradeCheck.icon = entry && entry.icon ? entry.icon : null; // a unique's picture; others get theirs from the search
   tradeCheck.dust = item.rarity === 'Unique' ? dustValue(item) : null; // what it gives at the Disenchanting bench
+  tradeCheck.vendor = vendorFor(item);
+  tradeCheck.craft = filters.ok ? craftRoom(item, filters) : null;
   if (filters.ok) showCheckPanel();
   // The price check key searches at once, with what is ticked from the start. The check key is
   // also pressed just to count loot, so there a unique (it has a poe.ninja price already) and
@@ -1286,7 +1358,16 @@ function coinIcons(listings) {
   }
   return out;
 }
-const checkPanelData = () => ({ ...tradeCheck, divine: prices.divine, auto: config.priceSearch.auto !== false, sockets: config.priceSearch.sockets !== false, league: config.league, coins: coinIcons(tradeCheck && tradeCheck.listings) });
+// What the item goes for, for the verdict at the top: its cheapest real listing, else poe.ninja's
+// price; a stack counts whole.
+function checkPrice(tc) {
+  if (!tc) return null;
+  const low = tc.summary && tc.summary.low !== null && tc.summary.low !== undefined ? tc.summary.low : null;
+  const each = low !== null ? low : (tc.ninja !== null && tc.ninja !== undefined ? tc.ninja : null);
+  if (each === null) return null;
+  return tc.kind === 'bulk' ? each * (tc.qty || 1) : each;
+}
+const checkPanelData = () => ({ ...tradeCheck, verdict: tradeCheck && tradeCheck.kind !== 'pick' || (tradeCheck && tradeCheck.picked) ? verdict({ price: checkPrice(tradeCheck), vendor: tradeCheck.vendor, divine: prices.divine }) : null, divine: prices.divine, auto: config.priceSearch.auto !== false, sockets: config.priceSearch.sockets !== false, league: config.league, coins: coinIcons(tradeCheck && tradeCheck.listings) });
 // The item's page on the wiki or PoEDB, from the links at the bottom of the price check window.
 // Both are searches, which land on the page itself when the name is exact.
 function checkSiteUrl(site) {
@@ -1886,7 +1967,7 @@ const actions = {
   // The Search button: what was ticked and typed replaces the choices, then one search is sent.
   tradeSearch: async (a) => {
     if (tradeCheck && tradeCheck.kind === 'bulk') { await runBulkSearch(); return; }
-    if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching') return;
+    if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching' || (tradeCheck.worth && tradeCheck.worth.state === 'running')) return;
     tradeCheck.filters = applyEdits(tradeCheck.filters, a.edits);
     tradeCheck.filtersRev += 1; // the other window showing this item redraws its tick boxes
     await runTradeSearch(false);
@@ -1895,6 +1976,8 @@ const actions = {
   // The cross on the window in game: the search stays on the Prices page.
   checkPanelClose: () => closeCheckPanel(),
   checkPickUnique: (a) => pickChoice(String(a.name || '')),
+  tradeWorth: (a) => runWorth(a.edits),
+  tradeCraft: (a) => runCraft(a.edits, String(a.stat || '')),
   checkSite: (a) => { const url = checkSiteUrl(String(a.site || '')); if (url) shell.openExternal(url); },
   // the socket button on the price check window: shown or hidden on every item picture there
   checkSockets: () => { applyConfig({ priceSearch: { sockets: config.priceSearch.sockets === false } }); push(); },

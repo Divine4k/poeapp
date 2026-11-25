@@ -71,7 +71,16 @@
     const tiers = (r.tiers || []).map((t) => `<small class="pc-tier${t === 1 ? ' best' : ''}" title="Tier ${t}: tier 1 is the best this modifier can be">T${t}</small>`).join('');
     const kind = r.kind && r.mk !== 'pseudo' ? `<small class="k-${r.mk}">${r.kind}</small>` : '';
     return `<li class="${r.enabled ? 'on' : 'off'}" data-row="${i}">
-      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}" title="${esc(r.label)}">${esc(r.label)}</span>${kind}${tiers}</label>${num}</li>`;
+      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}" title="${esc(r.label)}">${esc(r.label)}</span>${kind}${tiers}${worthHtml(r)}</label>${num}</li>`;
+  }
+  // What this line adds to the price, once "Price each mod" has worked it out.
+  function worthHtml(r) {
+    const w = data && data.worth;
+    if (!w || w.rev !== data.filtersRev || !r.pk || !(r.pk in w.values)) return '';
+    const v = w.values[r.pk];
+    if (v === null) return '<small class="pc-worth" title="Not enough listings without it to tell">?</small>';
+    const big = w.base > 0 && v >= w.base * 0.15;
+    return `<small class="pc-worth${big ? ' big' : v <= 0 ? ' none' : ''}" title="Without it, the typical price is ${esc(fmtValue(w.base - v))} instead of ${esc(fmtValue(w.base))}">${v > 0 ? `+${esc(fmtValue(v))}` : '≈ 0'}</small>`;
   }
 
   // An item's picture as the game shows it: no frame, the sockets and their links drawn over it.
@@ -115,19 +124,31 @@
   // The answer, beside the picture: the cheapest and the typical price big, the rest in a line.
   function headlineHtml(d) {
     const bulk = d.kind === 'bulk';
-    if (d.state === 'searching') return `<p class="pc-wait">Searching the ${bulk ? 'bulk exchange' : 'trade site'}…</p>${dustHtml(d)}`;
-    if (d.state === 'error') return `<p class="pc-bad">${esc(d.error)}</p>${dustHtml(d)}`;
+    if (d.state === 'searching') return `<p class="pc-wait">Searching the ${bulk ? 'bulk exchange' : 'trade site'}…</p>${extrasHtml(d)}`;
+    if (d.state === 'error') return `<p class="pc-bad">${esc(d.error)}</p>${extrasHtml(d)}`;
     const ninja = d.ninja !== null && d.ninja !== undefined ? `poe.ninja <b>${fmtValue(d.ninja)}</b>` : '';
     const s = d.summary || {};
     // what the whole stack is worth, at the cheapest offer (or poe.ninja's price before a search)
     const each = s.low !== null && s.low !== undefined ? s.low : d.ninja;
     const stack = d.qty > 1 && each ? `your ${d.qty.toLocaleString()} <b>${fmtValue(each * d.qty)}</b>` : '';
     if (bulk && !d.want) return `<div class="pc-price">${d.title === 'Chaos Orb' && d.divine ? `<b>${num(d.divine)}</b>${coin('chaos')}<small>for one divine</small>` : priceHtml(d.ninja)}</div><p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>`;
-    if (d.state !== 'done') return `<p class="pc-say">${bulk ? 'Press Search to see what the bulk exchange offers.' : 'Tick what matters, then press Search.'}</p>${ninja || stack ? `<p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>` : ''}${dustHtml(d)}`;
-    if (!d.total) return `<p class="pc-say">${bulk ? 'Nobody offers it on the bulk exchange right now.' : 'Nothing like it is listed. Switch a stat off or lower a number.'}</p>${ninja ? `<p class="pc-sub">${ninja}</p>` : ''}${dustHtml(d)}`;
+    if (d.state !== 'done') return `<p class="pc-say">${bulk ? 'Press Search to see what the bulk exchange offers.' : 'Tick what matters, then press Search.'}</p>${ninja || stack ? `<p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>` : ''}${extrasHtml(d)}`;
+    if (!d.total) return `<p class="pc-say">${bulk ? 'Nobody offers it on the bulk exchange right now.' : 'Nothing like it is listed. Switch a stat off or lower a number.'}</p>${ninja ? `<p class="pc-sub">${ninja}</p>` : ''}${extrasHtml(d)}`;
     const sub = [`<b>${d.total.toLocaleString()}</b> ${bulk ? 'offers' : 'listed'}`, ninja, stack, d.searchedAt ? `searched ${ago(d.searchedAt, true)}` : ''].filter(Boolean).join('<i>·</i>');
-    if (s.low === null) return `<p class="pc-sub">${sub}</p>${dustHtml(d)}`;
-    return `<div class="pc-price">${priceHtml(s.low, s.median)}<small>${s.low === s.median ? 'cheapest' : 'cheapest – typical'}${bulk ? ' each' : ''}</small></div><p class="pc-sub">${sub}</p>${dustHtml(d)}`;
+    if (s.low === null) return `<p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
+    return `<div class="pc-price">${priceHtml(s.low, s.median)}<small>${s.low === s.median ? 'cheapest' : 'cheapest – typical'}${bulk ? ' each' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
+  }
+  // The verdict at a glance, beside the price.
+  const VERDICT_TIPS = { top: 'Worth a divine or more', sell: 'Worth listing on the trade site', vendor: 'A vendor gives more than it sells for', low: 'Sells for less than a few chaos' };
+  const verdictHtml = (d) => (d.verdict ? `<span class="pc-verdict v-${esc(d.verdict.kind)}" title="${esc(VERDICT_TIPS[d.verdict.kind] || '')}">${esc(d.verdict.text)}</span>` : '');
+  // Lines under the price: the vendor recipe it fits, and what a unique gives when disenchanted.
+  // One line kept from the start (empty until there is something), so nothing moves when the answer comes.
+  const extrasHtml = (d) => `<div class="pc-notes">${verdictHtml(d)}${vendorHtml(d)}${dustHtml(d)}</div>`;
+  function vendorHtml(d) {
+    const v = d.vendor;
+    if (!v) return '';
+    const pic = v.icon ? `<img src="${esc(v.icon)}" alt="">` : esc(v.name);
+    return `<p class="pc-dust pc-vendor" title="Sold to any vendor, an item with ${esc(v.why)} gives ${v.count} ${esc(v.name)}${v.count > 1 ? 's' : ''}">Vendor <i>→</i> <b>${v.count}</b> × ${pic}${v.chaos ? ` <span>≈ ${fmtValue(v.chaos)}</span>` : ''}</p>`;
   }
   // What a unique gives at the Disenchanting bench in Kingsmarch.
   const dustHtml = (d) => (d.dust ? `<p class="pc-dust" title="Thaumaturgic Dust from the Disenchanting bench in Kingsmarch (item level, quality, influences and corruptions counted)">Disenchanting <i>→</i> <b>${d.dust.toLocaleString()}</b> × <img src="dust.png" alt="Thaumaturgic Dust"></p>` : '');
@@ -235,6 +256,31 @@
       ${footHtml(d)}`;
   }
 
+  // "Price each mod": one more search per ticked line, without it.
+  function worthButton(d) {
+    const w = d.worth;
+    const running = w && w.state === 'running';
+    const label = running ? `${w.done} of ${w.total}…` : 'Price each mod';
+    const tip = w && w.state === 'stopped' ? w.why : 'One more search for each ticked line, without it: what each one adds to the price. Takes a few seconds per line (the trade site allows only so many searches).';
+    return `<button type="button" class="pc-site pc-worth-go${running ? ' busy' : ''}" data-worth ${running || d.state === 'searching' ? 'disabled' : ''} title="${esc(tip)}">${label}</button>`;
+  }
+  // Room left for a crafting bench mod, and the price with the usual craft in it.
+  function craftHtml(d) {
+    const c = d.craft;
+    if (!c) return '';
+    const open = [c.open.prefix ? `${c.open.prefix} prefix${c.open.prefix > 1 ? 'es' : ''}` : '', c.open.suffix ? `${c.open.suffix} suffix${c.open.suffix > 1 ? 'es' : ''}` : ''].filter(Boolean).join(' and ');
+    const ideas = c.ideas.map((i) => {
+      let right = '';
+      if (!i.priced) right = '<small>no line to price it on</small>';
+      else if (i.state === 'running') right = '<small>searching…</small>';
+      else if (i.state === 'error') right = `<small class="bad" title="${esc(i.why)}">could not search</small>`;
+      else if (i.state === 'done') right = i.chaos === null || i.chaos === undefined ? '<small>too few listed to tell</small>' : `<span class="pc-lp"><small>with it</small> ${priceHtml(i.chaos)}</span>`;
+      else right = `<button type="button" class="pc-link" data-craft="${esc(i.stat)}">Price it with this</button>`;
+      return `<li><span>${esc(i.text)} <small>${esc(i.slot)}</small></span>${right}</li>`;
+    }).join('');
+    return `<div class="pc-craft"><p><b>Bench craft</b> · ${esc(open)} open${c.crafted ? ' · already has a crafted mod' : ''}</p>${ideas ? `<ul>${ideas}</ul>` : ''}</div>`;
+  }
+
   function draw() {
     const d = data;
     const kind = d && d.kind === 'bulk' ? 'bulk' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
@@ -250,6 +296,7 @@
         <button type="button" role="tab" class="pc-tab${mode === 'base' ? ' on' : ''}" aria-selected="${mode === 'base'}" data-mode="base" title="This base type at this item level, whatever is rolled on it">Base item</button></div>` : '';
     const chips = rows.map((r, i) => (r.chip ? chipHtml(r, i) : '')).join('');
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
+    const busy = d.state === 'searching' || !!(d.worth && d.worth.state === 'running');
     const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
     panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
         <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${d.picked ? 'Unidentified · <button type="button" class="pc-link" data-pick="">Not this one?</button> · ' : ''}${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
@@ -257,9 +304,9 @@
       ${tabs}
       <div class="pc-body"><div class="pc-chips">${chips}</div>
         ${stats ? `<ul class="pc-rows">${stats}</ul>` : ''}
-        ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}</div>
-      <div class="pc-go"><button type="button" class="primary" data-search ${d.state === 'searching' ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search'}</button>
-        ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
+        ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}${craftHtml(d)}</div>
+      <div class="pc-go"><button type="button" class="primary" data-search ${busy ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search'}</button>
+        ${worthButton(d)}${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
       ${listHtml(d)}
       ${footHtml(d)}`;
     sendSize(fullHeight());
@@ -353,6 +400,9 @@
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
+    if (e.target.closest('[data-worth]')) { api.action({ type: 'tradeWorth', edits: edits() }); return; }
+    const craft = e.target.closest('[data-craft]');
+    if (craft) { api.action({ type: 'tradeCraft', stat: craft.dataset.craft, edits: edits() }); return; }
     if (e.target.closest('[data-sockets]')) {
       // shown or hidden at once here; the app keeps the choice for next time
       const on = panel.classList.toggle('no-sk') === false;

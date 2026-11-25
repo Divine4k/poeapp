@@ -111,6 +111,9 @@ function readGear(item, text, sections) {
   };
   item.modLines = [];
   item.affixes = []; // the names of its prefixes and suffixes, when the fuller text gives them
+  // How many prefixes and suffixes it has, and whether one is from the crafting bench. Only known
+  // from the fuller text (known: false otherwise).
+  item.slots = { prefix: 0, suffix: 0, crafted: false, known: false };
   const start = sections.findIndex((s) => s.some((l) => /^Item Level: /.test(l)));
   for (let i = start + 1; i < sections.length && start >= 0; i++) {
     let explaining = false;
@@ -120,6 +123,9 @@ function readGear(item, text, sections) {
       if (explaining) { if (raw.endsWith(')')) explaining = false; continue; }
       if (MOD_HEADER.test(raw)) {
         header = headerKind(raw); group += 1;
+        item.slots.known = true;
+        if (header.affix) item.slots[header.affix] += 1;
+        if (header.type === 'crafted') item.slots.crafted = true;
         if (header.affix && header.name) item.affixes.push({ affix: header.affix, name: header.name });
         continue;
       }

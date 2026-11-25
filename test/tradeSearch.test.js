@@ -718,3 +718,25 @@ test('a listing unfolds to the item as the game shows it: name, base, properties
   assert.equal(o.mods[1].raw, '{"weird":1}');
   assert.deepEqual(d.mods.map((m) => `${m.kind}: ${m.text}`), ['implicit: +1 to Level of Socketed Gems', 'fractured: +394 to Armour', 'explicit: +160 to maximum Life', 'crafted: 13% increased Stun and Block Recovery']);
 });
+
+test('worth: vendor recipes, the verdict at a glance, and room for a bench craft', () => {
+  const { vendorRecipe, verdict, craftRoom } = require('../src/core/worth');
+  assert.deepEqual(vendorRecipe({ sockets: 'R-G-B-B-R-G' }), { name: 'Orb of Fusing', count: 20, why: 'six linked sockets' });
+  assert.deepEqual(vendorRecipe({ sockets: 'R-G B-B R-G' }).count, 7);
+  assert.equal(vendorRecipe({ sockets: 'R-G-B' }).name, 'Chromatic Orb');
+  assert.equal(vendorRecipe({ sockets: 'R-G B' }), null); // red, green and blue, but not linked together
+  assert.equal(vendorRecipe({ sockets: '' }), null);
+
+  assert.deepEqual(verdict({ price: 300, divine: 200 }), { kind: 'top', text: 'Valuable item!' });
+  assert.equal(verdict({ price: 12, divine: 200 }).kind, 'sell');
+  assert.equal(verdict({ price: 2, divine: 200, vendor: { chaos: 3 } }).kind, 'vendor');
+  assert.equal(verdict({ price: 1, divine: 200 }).kind, 'low');
+  assert.equal(verdict({ price: null, divine: 200 }), null);
+
+  const ring = parseItemText(RING_FULL);
+  assert.deepEqual(ring.slots, { prefix: 2, suffix: 3, crafted: true, known: true });
+  const room = craftRoom(ring, buildFilters(ring, index));
+  assert.deepEqual([room.open, room.crafted, room.ideas], [{ prefix: 1, suffix: 0 }, true, []]); // a ring: no life craft offered
+  assert.equal(parseItemText(CLOAK_FULL).corruptionImplicits, 1);
+  assert.equal(craftRoom(parseItemText(BOOTS), null), null); // the short text: not known
+});
