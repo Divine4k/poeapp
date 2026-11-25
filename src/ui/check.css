@@ -113,6 +113,7 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-num b { cursor: text; border-radius: 6px; }
 .pc-num b:hover { background: color-mix(in srgb, var(--bone) 7%, transparent); }
 .pc-type { width: 46px; height: 22px; margin: 0 -6px; padding: 0 4px; border: 0; border-radius: 6px; text-align: center; font: 640 13.5px var(--display); font-variant-numeric: tabular-nums; color: var(--bone); background: var(--raise); box-shadow: inset 0 0 0 1.5px var(--gold); outline: none; user-select: text; }
+.pc-type.fresh { background: color-mix(in srgb, var(--gold) 28%, var(--raise)); } /* the first key replaces the number */
 /* Match: the item's own value, faint once the number already is that */
 /* Match: the item's own value. It shows on the line under the mouse, beside the number, over
    the end of the line's text, so it takes no room from the text the rest of the time. */

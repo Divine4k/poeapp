@@ -35,5 +35,6 @@ contextBridge.exposeInMainWorld('api', {
   onCheck: (cb) => ipcRenderer.on('check', (_e, data) => cb(data)),
   onCheckPress: (cb) => ipcRenderer.on('check-press', (_e, p) => cb(p)), // a press of the mouse the app saw land in the window
   checkSize: (height) => ipcRenderer.send('check-size', height),
-  checkKeys: (on) => ipcRenderer.send('check-keys', !!on), // a number is being typed: the window needs the keyboard
+  checkKeys: (on) => ipcRenderer.send('check-keys', !!on), // a number is being typed: the app holds the keys a number needs
+  onCheckKey: (cb) => ipcRenderer.on('check-key', (_e, k) => cb(k)), // one of those keys, or 'done'
 });

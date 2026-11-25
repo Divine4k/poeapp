@@ -32,14 +32,6 @@ const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat, copyItem } = require('./chat');
-// Brings the price check window or the game to the front (typing a number). Loaded with care:
-// an antivirus may remove focus.js (it runs PowerShell that moves windows), and the app must
-// still start then; typing a number falls back to the slower way.
-let focuser;
-try { focuser = new (require('./focus').Focuser)(); } catch (err) {
-  console.error('focus helper not loaded:', err && err.message);
-  focuser = { start() {}, stop() {}, game: () => focusGame().catch(() => 'no'), window: async () => 'no' };
-}
 const { Overlay, Toast, CheckPanel } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
@@ -847,9 +839,11 @@ function syncKeyHook() {
   // A press of the left button inside the price check window is passed on to it: over the game
   // the window does not always get the press itself (see pressOn in ui/check.js).
   lib.uIOhook.on('mousedown', (e) => {
-    if (e.button !== 1 || !checkPanel || !checkPanel.visible || !checkPanel.rect || checkPanel.typing) return;
+    if (e.button !== 1 || !checkPanel || !checkPanel.visible || !checkPanel.rect) return;
     const p = screen.getCursorScreenPoint(), r = checkPanel.rect;
-    if (p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height) checkPanel.press(p.x - r.x, p.y - r.y);
+    const inWindow = p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
+    if (inWindow) checkPanel.press(p.x - r.x, p.y - r.y);
+    else if (checkPanel.typing) checkPanel.key('done'); // a click elsewhere ends the typing, keeping the number
   });
   // Back from a map, each of your clicks (moving loot to the stash) is followed by one read, so
   // the app sees the inventory as you leave it. A quick run of clicks gets one read at its end.
@@ -1224,7 +1218,6 @@ function releaseEverything() {
   for (const step of [
     () => globalShortcut.unregisterAll(),
     () => watch.stop(),
-    () => focuser.stop(),
     () => { clearInterval(timedTimer); },
     () => { if (hook) { hook.uIOhook.removeAllListeners(); hook.uIOhook.stop(); hook = null; hookListening = false; } },
     () => { for (const w of BrowserWindow.getAllWindows()) w.destroy(); },
@@ -1601,9 +1594,29 @@ function showToast(message, always = false) {
 let gameKeysOn = false; // the keys that only mean something in the game are held right now
 let gameKeysTaken = []; // those of the chat command keys another app already holds
 let keysPaused = null; // a timer while a key is being chosen in Settings: the app holds none of its keys then
+// The keys a typed number needs, held from the whole system while it is typed, so the game
+// does not get them (1 to 5 are flasks) and the game keeps the keyboard: nothing moves to the
+// front. Each key goes to the price check window; all are let go when the typing ends.
+const TYPING_KEYS = [
+  ...'0123456789'.split('').map((d) => [d, d]), ...'0123456789'.split('').map((d) => [`num${d}`, d]),
+  ['.', '.'], [',', '.'], ['numdec', '.'], ['-', '-'], ['numsub', '-'],
+  ['Backspace', 'Backspace'], ['Delete', 'Backspace'], ['Enter', 'Enter'], ['Escape', 'Escape'],
+];
+let typingHeld = [];
+function typingKeys(on) {
+  for (const accel of typingHeld.splice(0)) { try { globalShortcut.unregister(accel); } catch (_) { /* gone already */ } }
+  if (trouble) trouble.event('check-keys', { on: !!on });
+  if (!on) return;
+  for (const [accel, k] of TYPING_KEYS) {
+    try { if (globalShortcut.register(accel, () => { if (checkPanel) checkPanel.key(k); })) typingHeld.push(accel); } catch (_) { /* that key stays with the game */ }
+  }
+}
+
 function registerHotkeys() {
   if (keysPaused) return; // they are taken again when the choice has been made
   globalShortcut.unregisterAll();
+  typingHeld = [];
+  if (checkPanel && checkPanel.typing) typingKeys(true); // a number being typed keeps its keys
   gameKeysOn = false;
   status.hotkeys = { clipboard: false, snapshot: false, priceCheck: false, tradeNext: false, tradeDismiss: false, layout: false };
   // Keys that only mean something in the game are held only while the game is in front.
@@ -1620,7 +1633,7 @@ function registerHotkeys() {
   if (canTrouble() || (trouble && trouble.current)) reg('record', config.hotkeys.record, () => { toggleRecording(); });
   // The price check key: the same check without naming or counting anything.
   status.hotkeys.priceCheckHeld = gameKeysOn && !!config.hotkeys.priceCheck;
-  if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { focuser.start(); checkHovered({ count: false }); });
+  if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { checkHovered({ count: false }); });
   const hk = config.trade.hotkeys, taken = [];
   const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, noted('chat or trade key', accel, fn))) taken.push(accel); } catch (_) { taken.push(accel); } };
   // Layout mode places every part of the overlay (the price check window and the check message
@@ -2268,29 +2281,10 @@ function setupIpc() {
   ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
   ipcMain.handle('layout-get', () => layoutData());
   ipcMain.on('check-size', (e, h) => { if (checkPanel && checkPanel.win && e.sender === checkPanel.win.webContents) checkPanel.setHeight(h); });
-  // A number typed in the price check window: it takes the keyboard for that moment, then the
-  // game gets it back (only when the game had it before).
-  ipcMain.on('check-keys', async (e, on) => {
+  // A number typed in the price check window: the keys it needs are held while it is typed.
+  ipcMain.on('check-keys', (e, on) => {
     if (!checkPanel || !checkPanel.win || e.sender !== checkPanel.win.webContents) return;
-    const turn = checkPanel.keyTurn = (checkPanel.keyTurn || 0) + 1;
-    if (on) {
-      checkPanel.gameHadKeys = checkPanel.gameHadKeys || watch.gameInFront();
-      checkPanel.takeKeys(true);
-      // Electron's focus() is not always allowed to take the front from the game; the helper is.
-      const got = await focuser.window(checkPanel.win);
-      if (trouble) trouble.event('check-keys', { on: true, front: got });
-      if (turn === checkPanel.keyTurn && checkPanel.win && !checkPanel.win.isDestroyed()) checkPanel.win.webContents.focus();
-      return;
-    }
-    const back = checkPanel.gameHadKeys;
-    // The game gets the keyboard back BEFORE this window lets go of it. Letting go first put
-    // Explorer (the desktop) in front: the check closed and its key did nothing until the game
-    // was clicked.
-    const got = back ? await focuser.game() : 'skip';
-    if (trouble) trouble.event('check-keys', { on: false, game: got });
-    if (turn !== checkPanel.keyTurn) return; // typing started again meanwhile: keep the keyboard
-    checkPanel.gameHadKeys = false;
-    checkPanel.takeKeys(false);
+    checkPanel.takeKeys(!!on);
   });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('trouble-list', () => (trouble ? trouble.list() : []));
@@ -2344,7 +2338,7 @@ app.whenReady().then(() => {
   book.restore(readJson('trades.json', null));
   overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
   toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
-  checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; } });
+  checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; }, onKeys: (on) => typingKeys(on) });
   watch.on('change', syncOverlay);
   watch.on('change', () => { if (trouble) trouble.event('front', { game: watch.gameInFront(), own: watch.ownInFront(), name: watch.name || '' }); });
   // Away from the game nothing is drawn over the screen.

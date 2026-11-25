@@ -399,26 +399,37 @@
     choicesChanged();
   }
 
-  // Typing a number: the number becomes a box, and the window asks for the keyboard until
-  // Enter, Escape or a click elsewhere.
-  let typing = null; // { row, input }
+  // Typing a number: the number becomes a box. The window never takes the keyboard (that moved
+  // the game out of the front, and Windows put Explorer there instead): the app holds the keys a
+  // number needs while it is typed and passes each one here (onCheckKey). Enter keeps the
+  // number, Escape drops it, a click anywhere else keeps it.
+  let typing = null; // { row, input, fresh }
   function startTyping(b) {
     const li = b.closest('li[data-row]');
     const row = rows[Number(li.dataset.row)];
     if (!row || typing) return;
     const input = document.createElement('input');
-    input.type = 'text'; input.inputMode = 'decimal'; input.className = 'pc-type';
+    input.type = 'text'; input.readOnly = true; input.tabIndex = -1; input.className = 'pc-type fresh';
     input.value = String(shown(row, row.num));
     b.replaceWith(input);
-    typing = { row, input };
+    typing = { row, input, fresh: true }; // the first key replaces the number shown
     api.checkKeys(true);
-    input.focus(); input.select();
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); stopTyping(true); }
-      else if (e.key === 'Escape') { e.preventDefault(); stopTyping(false); }
-    });
-    input.addEventListener('blur', () => stopTyping(true));
   }
+  function typeKey(k) {
+    if (!typing) return;
+    if (k === 'Enter' || k === 'done') { stopTyping(true); return; }
+    if (k === 'Escape') { stopTyping(false); return; }
+    const t = typing;
+    let v = t.fresh ? '' : t.input.value;
+    t.fresh = false;
+    t.input.classList.remove('fresh');
+    if (k === 'Backspace') v = v.slice(0, -1);
+    else if (k === '-') v = v.startsWith('-') ? v.slice(1) : `-${v}`;
+    else if (k === '.') { if (!v.includes('.')) v = `${v || '0'}.`; }
+    else if (/^[0-9]$/.test(k)) { if (v.replace(/[-.]/g, '').length < 7) v += k; }
+    t.input.value = v;
+  }
+  if (api.onCheckKey) api.onCheckKey(typeKey);
   function stopTyping(keep) {
     if (!typing) return;
     const { row, input } = typing;
@@ -429,7 +440,7 @@
     b.textContent = shown(row, row.num);
     if (input.isConnected) input.replaceWith(b);
     api.checkKeys(false);
-    if (keep && input.value.trim() !== '' && isFinite(v)) setNum(row, Math.round(shown(row, v) * 100) / 100);
+    if (keep && input.value.trim() !== '' && input.value.trim() !== '-' && isFinite(v)) setNum(row, Math.round(shown(row, v) * 100) / 100);
   }
   function setOn(el, on) {
     el.classList.toggle('on', on); el.classList.toggle('off', !on);
@@ -468,10 +479,12 @@
     box.checked = !box.checked;
     box.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  panel.addEventListener('pointerdown', (e) => { if (e.button === 0) pressOn(e.target, 'page', e.clientY); });
+  // A press anywhere but the box being typed in ends the typing first, keeping the number.
+  const endTypingFor = (el) => { if (typing && !(el && el === typing.input)) stopTyping(true); };
+  panel.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; endTypingFor(e.target); pressOn(e.target, 'page', e.clientY); });
   if (api.onCheckPress) api.onCheckPress((p) => {
-    if (typing) return;
     const el = document.elementFromPoint(p.x, p.y);
+    if (typing) { endTypingFor(el); return; }
     // A number clicked over the game: its own click does not always come (the window never had
     // the keyboard), so the press the app saw starts the typing.
     const num = el && el.closest('[data-type]');

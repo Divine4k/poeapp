@@ -131,10 +131,11 @@ class Toast {
 // your keys while you click it. It closes with its cross (or Escape and the inventory key, in
 // main.js), or by itself when it was never touched.
 class CheckPanel {
-  constructor({ preload, page, onClose }) {
+  constructor({ preload, page, onClose, onKeys }) {
     this.preload = preload;
     this.page = page;
     this.onClose = onClose || (() => {});
+    this.onKeys = onKeys || (() => {}); // typing a number starts or ends: main.js holds or frees the keys
     this.win = null;
     this.height = 0;
     this.wanted = false;
@@ -198,13 +199,19 @@ class CheckPanel {
   // A press of the left mouse button seen by the app at this spot of the window (see check.js).
   press(x, y) { if (this.wanted && this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.webContents.send('check-press', { x, y }); }
 
-  // While a number is typed in, the window takes the keyboard; otherwise it never does.
+  // While a number is typed in. The window never takes the keyboard: the game keeps it, and the
+  // app holds only the keys a number needs until the typing ends (see typingKeys in main.js).
+  // Taking the keyboard meant moving the game out of the front, and Windows did that badly:
+  // Explorer came in front, the check closed and its key stopped working.
   takeKeys(on) {
+    if (this.typing === !!on) return;
     this.typing = !!on;
-    if (!this.win || this.win.isDestroyed()) return;
-    if (on) { this.win.setFocusable(true); this.win.focus(); this.win.webContents.focus(); }
-    else { this.win.setFocusable(false); this.win.setAlwaysOnTop(true, 'screen-saver'); }
+    this.onKeys(this.typing);
   }
+
+  // A key held for the typing, passed on to the window: '0'-'9', '.', '-', 'Backspace',
+  // 'Enter', 'Escape', or 'done' (a click somewhere else: keep the number).
+  key(k) { if (this.win && !this.win.isDestroyed()) this.win.webContents.send('check-key', k); }
 
   setHeight(h) {
     const height = Math.max(0, Number(h) || 0);
