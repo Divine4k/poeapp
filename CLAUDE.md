@@ -42,7 +42,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `src/ui/overlay.*`, `tradecard.js` | Trade overlay over the game; how one offer is drawn |
 | `src/ui/layout.*` | Layout mode (drag overlay parts, Shift+F2) |
 | `src/ui/toast.*` | Short message over the game |
-| `src/ui/recorder.*`, `src/recorder-preload.js` | Hidden window that records the screen to WebM for `src/recorder.js` |
+| `src/ui/recorder.*`, `src/recorder-preload.js` | Hidden window that records the screen (MP4 or WebM) for `src/recorder.js` |
 | `src/core/session.js` | Map runs, timers, deaths, loot, costs (pure logic) |
 | `src/core/clientLog.js` | Reads Client.txt (read-only) |
 | `src/core/prices.js` | poe.ninja prices |
@@ -62,10 +62,10 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `src/shared.js` | Shared item database (fingerprints named by users), via the server |
 | `src/cloud.js` | Account (with its role: '', moderator, admin), session uploads, Developer tools calls; `SERVER` = https://poeapp.divine4k.workers.dev |
 | `src/troubleshoot.js` | Troubleshooting recordings: start/stop, what is kept (keys, clicks, log lines, app events, state at start and end), saved under `recordings/<id>/`, sent with `src/github.js` |
-| `src/recorder.js` | Screen to video file through the hidden recorder window |
+| `src/recorder.js` | Screen to video file through the hidden recorder window: up to 1920x1080, 60 fps, H.264 in `video.mp4` where Chromium can (else `video.webm`), 8 Mbit/s. Videos over 90 MB are sent as `.part1`, `.part2`… and joined when fetched |
 | `src/github.js` | Puts a folder into a GitHub repository as one commit (reports repository) |
 | `src/tracker.js` | The Tracker page's items as GitHub issues: `listItems`, `addItem`, `updateItem`, `setParent` (sub-issues), `deleteItem` (GraphQL, admin rights); status and priority from labels |
-| `src/core/recording.js` | Event list, state summary, the README of a recording (pure) |
+| `src/core/recording.js` | Event list (times in ms from the video's first frame, to 0.1 ms), state summary, the short version for the page (`summarise`), the README of a recording. Pure; also loaded by index.html as `window.Recording` |
 | `src/updater.js` | In-app updates from `main` of this repo |
 | `src/overlay.js`, `capture.js`, `chat.js`, `gamewin.js`, `http.js`, `art.js`, `leftovers.js` | Overlay windows, screen capture, typing chat lines and the copy key (`copyItem`), which window is in front, web requests, item pictures, closing stray copies |
 | `server/` | Cloudflare Worker + D1 schema. Deployed by pasting `worker.js` into the dashboard (see server/README.md); a push does not deploy it |

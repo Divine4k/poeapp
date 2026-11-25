@@ -16,7 +16,13 @@ const zlib = require('zlib');
 const { Trace, keyNames, keyLabel, buttonName, stateBrief, briefChanges, readme, recordingId, ID } = require('./core/recording');
 const { uploadFolder, readFile, latestTree, readBlob } = require('./github');
 
-const MAX_MS = 8 * 60 * 1000; // a longer video would be too large to send in one piece
+const { performance } = require('perf_hooks');
+
+const MAX_MS = 5 * 60 * 1000;      // at full HD and 60 frames that is about 300 MB at most
+const PART = 90 * 1024 * 1024;     // GitHub takes files up to 100 MB: a bigger video goes in parts
+// The PC's clock to a fraction of a millisecond, the same one the recorder window times the
+// video's first frame with, so a key's time is its place in the video.
+const clock = () => performance.timeOrigin + performance.now();
 const SYNC_MAX = 20;          // recordings fetched in one go; the rest come with the next look
 const MAX_IMAGES = 10;        // pictures in one written report
 const MAX_IMAGE = 8 * 1024 * 1024;
@@ -28,9 +34,9 @@ class Troubleshoot {
   // snapshot(): { state, inventory } of the app right now (inventory may be null).
   // who(): { name, role }. version: of the app. cloud: for the GitHub settings. fetchImpl: the web.
   // changed(): the page should redraw. say(text, bad): a message for the person.
-  constructor({ dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed = () => {}, say = () => {} }) {
-    Object.assign(this, { dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed, say });
-    this.trace = new Trace();
+  constructor({ dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed = () => {}, say = () => {}, partBytes = PART }) {
+    Object.assign(this, { dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed, say, partBytes });
+    this.trace = new Trace({ now: clock });
     this.current = null; // { id, startedAt, folder, video, timer }
     this.busy = '';      // 'starting' | 'stopping' while that is going on
     this.sending = null; // { id, step }
@@ -114,13 +120,14 @@ class Troubleshoot {
     try { snap = await this.snapshot(); } catch (e) { snap = { problem: e.message || String(e) }; }
     try { this.write(id, 'state-start.json.gz', snap.state || snap); if (snap.inventory) this.write(id, 'inventory-start.json.gz', snap.inventory); } catch (_) { /* the rest still records */ }
     let video = null, videoProblem = '';
-    try { video = await this.recorder.start({ displayId: this.displayId(), file: path.join(folder, 'video.webm') }); } catch (e) { videoProblem = e.message || String(e); }
-    this.trace.start();
+    try { video = await this.recorder.start({ displayId: this.displayId(), dir: folder }); } catch (e) { videoProblem = e.message || String(e); }
+    // Times count from the video's first frame (or from now, without a video).
+    this.trace.start(video && video.at ? video.at : undefined);
     this.held.clear();
     this.lastBrief = null;
     this.current.video = video;
     this.current.videoProblem = videoProblem;
-    this.current.timer = setTimeout(() => { this.say('The recording stopped by itself after 8 minutes, so it stays small enough to send.', true); this.stop(); }, MAX_MS);
+    this.current.timer = setTimeout(() => { this.say('The recording stopped by itself after 5 minutes, so it stays small enough to send.', true); this.stop(); }, MAX_MS);
     this.busy = '';
     this.trace.add('start', { version: this.version, by: me.name || '', video: video ? `${video.width}x${video.height} ${video.mime}` : `none: ${videoProblem}` });
     if (snap && snap.state) this.state(snap.state);
@@ -147,7 +154,7 @@ class Troubleshoot {
       this.saveMeta({
         id: cur.id, startedAt: cur.startedAt, endedAt, by: me.name || '', role: me.role || '', version: this.version,
         screen: cur.video ? cur.video.screen : null,
-        video: video && video.bytes ? { bytes: video.bytes, mime: cur.video.mime, width: cur.video.width, height: cur.video.height, problem: video.problem || null } : null,
+        video: video && video.bytes ? { bytes: video.bytes, mime: cur.video.mime, file: cur.video.file || 'video.webm', width: cur.video.width, height: cur.video.height, fps: cur.video.fps || null, problem: video.problem || null } : null,
         videoProblem: cur.videoProblem || (video && video.problem) || null,
         events: this.trace.events.length, dropped: this.trace.dropped, note: '', sent: null,
       });
@@ -156,7 +163,7 @@ class Troubleshoot {
       this.say(`The recording could not be saved: ${e.message || e}`, true);
     }
     this.current = null; this.busy = '';
-    this.trace = new Trace();
+    this.trace = new Trace({ now: clock });
     this.changed();
     return cur.id;
   }
@@ -373,9 +380,18 @@ class Troubleshoot {
     if (!m || !m.remote || !m.video) return null;
     const gh = await this.cloud.github();
     if (gh.error) throw new Error(gh.error);
-    const data = await readFile({ fetchImpl: this.fetchImpl, token: gh.token, repo: m.repo || gh.repo, path: `recordings/${id}/video.webm` });
-    if (!data) return null;
-    fs.writeFileSync(path.join(this.folder(id), 'video.webm'), data);
+    const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: m.repo || gh.repo };
+    const file = m.video.file || 'video.webm';
+    // A big video was sent in parts: they are put back together here.
+    const names = m.video.parts ? Array.from({ length: m.video.parts }, (_, i) => `${file}.part${i + 1}`) : [file];
+    const pieces = [];
+    for (const n of names) {
+      const piece = await readFile({ ...where, path: `recordings/${id}/${n}` });
+      if (!piece) return null;
+      pieces.push(piece);
+    }
+    const data = Buffer.concat(pieces);
+    fs.writeFileSync(path.join(this.folder(id), file), data);
     return data;
   }
 
@@ -391,7 +407,9 @@ class Troubleshoot {
   }
   video(id) {
     if (!ID.test(String(id))) return null;
-    try { return fs.readFileSync(path.join(this.folder(id), 'video.webm')); } catch (_) { return null; }
+    const m = this.meta(id);
+    const file = m && m.video && /^video\.(webm|mp4)$/.test(m.video.file || '') ? m.video.file : 'video.webm';
+    try { return fs.readFileSync(path.join(this.folder(id), file)); } catch (_) { return null; }
   }
 
   setNote(id, note) {
@@ -429,9 +447,23 @@ class Troubleshoot {
       const files = [];
       const add = (name) => { try { files.push({ path: name, data: fs.readFileSync(path.join(folder, name)) }); } catch (_) { /* not made for this one */ } };
       const d = this.details(id);
+      // The video, cut into parts when it is more than GitHub takes in one file.
+      const video = m.video ? this.video(id) : null;
+      if (video) {
+        const file = m.video.file || 'video.webm';
+        if (video.length > this.partBytes) {
+          const size = this.partBytes;
+          m.video.parts = Math.ceil(video.length / size);
+          for (let i = 0; i < m.video.parts; i++) files.push({ path: `${file}.part${i + 1}`, data: video.subarray(i * size, (i + 1) * size) });
+        } else {
+          delete m.video.parts;
+          files.push({ path: file, data: video });
+        }
+        this.saveMeta(m);
+      }
       files.push({ path: 'README.md', data: Buffer.from(readme({ ...m, dropped: m.dropped }, d.events)) });
       add('meta.json');
-      for (const n of ['events.json.gz', 'state-start.json.gz', 'state-end.json.gz', 'inventory-start.json.gz', 'inventory-end.json.gz', 'video.webm', ...(m.images || [])]) add(n);
+      for (const n of ['events.json.gz', 'state-start.json.gz', 'state-end.json.gz', 'inventory-start.json.gz', 'inventory-end.json.gz', ...(m.images || [])]) add(n);
       const first = m.note.trim().split('\n')[0].slice(0, 70);
       const r = await uploadFolder({
         fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo, folder: `recordings/${id}`, files,

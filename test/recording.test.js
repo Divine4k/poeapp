@@ -152,7 +152,7 @@ test('record, stop, write a note and send: the folder lands in the repository', 
   const said = [];
   // The screen recorder writes a few bytes of "video".
   const recorder = {
-    async start({ file }) { this.file = file; return { width: 1600, height: 900, mime: 'video/webm;codecs=vp9', screen: { width: 2560, height: 1440, scaleFactor: 1 } }; },
+    async start({ dir }) { this.file = path.join(dir, 'video.webm'); return { width: 1600, height: 900, mime: 'video/webm;codecs=vp9', screen: { width: 2560, height: 1440, scaleFactor: 1 } }; },
     async stop() { fs.writeFileSync(this.file, Buffer.from('webm!')); return { bytes: 5 }; },
   };
   let role = 'moderator';
@@ -232,7 +232,7 @@ test('admins and moderators get everyone else\'s recordings from GitHub, and can
   const cloud = { github: async () => ({ repo: 'Divine4k/reports', token: 'good' }) };
   const make = (dir, name) => new Troubleshoot({
     dir, recorder: {
-      async start({ file }) { this.file = file; return { width: 1600, height: 900, mime: 'video/webm', screen: { width: 1920, height: 1080, scaleFactor: 1 } }; },
+      async start({ dir }) { this.file = path.join(dir, 'video.webm'); return { width: 1600, height: 900, mime: 'video/webm', screen: { width: 1920, height: 1080, scaleFactor: 1 } }; },
       async stop() { fs.writeFileSync(this.file, Buffer.from(`video of ${name}`)); return { bytes: 13 }; },
     },
     displayId: () => null, version: 'x', cloud, fetchImpl: gh.fetch,
@@ -352,4 +352,69 @@ test('quick marks one after another all stick, the old single list is taken over
   assert.deepStrictEqual(ids.map((id) => !!t.fixedOf(id)), [true, false, true]);
   assert.strictEqual(t.fixedOf(ids[0]).by, 'Old');
   fs.rmSync(t.dir, { recursive: true, force: true });
+});
+
+test('times count from the video\'s first frame, and a big video goes up in parts and comes back whole', async () => {
+  const { performance } = require('perf_hooks');
+  const gh = fakeGithub();
+  const cloud = { github: async () => ({ repo: 'Divine4k/reports', token: 'good' }) };
+  const make = (name) => new Troubleshoot({
+    dir: fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-p-')), partBytes: 4, displayId: () => null, version: 'x', cloud, fetchImpl: gh.fetch,
+    recorder: {
+      // The first frame was taken 250 ms before the recorder answered.
+      async start({ dir }) { this.file = path.join(dir, 'video.mp4'); return { width: 1920, height: 1080, fps: 60, mime: 'video/mp4;codecs=avc1', file: 'video.mp4', at: performance.timeOrigin + performance.now() - 250, screen: { width: 2560, height: 1440, scaleFactor: 1 } }; },
+      async stop() { fs.writeFileSync(this.file, Buffer.from('0123456789')); return { bytes: 10 }; },
+    },
+    snapshot: async () => ({ state: {} }), who: () => ({ name, role: 'moderator' }),
+  });
+  const a = make('Helper');
+  await a.start();
+  a.event('notice', { text: 'now' });
+  const id = await a.stop();
+  const d = a.details(id);
+  const notice = d.events.find((e) => e.kind === 'notice');
+  assert.ok(notice.t >= 250 && notice.t < 2000, `a notice right after the start is ${notice.t} ms into the video`);
+  assert.strictEqual(Math.round(notice.t * 10) / 10, notice.t);
+  assert.deepStrictEqual([d.video.file, d.video.fps], ['video.mp4', 60]);
+  assert.strictEqual(a.video(id).toString(), '0123456789');
+
+  assert.strictEqual(await a.send(id, 'Parts test'), '');
+  const tree = gh.tree();
+  const parts = Object.keys(tree).filter((k) => k.startsWith(`recordings/${id}/video.mp4.part`)).sort();
+  assert.strictEqual(parts.length, 3);
+  assert.ok(!(`recordings/${id}/video.mp4` in tree));
+  assert.match(gh.blobs[tree[`recordings/${id}/README.md`]].toString(), /in 3 parts/);
+
+  const b = make('Divine');
+  await b.syncRemote();
+  assert.strictEqual((await b.videoFor(id)).toString(), '0123456789');
+  for (const t of [a, b]) fs.rmSync(t.dir, { recursive: true, force: true });
+});
+
+test('the short version folds presses, runs of keys and log noise into a few rows', () => {
+  const { summarise } = require('../src/core/recording');
+  const ev = [
+    { t: 0, kind: 'start' },
+    { t: 100.4, kind: 'key', dir: 'down', key: 'W' }, { t: 180.9, kind: 'key', dir: 'up', key: 'W' },
+    { t: 300, kind: 'key', dir: 'down', key: 'W' }, { t: 350, kind: 'key', dir: 'up', key: 'W' },
+    { t: 500, kind: 'mouse', dir: 'down', button: 'left', x: 5, y: 6 }, { t: 620, kind: 'mouse', dir: 'up', button: 'left', x: 5, y: 6 },
+    { t: 900, kind: 'log', line: '2026/11/24 17:05:11 123456 abc [INFO Client 1234] : You have entered Strand.' },
+    { t: 950, kind: 'log', line: '2026/11/24 17:05:11 1 abc [DEBUG Client 1] Got Instance Details' },
+    { t: 960, kind: 'console', level: 'log', text: 'chatty' },
+    { t: 970, kind: 'state', notice: 'Saved.' },
+    { t: 5000, kind: 'key', dir: 'down', key: 'Ctrl+Alt+C', by: 'app' },
+    { t: 9000, kind: 'mouse', dir: 'down', button: 'right', x: 1, y: 2 },
+  ];
+  const { rows, quiet } = summarise(ev);
+  assert.deepStrictEqual(rows.map((r) => [r.t, r.lane, r.text]), [
+    [0, 'app', 'Recording started'],
+    [100.4, 'input', 'W ×2, left click'],
+    [900, 'game', 'You have entered Strand.'],
+    [5000, 'input', 'Pressed Ctrl+Alt+C (sent by the app)'],
+    [9000, 'input', 'Clicked right at 1, 2'],
+  ]);
+  assert.deepStrictEqual(rows[1].items.map((i) => i.text), ['Pressed W, held 81 ms', 'Pressed W, held 50 ms', 'Clicked left at 5, 6, held 120 ms']);
+  assert.strictEqual(quiet, 2);
+  // Everything keeps the noise.
+  assert.strictEqual(summarise(ev, { everything: true }).quiet, 0);
 });

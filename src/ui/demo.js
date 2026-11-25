@@ -207,7 +207,10 @@
       const list = await window.api.troubleList();
       const m = list.find((r) => r.id === id);
       const ev = [
-        { t: 0, kind: 'start', version: 'abc1234', by: 'Divine4k' }, { t: 310, kind: 'key', dir: 'down', key: 'Tab' }, { t: 420, kind: 'key', dir: 'up', key: 'Tab' },
+        { t: 0, kind: 'start', version: 'abc1234', by: 'Divine4k' }, { t: 310.4, kind: 'key', dir: 'down', key: 'Tab' }, { t: 420.9, kind: 'key', dir: 'up', key: 'Tab' },
+        { t: 610.2, kind: 'key', dir: 'down', key: 'W' }, { t: 655.7, kind: 'key', dir: 'up', key: 'W' }, { t: 702.1, kind: 'key', dir: 'down', key: 'W' }, { t: 741.3, kind: 'key', dir: 'up', key: 'W' },
+        { t: 980.6, kind: 'mouse', dir: 'down', button: 'left', x: 1650, y: 820 }, { t: 1060.0, kind: 'mouse', dir: 'up', button: 'left', x: 1650, y: 820 },
+        { t: 1500, kind: 'log', line: '2026/11/24 17:05:11 123456 abc [DEBUG Client 1234] Got Instance Details from login server' },
         { t: 1800, kind: 'log', line: '2026/11/24 17:05:11 123456 abc [INFO Client 1234] : You have entered Celestial Hideout.' },
         { t: 1820, kind: 'state', map: { id: 'r4', name: 'Strand', running: true, deaths: 0, loot: 5, lootValue: 260 } },
         { t: 2400, kind: 'mouse', dir: 'down', button: 'left', x: 1650, y: 820 }, { t: 2900, kind: 'hotkey', job: 'clipboard', key: 'F8' },

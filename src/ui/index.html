@@ -328,11 +328,13 @@
           <h3 class="tr-h">What happened</h3>
           <span class="chips tr-filter" id="tr-filter">
             <button type="button" data-kinds="input" aria-pressed="true">Keys and clicks</button>
-            <button type="button" data-kinds="game" aria-pressed="true">Game log</button>
+            <button type="button" data-kinds="game" aria-pressed="true">Game</button>
             <button type="button" data-kinds="app" aria-pressed="true">The app</button>
+            <button type="button" id="tr-every" aria-pressed="false" title="Every key on its own line, every game log line and all console output">Everything</button>
           </span>
         </div>
-        <p class="fine" id="tr-events-hint">Click a line to jump the video there.</p>
+        <canvas class="tr-strip" id="tr-strip" height="54" aria-label="When things happened: your keys and clicks, the game, the app. Click to jump the video there."></canvas>
+        <p class="fine" id="tr-events-hint">Click a line or the strip to jump the video there. Keys pressed close together are one line: click its count to see each one with its exact time.</p>
         <ol class="tr-events" id="tr-events"></ol>
       </div>
     </section>
@@ -726,6 +728,7 @@
 
 <script src="demo.js"></script>
 <script src="keys.js"></script>
+<script src="../core/recording.js"></script>
 <script src="steps.js"></script>
 <script src="tradecard.js"></script>
 <script src="app/core.js"></script>

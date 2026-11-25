@@ -8,36 +8,14 @@ let trListRev = -1;     // state.trouble.rev the list was read at
 let trSel = null;       // id of the recording shown
 let trDetail = null;    // its facts and events
 let trVideoUrl = null;
-let trShown = [];       // the events in the list right now, after the filter
+let trShown = [];       // the rows in the list right now, after the filter
 const trKinds = { input: true, game: true, app: true };
-const trGroup = (k) => (k === 'key' || k === 'mouse' || k === 'wheel' ? 'input' : k === 'log' ? 'game' : 'app');
 let noteTimer = null;
 
 const trClock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const trSize = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const trWhen = (ts) => new Date(ts).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
-// What one event says, in a line. The same wording as the README that goes up with it.
-function trText(e) {
-  const { t, kind, ...r } = e;
-  if (kind === 'key') return `${r.dir === 'up' ? 'Released' : 'Pressed'} ${r.key}${r.by === 'app' ? ' (sent by the app)' : ''}`;
-  if (kind === 'mouse') return `${r.dir === 'up' ? 'Released' : 'Clicked'} ${r.button} at ${r.x}, ${r.y}`;
-  if (kind === 'wheel') return `Wheel ${r.amount} at ${r.x}, ${r.y}`;
-  if (kind === 'log') return String(r.line || '').replace(/^\S+ \S+ \d+ \S+ /, '');
-  if (kind === 'notice') return r.text;
-  if (kind === 'hotkey') return `App key ${r.key} (${r.job})`;
-  if (kind === 'action') { const { type, ...rest } = r; return `Pressed in the app: ${type}${Object.keys(rest).length ? ` ${JSON.stringify(rest)}` : ''}`; }
-  if (kind === 'chat') return `Typed in game: ${r.text}`;
-  if (kind === 'toast') return `Shown over the game: ${r.message && typeof r.message === 'object' ? [r.message.title, r.message.text].filter(Boolean).join(' – ') || JSON.stringify(r.message) : r.message}`;
-  if (kind === 'front') return `Window in front: ${r.name || (r.game ? 'the game' : 'another program')}`;
-  if (kind === 'state') return `State: ${Object.entries(r).map(([k, v]) => `${k} ${typeof v === 'object' ? JSON.stringify(v) : v}`).join('; ')}`;
-  if (kind === 'console') return `${r.level}: ${r.text}`;
-  if (kind === 'start') return `Recording started${r.video ? ` (video: ${r.video})` : ''}`;
-  if (kind === 'stop') return 'Recording stopped';
-  if (kind === 'setting') return `Setting changed: ${JSON.stringify(r)}`;
-  if (kind === 'account') return `Account: ${r.type}${r.error ? ` (${r.error})` : ''}`;
-  return `${kind} ${JSON.stringify(r)}`;
-}
 
 function renderTrouble() {
   const tr = state.trouble;
@@ -103,7 +81,7 @@ async function trOpen(id) {
     : [`${trClock(d.endedAt - d.startedAt)} long`, d.by ? `by ${d.by}` : 'not logged in', `${(d.events || []).length} events`, d.video ? `video ${d.video.width}x${d.video.height}, ${trSize(d.video.bytes)}` : null].filter(Boolean).join(' · ');
   $('tr-note').value = d.note || '';
   // A written report has no video and no timeline, but pictures.
-  for (const el of ['tr-events-head', 'tr-events-hint', 'tr-events']) $(el).hidden = note;
+  for (const el of ['tr-events-head', 'tr-events-hint', 'tr-events', 'tr-strip']) $(el).hidden = note;
   $('tr-pics').hidden = !note;
   $('tr-note-hint').textContent = note ? 'What you did, what the app did, and what you expected instead. Screenshots help.' : 'What you did, what the app did, and what you expected instead. Times from the video help.';
   $('tr-novideo').hidden = note || !!d.video;
@@ -119,7 +97,7 @@ async function trOpen(id) {
     if (trSel !== id) return;
     if (!bytes) { $('tr-novideo').textContent = 'The video could not be fetched. Open it on GitHub instead.'; return; }
     $('tr-novideo').hidden = true;
-    trVideoUrl = URL.createObjectURL(new Blob([bytes], { type: 'video/webm' }));
+    trVideoUrl = URL.createObjectURL(new Blob([bytes], { type: String(d.video.mime || 'video/webm').split(';')[0] }));
     v.src = trVideoUrl;
   }
 }
@@ -133,29 +111,108 @@ $('tr-video').addEventListener('loadedmetadata', () => {
   v.addEventListener('durationchange', back);
   v.currentTime = 1e101;
 });
-// The line for what the video shows right now is marked as it plays.
-$('tr-video').addEventListener('timeupdate', () => {
-  const ms = $('tr-video').currentTime * 1000;
-  let at = -1;
-  for (let i = 0; i < trShown.length && trShown[i].t <= ms; i++) at = i;
-  const box = $('tr-events');
-  const was = box.querySelector('.now');
-  if (was && Number(was.dataset.i) === at) return;
-  if (was) was.classList.remove('now');
-  const li = at >= 0 ? box.querySelector(`[data-i="${at}"]`) : null;
-  if (li) li.classList.add('now');
-});
+// ---- what happened: a strip over time and a short list, both following the video ----
+const TR_MAX_ROWS = 2000;
+let trEvery = false;   // Everything: every event on its own line instead of the summary
+let trOpenGroups = new Set();
+// Minutes, seconds and milliseconds: keys come a few ms apart, so the ms matter.
+const trExact = (ms) => { const w = Math.max(0, Math.floor(ms)); const s = Math.floor(w / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}.${String(w % 1000).padStart(3, '0')}`; };
 
-const TR_MAX_ROWS = 3000;
 function trEvents() {
   if (!trDetail) return;
-  trShown = (trDetail.events || []).filter((e) => trKinds[trGroup(e.kind)]);
+  const all = trDetail.events || [];
+  if (trEvery) {
+    trShown = all.filter((e) => trKinds[Recording.laneOf(e.kind)]).map((e) => ({ t: e.t, end: e.t, lane: Recording.laneOf(e.kind), kind: e.kind, text: Recording.eventText(e), bad: !!e.bad }));
+  } else {
+    const { rows, quiet } = Recording.summarise(all);
+    trShown = rows.filter((r) => trKinds[r.lane]);
+    trShown.quiet = quiet;
+  }
   const rows = trShown.slice(0, TR_MAX_ROWS);
+  const row = (r, i) => {
+    const open = r.items && trOpenGroups.has(r.t);
+    const count = r.items ? `<button type="button" class="tr-count" data-open="${r.t}" aria-expanded="${open}" title="${open ? 'Hide' : 'Show'} each one">${r.items.length}</button>` : '';
+    const sub = open ? `<ol class="tr-sub">${r.items.map((it) => `<li data-t="${it.t}"><time>${trExact(it.t)}</time><span class="txt">${esc(it.text)}</span></li>`).join('')}</ol>` : '';
+    return `<li data-i="${i}" data-t="${r.t}" class="ln-${r.lane}${r.bad ? ' bad' : ''}"><time>${trExact(r.t)}</time><i class="tr-lane" aria-hidden="true"></i><span class="txt">${esc(r.text)}</span>${count}${sub}</li>`;
+  };
   $('tr-events').innerHTML = rows.length
-    ? rows.map((e, i) => `<li data-i="${i}" data-t="${e.t}" class="k-${trGroup(e.kind)}${e.bad ? ' bad' : ''}"><time>${trClock(e.t)}</time><span class="kind">${esc(e.kind)}</span><span class="txt">${esc(trText(e))}</span></li>`).join('')
+    ? rows.map(row).join('')
       + (trShown.length > rows.length ? `<li class="empty">${trShown.length - rows.length} more lines are in the file that is sent.</li>` : '')
+      + (trShown.quiet ? `<li class="empty">${trShown.quiet} game log and console lines left out. Everything shows them.</li>` : '')
     : '<li class="empty">Nothing of this kind was recorded.</li>';
+  trNow(true);
+  trStrip();
 }
+
+// The strip: three lanes (keys and clicks, game, app), a mark per event, and where the video is.
+function trStrip() {
+  const c = $('tr-strip');
+  if (c.hidden || !trDetail) return;
+  const w = c.clientWidth;
+  if (!w) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(54 * dpr); }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, 54);
+  const css = getComputedStyle(document.documentElement);
+  const col = (v, fb) => (css.getPropertyValue(v).trim() || fb);
+  const lanes = { input: [6, col('--portal', '#62afd0')], game: [22, col('--moss', '#86bb72')], app: [38, col('--gold', '#d1ad62')] };
+  const v = $('tr-video');
+  const span = Math.max(1, (v.duration && Number.isFinite(v.duration) ? v.duration * 1000 : 0), trDetail.endedAt - trDetail.startedAt, ...(trDetail.events || []).map((e) => e.t));
+  g.fillStyle = col('--seam', '#353e49');
+  for (const [y] of Object.values(lanes)) g.fillRect(0, y + 4, w, 1);
+  for (const e of trDetail.events || []) {
+    const lane = Recording.laneOf(e.kind);
+    if (!trKinds[lane] || (e.dir === 'up')) continue;
+    const [y, colour] = lanes[lane];
+    g.fillStyle = e.bad ? col('--blood', '#e0655a') : colour;
+    g.fillRect(Math.round((e.t / span) * (w - 2)), y, 2, 10);
+  }
+  if (v.src && !v.hidden) {
+    g.fillStyle = col('--bone', '#e9e2d3');
+    g.fillRect(Math.round((v.currentTime * 1000 / span) * (w - 2)), 0, 2, 54);
+  }
+  c.dataset.span = span;
+}
+$('tr-strip').addEventListener('click', (e) => {
+  const v = $('tr-video');
+  const c = e.currentTarget;
+  if (!v.src || v.hidden) return;
+  v.currentTime = Math.max(0, (e.offsetX / c.clientWidth) * Number(c.dataset.span || 0) / 1000);
+});
+window.addEventListener('resize', () => { if (!$('tab-trouble').hidden) trStrip(); });
+
+// The line for what the video shows now is marked, and kept in view while it plays.
+function trNow(force) {
+  const v = $('tr-video');
+  if (!trShown.length || !v.src) return;
+  const ms = v.currentTime * 1000;
+  let lo = 0, hi = Math.min(trShown.length, TR_MAX_ROWS) - 1, at = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (trShown[mid].t <= ms) { at = mid; lo = mid + 1; } else hi = mid - 1; }
+  const box = $('tr-events');
+  const was = box.querySelector(':scope > .now');
+  if (!force && was && Number(was.dataset.i) === at) return;
+  if (was) was.classList.remove('now');
+  const li = at >= 0 ? box.querySelector(`:scope > [data-i="${at}"]`) : null;
+  if (!li) return;
+  li.classList.add('now');
+  if (!v.paused) {
+    const top = li.offsetTop - box.offsetTop;
+    if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - li.offsetHeight) box.scrollTop = top - box.clientHeight / 3;
+  }
+}
+// Smooth while playing: once a frame, not only on the video's few timeupdate calls a second.
+let trRaf = 0;
+function trFollow() {
+  // Off this page or with the window hidden, the video stops and so does this loop.
+  if ($('tab-trouble').hidden || document.hidden) { $('tr-video').pause(); trRaf = 0; return; }
+  trNow(false); trStrip();
+  trRaf = $('tr-video').paused ? 0 : requestAnimationFrame(trFollow);
+}
+$('tr-video').addEventListener('play', () => { if (!trRaf) trRaf = requestAnimationFrame(trFollow); });
+$('tr-video').addEventListener('seeked', () => { trNow(true); trStrip(); });
+$('tr-video').addEventListener('loadedmetadata', () => trStrip());
 
 function trSendLine() {
   if (!trDetail || !state.trouble) return;
@@ -259,13 +316,26 @@ $('tr-fixbtn').addEventListener('click', () => {
 
 $('tr-list').addEventListener('click', (e) => { const b = e.target.closest('[data-rec]'); if (b) trOpen(b.dataset.rec); });
 $('tr-events').addEventListener('click', (e) => {
+  const open = e.target.closest('[data-open]');
+  if (open) {
+    const t = Number(open.dataset.open);
+    if (trOpenGroups.has(t)) trOpenGroups.delete(t); else trOpenGroups.add(t);
+    trEvents();
+    return;
+  }
   const li = e.target.closest('[data-t]');
   const v = $('tr-video');
   if (!li || v.hidden || !v.src) return;
-  v.currentTime = Math.max(0, Number(li.dataset.t) / 1000 - 1); // a moment before, to see it happen
+  v.currentTime = Math.max(0, Number(li.dataset.t) / 1000 - 0.5); // half a second before, to see it happen
+});
+$('tr-every').addEventListener('click', (e) => {
+  trEvery = !trEvery;
+  e.currentTarget.setAttribute('aria-pressed', String(trEvery));
+  trEvents();
 });
 $('tr-filter').addEventListener('click', (e) => {
   const b = e.target.closest('[data-kinds]');
+  if (b) trOpenGroups = new Set();
   if (!b) return;
   trKinds[b.dataset.kinds] = !trKinds[b.dataset.kinds];
   b.setAttribute('aria-pressed', String(trKinds[b.dataset.kinds]));
