@@ -23,7 +23,7 @@ const trWhen = (ts) => new Date(ts).toLocaleString([], { day: 'numeric', month: 
 function renderTrouble() {
   const tr = state.trouble;
   const can = !!(tr && (tr.can || tr.recording));
-  $('nav-trouble').hidden = !can;
+  $('nav-dev').hidden = !can && !(state.trouble && state.trouble.admin);
   // Blinking while recording; a still dot when other people's recordings came in unopened.
   $('trouble-dot').hidden = !(tr && (tr.recording || tr.unseen));
   $('trouble-dot').classList.toggle('rec', !!(tr && tr.recording));

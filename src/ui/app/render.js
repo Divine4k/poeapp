@@ -88,7 +88,8 @@ function applyNavOrder(order) {
   navApplied = key;
   const byTab = new Map([...sidenav.querySelectorAll('.navi')].map((b) => [b.dataset.tab, b]));
   // Listed pages first, in the saved order; any page not listed (a new one) keeps its place after them.
-  for (const tab of order || []) { const b = byTab.get(tab); if (b) { sidenav.appendChild(b); byTab.delete(tab); } }
+  // 'trouble' and 'tracker' were their own pages before 0.49; now one Developer tools entry.
+  for (const tab of (order || []).map((t) => (t === 'trouble' || t === 'tracker' ? 'devtools' : t))) { const b = byTab.get(tab); if (b) { sidenav.appendChild(b); byTab.delete(tab); } }
   for (const b of byTab.values()) sidenav.appendChild(b);
 }
 
@@ -144,9 +145,18 @@ function setWide(on) {
 $('btn-widen').addEventListener('click', () => setWide(!document.body.classList.contains('wide-side')));
 try { setWide(localStorage.getItem('wideSide') === '1'); } catch (_) { setWide(false); }
 
+// Developer tools is one sidebar entry with two pages in it (Troubleshooting, Tracker; the
+// Tracker for admins only). The entry opens the one last used.
+const DEV_TABS = ['trouble', 'tracker'];
+let devTab = 'trouble';
+try { if (localStorage.getItem('devTab') === 'tracker') devTab = 'tracker'; } catch (_) { /* storage off */ }
 function showTab(name) {
+  if (name === 'devtools') name = devTab === 'tracker' && state.trouble && state.trouble.admin ? 'tracker' : 'trouble';
+  if (DEV_TABS.includes(name) && name !== devTab) { devTab = name; try { localStorage.setItem('devTab', name); } catch (_) { /* not kept */ } }
   if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
-  for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  const side = DEV_TABS.includes(name) ? 'devtools' : name;
+  for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === side));
+  for (const b of document.querySelectorAll('.dev-tabs [data-tab]')) b.setAttribute('aria-pressed', String(b.dataset.tab === name));
   if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
   for (const id of TABS) $(`tab-${id}`).hidden = id !== name;
   $('strat').hidden = name !== 'mapping'; // strategies sit in the top bar, for the Mapping page only
