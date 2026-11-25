@@ -55,37 +55,56 @@ function itemsHtml(r, divine) {
 // The rows of a map table, newest first. open: the id of the row showing its details.
 // readonly: no Delete button (saved sessions). redraw: called when a map's picture has loaded.
 // "vs average": how much more or less a map made than the session's average finished map.
+// The maps of a session, newest first. Each row is its own bar: as long as what the map made
+// (against the session's best), green when it beat the session's average (the thin line),
+// gold for the best, striped for the map being run. Then when it ended, how long it took, and
+// what it made. A click opens the map's pictures and loot under it.
+const SKULL = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c-3.4 0-6 2.4-6 5.6 0 1.9.9 3.4 2.3 4.3V13c0 .8.6 1.5 1.4 1.5h4.6c.8 0 1.4-.7 1.4-1.5v-1.6c1.4-.9 2.3-2.4 2.3-4.3 0-3.2-2.6-5.6-6-5.6Zm-2.4 7.9a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Zm4.8 0a1.4 1.4 0 1 1 0-2.8 1.4 1.4 0 0 1 0 2.8Z"/></svg>';
+// A map's tier from its area level, as the game logs it: tier 1 is area level 68, tier 16 is
+// 83 and tier 17 is 84. Anything else (the campaign, a hideout) has no tier.
+const tierOf = (level) => (level >= 68 && level <= 84 ? level - 67 : null);
+const deathsHtml = (n) => (n ? `<span class="deaths" title="Died ${n === 1 ? 'once' : `${n} times`}">${SKULL}${n}</span>` : '');
 function runsHtml(sum, { open, readonly, redraw, divine }) {
   const runs = sum.runs.slice().reverse();
-  if (!runs.length) return '<tr><td colspan="5" class="empty">Finished maps are listed here.</td></tr>';
+  if (!runs.length) return '<tr><td colspan="6" class="empty">Finished maps are listed here.</td></tr>';
   const done = sum.runs.filter((r) => r.id !== sum.currentId);
   const avg = done.length ? done.reduce((a, r) => a + r.net, 0) / done.length : 0;
   const best = done.length > 1 ? done.reduce((a, r) => (r.net > a.net ? r : a), done[0]) : null;
+  const top = Math.max(1, ...sum.runs.map((r) => r.net));
+  const avgAt = done.length > 1 && avg > 0 ? Math.round((avg / top) * 1000) / 10 : null;
   return runs.map((r) => {
     const live = r.id === sum.currentId;
+    const cls = live ? 'now' : r === best ? 'best' : r.net < 0 ? 'neg' : done.length > 1 && r.net >= avg ? 'up' : '';
+    const w = Math.max(1.5, Math.round((Math.max(0, r.net) / top) * 1000) / 10);
     const diff = r.net - avg;
-    const vs = live || done.length < 2 ? '<span class="dim">—</span>' : `<span class="${diff >= 0 ? 'up' : 'down'}">${diff >= 0 ? '+' : '−'}${fmtValue(Math.abs(diff), divine)}</span>`;
+    const tip = live || done.length < 2 ? '' : `${diff >= 0 ? '+' : '−'}${fmtValue(Math.abs(diff), divine)} against the session's average`;
     let html = `<tr class="run ${live ? 'live' : ''} ${open === r.id ? 'open' : ''}" data-expand="${esc(r.id)}">
-        <td class="nm">${live ? '<i class="live-dot"></i>' : ''}<b>${esc(r.name)}</b>${best === r ? '<u>best</u>' : ''}${r.deaths ? `<em>died ${r.deaths === 1 ? 'once' : `${r.deaths}×`}</em>` : ''}</td>
+        <td class="nm"><span>${live ? '<i class="live-dot"></i>' : ''}<b>${esc(r.name)}</b>${tierOf(r.level) ? `<span class="tier" title="Area level ${r.level}">T${tierOf(r.level)}</span>` : ''}${best === r ? '<u>best</u>' : ''}${deathsHtml(r.deaths)}</span></td>
+        <td class="mbar"${tip ? ` title="${esc(tip)}"` : ''}><span class="track">${avgAt !== null ? `<i class="avg" data-at="${avgAt}"></i>` : ''}<i class="fill ${cls}" data-w="${w}"></i></span></td>
+        <td class="num end">${live ? 'now' : r.endedAt ? clock(r.endedAt) : ''}</td>
         <td class="num t">${fmtTime(live ? liveDuration(r) : r.durationMs)}</td>
-        <td class="num vs">${vs}</td>
         <td class="num net ${r.net < 0 ? 'neg' : live ? 'gold' : ''}">${r.net > 0 ? '+' : ''}${fmtValue(r.net, divine)}</td>
         <td class="x">${readonly ? '' : `<button type="button" class="link" data-act="deleteRun" data-run="${esc(r.id)}" data-confirm="${esc(`Delete ${r.name} from this session?`)}" title="Delete this map" aria-label="Delete ${esc(r.name)}">×</button>`}</td></tr>`;
     if (open === r.id) {
       const costs = r.costs.length ? `<p class="costline">Costs: ${r.costs.map((c) => `${esc(c.name)} ×${c.qty} (${fmtValue(c.total, divine)})`).join(', ')}</p>` : '';
       const data = snapData(r, redraw);
       const snap = snapHtml(data, false, divine);
-      html += `<tr class="detail"><td colspan="5">${snap ? `<div class="snaps">${snap}</div>${snapLegend(data)}` : ''}${itemsHtml(r, divine)}${costs}</td></tr>`;
+      html += `<tr class="detail"><td colspan="6">${snap ? `<div class="snaps">${snap}</div>${snapLegend(data)}` : ''}${itemsHtml(r, divine)}${costs}</td></tr>`;
     }
     return html;
   }).join('');
+}
+// The bars' lengths and the average line, through CSS variables (the page allows no style attributes).
+function sizeBars(box) {
+  for (const i of box.querySelectorAll('.track .fill[data-w]')) i.style.setProperty('--w', `${i.dataset.w}%`);
+  for (const i of box.querySelectorAll('.track .avg[data-at]')) i.style.setProperty('--at', `${i.dataset.at}%`);
 }
 // The line under the maps: the average map.
 const runsTotal = (sum, divine) => {
   const done = sum.runs.filter((r) => r.id !== sum.currentId);
   if (!done.length) return '';
   const ms = done.reduce((a, r) => a + r.durationMs, 0) / done.length, net = done.reduce((a, r) => a + r.net, 0) / done.length;
-  return `<tr class="total"><td class="nm"><b>Average map</b><em class="dim">${mapsWord(done.length)} finished</em></td><td class="num">${fmtTime(ms)}</td><td></td>
+  return `<tr class="total"><td class="nm" colspan="2"><b>Average map</b><em class="dim">${mapsWord(done.length)} finished</em></td><td></td><td class="num">${fmtTime(ms)}</td>
     <td class="num net">${net > 0 ? '+' : ''}${fmtValue(net, divine)}</td><td></td></tr>`;
 };
 
@@ -146,8 +165,8 @@ function renderSession() {
     head = `<p class="session-note"><span>Saved session, ${esc(dayOf(sum.startedAt))} ${clock(sum.startedAt)} to ${clock(sum.endedAt)}. ${fmtTime(sum.totals.elapsedMs)} long, values as they were then${sum.divine ? ` (1 Divine = ${Math.round(sum.divine)}c)` : ''}.</span>
         <button type="button" class="link" data-act="deleteSession" data-id="${esc(sum.id)}" data-confirm="Delete this saved session? This cannot be undone.">Delete session</button></p>`;
   } else if (live.runs.length) {
-    head = `<p class="session-note"><span>Started at ${clock(live.runs[0].startedAt)}</span>
-        <button type="button" class="link" data-act="recheckMaps" title="Looks at the saved inventory pictures of this session's maps again with the items known now, and corrects loot that was counted under a wrong name or not recognised at the time">Re-check items in these maps</button></p>`;
+    head = `<p class="session-note"><span>${mapsWord(live.runs.length)} since ${clock(live.runs[0].startedAt)}</span>
+        <button type="button" class="link" data-act="recheckMaps" title="Looks at the saved inventory pictures of this session's maps again with the items known now, and corrects loot that was counted under a wrong name or not recognised at the time">Re-check items</button></p>`;
   }
   setHtml($('session-head'), head);
   setHtml($('totals'), totalsHtml(sum.totals, sum.divine, sum.runs));
@@ -156,30 +175,6 @@ function renderSession() {
   const rows = runsHtml(sum, { open: expanded, readonly: sum !== live, redraw: renderSession, divine: sum.divine });
   if (rows !== runsShown) { runsShown = rows; $('runs').innerHTML = rows; }
   setHtml($('runs-total'), runsTotal(sum, sum.divine));
-  renderBars(sum);
+  sizeBars($('runs'));
 }
 
-// Under the maps: each map of the session as a bar, as tall as what it made. Green above the
-// session's average, gold for the best, striped for the map being run. The heights are set
-// through a CSS variable (the page allows no style attributes).
-function renderBars(sum) {
-  const box = $('sess-bars');
-  const runs = sum.runs.slice(-30);
-  box.hidden = runs.length < 2;
-  if (box.hidden) return;
-  const done = sum.runs.filter((r) => r.id !== sum.currentId);
-  const avg = done.length ? done.reduce((a, r) => a + r.net, 0) / done.length : 0;
-  const best = done.length > 1 ? done.reduce((a, r) => (r.net > a.net ? r : a), done[0]) : null;
-  const top = Math.max(1, ...runs.map((r) => r.net));
-  const many = runs.length > 8; // more than that: no names under the bars (they would run together)
-  const bars = runs.map((r) => {
-    const live = r.id === sum.currentId;
-    const cls = live ? 'now' : r === best ? 'best' : r.net < 0 ? 'neg' : r.net >= avg ? 'up' : '';
-    const h = Math.max(4, Math.round((Math.max(0, r.net) / top) * 100));
-    const tip = `${r.name}: ${r.net > 0 ? '+' : ''}${fmtValue(r.net, sum.divine)} in ${fmtTime(live ? liveDuration(r) : r.durationMs)}${live ? ' (running)' : ''}`;
-    return `<i class="${cls}" data-h="${h}" title="${esc(tip)}">${many ? '' : `<em>${live ? 'now' : esc(r.name.split(' ')[0])}</em>`}</i>`;
-  }).join('');
-  const head = `<p><span>Each map this session, by what it made</span>${best ? `<span>best: ${esc(best.name)} ${best.net > 0 ? '+' : ''}${esc(fmtValue(best.net, sum.divine))}</span>` : ''}</p>`;
-  setHtml(box, `${head}<div class="b${many ? ' many' : ''}">${bars}</div>`);
-  for (const i of box.querySelectorAll('i[data-h]')) i.style.setProperty('--h', `${i.dataset.h}%`);
-}

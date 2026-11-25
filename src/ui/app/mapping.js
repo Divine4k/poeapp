@@ -438,7 +438,7 @@ function renderNow() {
     const strats = state.config.strategies || [];
     const running = strats.find((x) => x.id === state.config.activeStrategy);
     const safe = mapSafety(run);
-    const meta = [run.level ? `Area level ${run.level}` : '', strats.length > 1 && running ? `counted under ${esc(running.name)}` : '', run.deaths ? `${run.deaths} ${run.deaths === 1 ? 'death' : 'deaths'}` : ''].filter(Boolean);
+    const meta = [run.level ? (tierOf(run.level) ? `Tier ${tierOf(run.level)} · area level ${run.level}` : `Area level ${run.level}`) : '', strats.length > 1 && running ? `counted under ${esc(running.name)}` : '', run.deaths ? `${run.deaths} ${run.deaths === 1 ? 'death' : 'deaths'}` : ''].filter(Boolean);
     setHtml($('now-name'), `<div class="eb ${paused ? 'paused' : ''}">${paused ? 'Paused while you are out of the map' : 'In map'}${safe ? `<span class="safe ${safe.ok ? '' : 'bad'}" title="${esc(safe.tip)}">${esc(safe.text)}</span>` : ''}</div>
         <div class="map-name">${esc(run.name)}</div><div class="map-meta">${meta.join(' · ')}</div>`);
     const live = liveDuration(run), usual = usualMs(run.name);
