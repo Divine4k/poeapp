@@ -9,12 +9,36 @@ function bestDrop(runs) {
   for (const r of runs) for (const i of r.items || []) if (i.chaos > 0) { const e = by.get(i.name) || { name: i.name, qty: 0, chaos: 0 }; e.qty += i.qty; e.chaos += i.chaos; by.set(i.name, e); }
   return [...by.values()].sort((x, y) => y.chaos - x.chaos)[0] || null;
 }
-const totalsHtml = (t, divine, runs) => {
+// Time played in a session: its own clock, or for sessions saved before the clock existed, its maps' time.
+const playMsOf = (t) => (t.playMs != null ? t.playMs : t.mapMs || 0);
+const perHourOf = (t) => (t.playMs != null ? t.netPerHour || 0 : playMsOf(t) > 60000 ? t.net / (playMsOf(t) / 3600000) : 0);
+// The running session's clock right now (it is only sent when something changes).
+const liveClockMs = (c) => c.ms + (c.running ? Date.now() - receivedAt : 0);
+// clk: the live session's clock with its buttons; saved sessions show their time only.
+const CLOCK_ICONS = {
+  pause: '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2" width="2.4" height="8" rx=".6"/><rect x="7.1" y="2" width="2.4" height="8" rx=".6"/></svg>',
+  stop: '<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>',
+  start: '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 2.2v7.6a.5.5 0 0 0 .76.43l6.1-3.8a.5.5 0 0 0 0-.86l-6.1-3.8a.5.5 0 0 0-.76.43z"/></svg>',
+};
+function clockHtml(t, clk) {
+  if (!clk) return `<div><small>Time</small><b>${fmtTime(playMsOf(t))}</b></div>`;
+  const btn = (op, label, tip) => `<button type="button" class="link" data-act="sessionClock" data-id="${op}" title="${label}: ${tip}" aria-label="${label}">${CLOCK_ICONS[op === 'resume' ? 'start' : op]}</button>`;
+  const how = `Counts from the first map and keeps going between maps. When no map is entered for ${Math.round(clk.idleMs / 60000)} minutes after leaving one, it stops and the time since leaving is taken off. Per hour is worked out over this time.`;
+  const word = clk.running ? 'Time' : clk.paused ? 'Time, paused' : 'Time, stopped';
+  const buttons = clk.running ? btn('pause', 'Pause', 'hold the clock until you press it again; maps do not start it')
+      + btn('stop', 'Stop', 'stop the clock now; the next map starts it again')
+    : clk.paused ? btn('resume', 'Resume', 'count again from now') + btn('stop', 'Stop', 'let the next map start the clock again')
+    : btn('start', 'Start', 'count from now; it also starts by itself when you enter a map');
+  return `<div class="sclock${clk.running ? '' : ' held'}"><small title="${esc(how)}">${word}</small><b><span data-sclock title="${esc(how)}">${fmtTime(liveClockMs(clk))}</span><span class="sclock-btns">${buttons}</span></b></div>`;
+}
+const totalsHtml = (t, divine, runs, clk) => {
   const best = bestDrop(runs);
   const short = (n) => n.replace(/ Orb$/, '').replace(/^Orb of /, '');
+  const rate = perHourOf(t);
   return `
       <div class="lead ${t.net < 0 ? 'neg' : ''}"><small>Session</small><b>${fmtValue(t.net, divine)}</b></div>
-      <div class="rate ${t.netPerHour < 0 ? 'neg' : ''}"><small>Per hour</small><b>${t.netPerHour ? fmtValue(t.netPerHour, divine) : 'n/a'}</b></div>
+      <div class="rate ${rate < 0 ? 'neg' : ''}"><small>Per hour</small><b>${rate ? fmtValue(rate, divine) : 'n/a'}</b></div>
+      ${clockHtml(t, clk)}
       <div><small>Maps</small><b>${t.maps}</b></div>
       <div><small>Average</small><b>${t.maps ? fmtTime(t.avgMapMs) : 'n/a'}</b></div>
       <div title="${best ? esc(`${best.qty} × ${best.name}, ${fmtValue(best.chaos, divine)}`) : ''}"><small>Best drop</small><b>${best ? esc(`${best.qty > 1 ? `${best.qty} ` : ''}${short(best.name)}`) : '—'}</b></div>`;
@@ -126,7 +150,7 @@ function renderStrategies() {
   // Everything this strategy has made: its saved sessions plus the running one.
   const mine = (state.sessions || []).filter((x) => x.strategyId === stratSel).map((x) => x.totals);
   if (stratSel === active && state.summary.runs.length) mine.push(state.summary.totals);
-  const sum = mine.reduce((a, t) => ({ maps: a.maps + t.maps, net: a.net + t.net, ms: a.ms + (t.elapsedMs || 0) }), { maps: 0, net: 0, ms: 0 });
+  const sum = mine.reduce((a, t) => ({ maps: a.maps + t.maps, net: a.net + t.net, ms: a.ms + playMsOf(t) }), { maps: 0, net: 0, ms: 0 });
   const perHour = sum.ms > 60000 ? sum.net / (sum.ms / 3600000) : 0;
   const stats = mine.length
     ? `${mine.length} ${mine.length === 1 ? 'session' : 'sessions'}, ${mapsWord(sum.maps)}, ${fmtValue(sum.net)} net${perHour ? `, ${fmtValue(perHour)} per hour` : ''}`
@@ -167,14 +191,14 @@ function renderSession() {
       api.savedSession(id).then((x) => { if (x) { saved.set(id, x); renderSession(); } });
       return;
     }
-    head = `<p class="session-note"><span>Saved session, ${esc(dayOf(sum.startedAt))} ${clock(sum.startedAt)} to ${clock(sum.endedAt)}. ${fmtTime(sum.totals.elapsedMs)} long, values as they were then${sum.divine ? ` (1 Divine = ${Math.round(sum.divine)}c)` : ''}.</span>
+    head = `<p class="session-note"><span>Saved session, ${esc(dayOf(sum.startedAt))} ${clock(sum.startedAt)} to ${clock(sum.endedAt)}. ${fmtTime(playMsOf(sum.totals))} played, values as they were then${sum.divine ? ` (1 Divine = ${Math.round(sum.divine)}c)` : ''}.</span>
         <button type="button" class="link" data-act="deleteSession" data-id="${esc(sum.id)}" data-confirm="Delete this saved session? This cannot be undone.">Delete session</button></p>`;
   } else if (live.runs.length) {
     head = `<p class="session-note"><span>${mapsWord(live.runs.length)} since ${clock(live.runs[0].startedAt)}</span>
         <button type="button" class="link" data-act="recheckMaps" title="Looks at the saved inventory pictures of this session's maps again with the items known now, and corrects loot that was counted under a wrong name or not recognised at the time">Re-check items</button></p>`;
   }
   setHtml($('session-head'), head);
-  setHtml($('totals'), totalsHtml(sum.totals, sum.divine, sum.runs));
+  setHtml($('totals'), totalsHtml(sum.totals, sum.divine, sum.runs, sum === live && live.clock ? live.clock : null));
   // Only redrawn when something changed: redrawing under the mouse would stop the name of a
   // hovered slot from ever showing.
   const rows = runsHtml(sum, { open: expanded, readonly: sum !== live, redraw: renderSession, divine: sum.divine });

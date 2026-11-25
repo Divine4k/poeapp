@@ -2,6 +2,9 @@
 // Session state: map runs, timers, deaths, loot and costs. Pure logic, no Electron or file access.
 
 let nextId = 1;
+// The session clock stops by itself when no map has been entered for this long after leaving one,
+// and the time since leaving is taken off again.
+const IDLE_MS = 5 * 60 * 1000;
 const uid = () => `${Date.now().toString(36)}-${(nextId++).toString(36)}`;
 
 class Session {
@@ -17,6 +20,11 @@ class Session {
     this.away = true; // true while in hideout/town (or before the first map)
     this.location = { kind: 'unknown', code: '', name: '' };
     this.pendingNameFor = null;
+    // The session's own clock, for the per hour number. It starts with the first map, keeps going
+    // between maps, and stops when no map follows within IDLE_MS (see tick). ms: time counted
+    // before `since`; since: when the running stretch began (null = not running); leftAt: when
+    // the last map was left; paused: held by hand, maps do not start it again.
+    this.clock = { ms: 0, since: null, leftAt: null, paused: false };
   }
 
   get current() { return this.runs.find((r) => r.id === this.currentId) || null; }
@@ -36,6 +44,7 @@ class Session {
     this.pendingNameFor = null;
 
     if (ev.kind === 'hideout' || ev.kind === 'town') {
+      if (!this.away) this.clock.leftAt = this.now();
       this.pause(cur);
       this.away = true;
       return true;
@@ -43,6 +52,7 @@ class Session {
     const known = cur && (cur.key === key || cur.subKeys.includes(key));
     if (known) {
       this.resume(cur);
+      this.inMap();
       this.away = false;
       return true;
     }
@@ -79,6 +89,7 @@ class Session {
   startRun({ key = `manual:${uid()}`, code = '', level = null, name = '', loadout = [] } = {}) {
     this.endRun();
     const t = this.now();
+    this.inMap();
     const run = {
       id: uid(), key, subKeys: [], code, level, name,
       startedAt: t, endedAt: null, activeMs: 0, segmentStart: t,
@@ -104,9 +115,55 @@ class Session {
   endRun() {
     const cur = this.current;
     if (!cur) return;
+    if (cur.segmentStart !== null) this.clock.leftAt = this.now();
     this.pause(cur);
     cur.endedAt = this.now();
     this.currentId = null;
+  }
+
+  // ---- the session clock ------------------------------------------------
+  // A map is entered: the clock runs (unless held by hand) and the idle wait is off.
+  inMap() {
+    const c = this.clock;
+    c.leftAt = null;
+    if (!c.paused && c.since === null) c.since = this.now();
+  }
+
+  halt(at = this.now()) {
+    const c = this.clock;
+    if (c.since === null) return;
+    c.ms += Math.max(0, at - c.since);
+    c.since = null;
+  }
+
+  // Stops the clock when no map was entered for IDLE_MS after leaving one, counting only up to
+  // the moment of leaving. Returns true when it stopped.
+  tick() {
+    const c = this.clock;
+    if (c.since === null || c.leftAt === null || this.now() - c.leftAt < IDLE_MS) return false;
+    this.halt(Math.max(c.since, c.leftAt));
+    c.leftAt = null;
+    return true;
+  }
+
+  // The buttons: pause holds the clock until resumed by hand; stop ends this stretch and the next
+  // map starts it again; start/resume count from now (and stop again by themselves when no map follows).
+  clockAction(op) {
+    const c = this.clock;
+    this.tick();
+    if (op === 'pause') { this.halt(); c.paused = true; c.leftAt = null; }
+    else if (op === 'stop') { this.halt(); c.paused = false; c.leftAt = null; }
+    else if (op === 'start' || op === 'resume') {
+      c.paused = false;
+      if (c.since === null) c.since = this.now();
+      c.leftAt = this.current && this.current.segmentStart !== null ? null : this.now();
+    } else return false;
+    return true;
+  }
+
+  clockMs() {
+    const c = this.clock;
+    return c.ms + (c.since !== null ? Math.max(0, this.now() - c.since) : 0);
   }
 
   deleteRun(runId) {
@@ -212,6 +269,7 @@ class Session {
 
   // prices: object with chaosOf(name) and a divine getter
   summary(prices) {
+    this.tick();
     const chaosOf = (n) => (prices ? prices.chaosOf(n) : 0);
     const runs = this.runs.map((run) => {
       const grouped = new Map();
@@ -252,17 +310,22 @@ class Session {
     const first = this.runs[0];
     const elapsedMs = first ? Math.max(1, this.now() - first.startedAt) : 0;
     totals.elapsedMs = elapsedMs;
-    totals.netPerHour = elapsedMs > 60000 ? totals.net / (elapsedMs / 3600000) : 0;
+    // Per hour over the session clock, not the time since the first map: the session may have
+    // been left open for days between playing.
+    const playMs = this.clockMs();
+    totals.playMs = playMs;
+    totals.netPerHour = playMs > 60000 ? totals.net / (playMs / 3600000) : 0;
     totals.avgMapMs = runs.length ? totals.mapMs / runs.length : 0;
     const divine = prices ? prices.divine : 0;
     return {
       now: this.now(), startedAt: this.startedAt, currentId: this.currentId,
       away: this.away, location: this.location, divine, runs, totals,
+      clock: { ms: playMs, running: this.clock.since !== null, paused: this.clock.paused, leftAt: this.clock.leftAt, idleMs: IDLE_MS },
     };
   }
 
   toJSON() {
-    return { startedAt: this.startedAt, runs: this.runs, currentId: this.currentId, away: this.away, location: this.location };
+    return { startedAt: this.startedAt, runs: this.runs, currentId: this.currentId, away: this.away, location: this.location, clock: this.clock, savedAt: this.now() };
   }
 
   // Restores a saved session. Any run that was mid-map is paused, since the app was closed.
@@ -273,7 +336,16 @@ class Session {
     this.currentId = o.currentId || null;
     this.away = true;
     this.location = o.location || this.location;
+    // A clock that was running when the app closed counts up to leaving the last map, or else up
+    // to the last save. Sessions from before the clock existed start from their maps' time.
+    if (o.clock) {
+      const c = { ms: Number(o.clock.ms) || 0, since: o.clock.since ?? null, leftAt: o.clock.leftAt ?? null, paused: !!o.clock.paused };
+      if (c.since !== null) c.ms += Math.max(0, (c.leftAt ?? o.savedAt ?? c.since) - c.since);
+      this.clock = { ms: c.ms, since: null, leftAt: null, paused: c.paused };
+    } else {
+      this.clock = { ms: this.runs.reduce((a, r) => a + (r.activeMs || 0), 0), since: null, leftAt: null, paused: false };
+    }
   }
 }
 
-module.exports = { Session };
+module.exports = { Session, IDLE_MS };

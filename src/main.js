@@ -1993,6 +1993,8 @@ const actions = {
   stashSearch: (a) => pickSearch(a.i),
   startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(); },
   endRun: () => { session.endRun(); syncLedger(); },
+  // The session clock's buttons: pause, resume, stop, start.
+  sessionClock: (a) => { session.clockAction(a.id); }, // a.id: pause, resume, stop or start
   recheckMaps: () => { recheckMaps(); },
   deleteRun: (a) => { session.deleteRun(a.runId); if (snapshots) snapshots.remove(a.runId); syncLedger(); },
   // The session that ends is kept, with its values as they are now.
@@ -2452,6 +2454,7 @@ app.whenReady().then(() => {
   setInterval(() => {
     const sec = Number(config.trade.auto.closeBoughtSec) || 0;
     if (sec > 0 && book.closeBought(sec * 1000)) saveTradesSoon();
+    if (session.tick()) scheduleSave(); // the session clock stops after a while with no map
     push();
   }, 5000);
 

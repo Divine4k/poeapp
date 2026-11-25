@@ -34,12 +34,15 @@ function drawPage(name) {
 // The map card's clock with its thousandths: every screen refresh, but only while a map runs
 // and the Mapping page is on screen. It stops by itself and is started again by render and showTab.
 let clockFrame = 0;
+// The session clock in the numbers row is written here too, once its seconds change.
 function clockTick() {
   clockFrame = 0;
   if (!state || document.hidden || $('tab-mapping').hidden) return;
-  const run = currentRun();
-  if (!run || run.segmentStart === null) return;
-  drawClock(liveDuration(run));
+  const run = currentRun(), mapOn = !!run && run.segmentStart !== null;
+  const sc = state.summary.clock, sessionOn = !!sc && sc.running;
+  if (!mapOn && !sessionOn) return;
+  if (mapOn) drawClock(liveDuration(run));
+  if (sessionOn) { const el = $('totals').querySelector('[data-sclock]'), t = fmtTime(liveClockMs(sc)); if (el && el.textContent !== t) el.textContent = t; }
   clockFrame = requestAnimationFrame(clockTick);
 }
 function clockStart() { if (!clockFrame) clockFrame = requestAnimationFrame(clockTick); }

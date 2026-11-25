@@ -289,6 +289,16 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .statbar .lead b { color: var(--gold); text-shadow: 0 0 20px color-mix(in srgb, var(--gold) 25%, transparent); }
 .statbar .lead.neg b { color: var(--blood); text-shadow: none; }
 .statbar .rate b { color: var(--moss); }
+/* Every number keeps the room it needs; only the best drop's name is cut short. */
+.statbar > div:not(:last-child) { flex: 1 0 auto; }
+.statbar > div:last-child { min-width: 84px; }
+.statbar > div { padding: 0 12px; }
+.statbar .sclock b { display: flex; align-items: center; gap: 4px; }
+.sclock-btns { display: inline-flex; gap: 2px; }
+.sclock-btns .link { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border-radius: var(--r-sm); color: var(--faint); }
+.sclock-btns .link:hover { color: var(--bone); background: var(--raise); }
+.sclock-btns svg { width: 11px; height: 11px; fill: currentColor; }
+.statbar .sclock.held b { color: var(--faint); }
 .statbar .rate.neg b { color: var(--blood); }
 
 /* the maps: which session, then one line each */

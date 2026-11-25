@@ -27,7 +27,7 @@
   cur.startedAt = now - cur.durationMs;
   const totals = { maps: 4, deaths: 1, lootValue: 0, costValue: 0, net: 0, mapMs: 0 };
   for (const r of runs) { totals.lootValue += r.lootValue; totals.costValue += r.costValue; totals.net += r.net; totals.mapMs += r.durationMs; }
-  totals.avgMapMs = totals.mapMs / 4; totals.netPerHour = totals.net / 0.4; totals.elapsedMs = 24 * 60000;
+  totals.avgMapMs = totals.mapMs / 4; totals.netPerHour = totals.net / 0.4; totals.elapsedMs = 24 * 60000; totals.playMs = 24 * 60000;
   const rules = [['reflect-phys', 'Physical reflect', true], ['reflect-ele', 'Elemental reflect'], ['no-regen', 'No life or mana regeneration', true], ['no-leech', 'Cannot leech'], ['less-recovery', 'Less recovery rate'],
     ['max-res', 'Reduced maximum resistances'], ['curses', 'Players are cursed'], ['avoid-ailments', 'Monsters avoid ailments'], ['avoid-poison-bleed', 'Monsters avoid poison and bleeding'], ['less-defence', 'Less armour or block'],
     ['less-accuracy', 'Less accuracy'], ['less-aoe', 'Less area of effect'], ['aura-effect', 'Reduced aura effect'], ['flask-charges', 'Reduced flask charges'], ['steal-charges', 'Monsters steal charges'], ['no-slow', 'Monsters cannot be slowed or stunned']]
@@ -98,7 +98,7 @@
       ],
     },
     inventoryRev: 1,
-    summary: { now, startedAt: runs[0].startedAt, currentId: 'r4', away: false, location: {}, divine: 212, runs, totals },
+    summary: { now, startedAt: runs[0].startedAt, currentId: 'r4', away: false, location: {}, divine: 212, runs, totals, clock: { ms: 24 * 60000, running: true, paused: false, leftAt: null, idleMs: 300000 } },
     sessions: [
       { id: 's2', strategyId: 'st1', startedAt: now - 26 * 3600000, endedAt: now - 24 * 3600000, divine: 205, totals: { ...totals, maps: 3, net: 1890, netPerHour: 945, elapsedMs: 2 * 3600000 } },
       { id: 's1', strategyId: 'st2', startedAt: now - 51 * 3600000, endedAt: now - 50 * 3600000, divine: 198, totals: { ...totals, maps: 3, net: -40, netPerHour: -40, elapsedMs: 3600000 } },
@@ -164,6 +164,11 @@
         const t = state.trouble;
         if (t.recording) { t.recording = false; t.rev++; } else Object.assign(t, { recording: true, startedAt: Date.now(), video: true });
         listener(state);
+      }
+      if (a && a.type === 'sessionClock') {
+        const c = state.summary.clock, ms = c.ms + (c.running ? Date.now() - state.summary.now : 0);
+        Object.assign(c, { ms, running: a.id === 'start' || a.id === 'resume', paused: a.id === 'pause' });
+        state.summary.now = Date.now(); listener(state);
       }
       if (a && a.type === 'resetKeys') { merge(state.config, { hotkeys: { ...KEYS.hotkeys }, trade: { hotkeys: { ...KEYS.trade } }, inventory: { key: 'Tab' } }); listener(state); }
       return true;

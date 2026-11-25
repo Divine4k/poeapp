@@ -174,6 +174,62 @@ test('session: run lifecycle, timing, deaths, loot and costs', () => {
 });
 
 
+test('session clock: runs between maps, stops after 5 idle minutes back to leaving, pause and stop by hand', () => {
+  let t = 1_000_000;
+  const s = new Session({ now: () => t });
+  const area = (code, seed, kind) => s.handleLogEvent({ type: 'area', code, seed, kind, level: 83 });
+  const prices = { chaosOf: () => 1, divine: 200 };
+  area('Hideout', '1', 'hideout');
+  t += 600_000; // waiting in the hideout before the first map does not count
+  assert.equal(s.clockMs(), 0);
+  area('MapA', '1', 'map');
+  t += 300_000;
+  area('Hideout', '1', 'hideout');
+  t += 120_000; // between maps: still counting
+  assert.equal(s.clockMs(), 420_000);
+  area('MapA', '2', 'map');
+  t += 300_000;
+  area('Hideout', '1', 'hideout'); // left at 720 s of play
+  t += 299_000;
+  assert.equal(s.tick(), false);
+  t += 10 * 3600_000; // gone for the night
+  assert.equal(s.tick(), true);
+  assert.equal(s.clockMs(), 720_000);
+  assert.equal(s.summary(prices).clock.running, false);
+  area('MapA', '3', 'map'); // the next map starts it again
+  t += 60_000;
+  assert.equal(s.clockMs(), 780_000);
+  s.addLoot([{ name: 'x', qty: 130 }], 'scan');
+  const sum = s.summary(prices);
+  assert.equal(sum.totals.playMs, 780_000);
+  assert.equal(Math.round(sum.totals.netPerHour), 600); // 130 over 13 minutes
+
+  s.clockAction('pause');
+  t += 60_000;
+  area('Hideout', '1', 'hideout'); area('MapA', '3', 'map'); // a paused clock stays paused
+  assert.equal(s.clockMs(), 780_000);
+  assert.equal(s.summary(prices).clock.paused, true);
+  s.clockAction('resume');
+  t += 60_000;
+  s.clockAction('stop');
+  t += 60_000;
+  assert.equal(s.clockMs(), 840_000);
+  area('Hideout', '1', 'hideout'); area('MapA', '4', 'map'); // stopped: the next map starts it
+  t += 60_000;
+  assert.equal(s.clockMs(), 900_000);
+
+  // Restored after a close: counts up to the last save, then waits for a map.
+  const saved = JSON.parse(JSON.stringify(s));
+  t += 3600_000;
+  const s2 = new Session({ now: () => t });
+  s2.restore(saved);
+  assert.equal(s2.clockMs(), 900_000);
+  // A session saved before the clock existed starts from its maps' time.
+  const s3 = new Session({ now: () => t });
+  s3.restore({ runs: [{ id: 'a', activeMs: 5000 }, { id: 'b', activeMs: 7000 }] });
+  assert.equal(s3.clockMs(), 12_000);
+});
+
 test('prices: Chaos Orb keeps its picture and is always worth 1', () => {
   const t = new PriceTable();
   t.load([{ name: 'Chaos Orb', chaos: 0.98, category: 'Currency', icon: 'https://web.poecdn.com/c.png' }]);

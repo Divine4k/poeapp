@@ -45,7 +45,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `src/ui/toast.*` | Short message over the game |
 | `src/ui/search.*`, `src/core/stashSearch.js` | Stash searches (as in Awakened PoE Trade): saved `{ name, text }` in `config.stashSearches`, written on Settings, Stash searches (app/settings.js, `renderSearches`). Its key (`hotkeys.stashSearch`, Ctrl+Shift+F, only while the game is in front) opens the menu at the mouse (`SearchMenu` in src/overlay.js; `toggleSearchMenu`/`pickSearch` in main.js, section "stash searches"). A click types Ctrl+F, Ctrl+A, paste, Enter (`typeSearch` in src/chat.js) through `sendChat(text, { search: true })`. Closes on a pick, its key, Escape, a click elsewhere (the key helper), or the mouse leaving it. The game's box takes 250 characters in Path of Exile 1 (`GAME_LIMIT`; 50 is Path of Exile 2's) |
 | `src/ui/recorder.*`, `src/recorder-preload.js` | Hidden window that records the screen (MP4 or WebM) for `src/recorder.js` |
-| `src/core/session.js` | Map runs, timers, deaths, loot, costs (pure logic) |
+| `src/core/session.js` | Map runs, timers, deaths, loot, costs (pure logic). The session clock (`clock`, `tick`, `clockAction`): starts with the first map, runs between maps, stops by itself `IDLE_MS` (5 min) after leaving a map with that time taken off; pause/stop/start by hand (action `sessionClock`, buttons in the numbers row, `clockHtml` in app/session.js). Per hour = net over this clock (`totals.playMs`); main.js checks `tick()` every 5 s |
 | `src/core/clientLog.js` | Reads Client.txt (read-only) |
 | `src/core/prices.js` | poe.ninja prices |
 | `src/core/itemText.js` | Parses the item text copied with Ctrl+C |
