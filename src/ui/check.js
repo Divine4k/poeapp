@@ -167,7 +167,7 @@
     const key = `${d.at}:${d.filtersRev}`;
     if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
     // A new item: the window waits for its height before it shows, so it is always sent.
-    if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; }
+    if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; }
     const f = d.filters;
     const tabs = f.presets ? `<div class="pc-tabs" role="tablist">
         <button type="button" role="tab" class="pc-tab${mode === 'stats' ? ' on' : ''}" aria-selected="${mode === 'stats'}" data-mode="stats" title="Items with stats like this one">Stats</button>
@@ -283,6 +283,9 @@
       const set = data.filters.presets[mode] || {};
       for (const r of rows) if (r.pk in set) r.enabled = !!set[r.pk];
       draw();
+      // and searched straight away (the same search within a minute comes back at once)
+      // (one still running: this one goes as soon as it is back)
+      if (data.state !== 'searching') api.action({ type: 'tradeSearch', edits: edits() }); else again = true;
       return;
     }
     const chip = e.target.closest('.pc-chip');
@@ -314,7 +317,9 @@
   // The app sends its state often; the window is only redrawn when this item's search has news,
   // so a click is never lost to a redraw in the middle of it.
   let drawnFor = '';
+  let again = false; // the search to send once the running one is back
   api.onCheck((d) => {
+    if (again && d && d.state !== 'searching') { again = false; data = d; api.action({ type: 'tradeSearch', edits: edits() }); }
     const key = d && d.filters ? `${d.at}:${d.filtersRev}:${d.rev}:${Math.round(d.divine || 0)}` : '';
     data = d;
     if (key !== drawnFor || !key) { drawnFor = key; if (typing) stopTyping(true); draw(); }
