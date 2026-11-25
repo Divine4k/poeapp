@@ -735,16 +735,20 @@ test('worth: vendor recipes, the verdict at a glance, and room for a bench craft
 
   const ring = parseItemText(RING_FULL);
   assert.deepEqual(ring.slots, { prefix: 2, suffix: 3, crafted: true, known: true });
-  const room = craftRoom(ring, buildFilters(ring, index));
-  assert.deepEqual([room.open, room.crafted, room.ideas], [{ prefix: 1, suffix: 0 }, true, []]); // a ring: no life craft offered
+  assert.equal(craftRoom(ring, buildFilters(ring, index)), null); // it already has a crafted modifier
   assert.equal(parseItemText(CLOAK_FULL).corruptionImplicits, 1);
   assert.equal(craftRoom(parseItemText(BOOTS), null), null); // the short text: not known
 
   // Boots with an open prefix and suffix and no life on them: life is searched as a new total line.
-  const boots = { rarity: 'Rare', slots: { prefix: 2, suffix: 2, crafted: false, known: true } };
+  const boots = { rarity: 'Rare', slots: { prefix: 2, suffix: 2, crafted: false, known: true }, modLines: [{ text: '+38% to Fire Resistance', type: 'explicit' }, { text: '+12% to Cold Resistance', type: 'implicit' }] };
   const bf = { category: { label: 'Boots' }, stats: [{ key: 'pseudo:res', value: 80, min: 72, enabled: true }] };
   const br = craftRoom(boots, bf, index);
   assert.deepEqual(br.ideas.map((i) => [i.stat, i.add, i.priced, !!i.ids]), [['pseudo:life', 56, true, true], ['pseudo:res', 29, true, false]]);
+  assert.equal(br.ideas[1].text, '+29–35% to Cold or Lightning Resistance'); // it has fire already (the implicit cold does not count)
+  // what the bench would not take: life on an item with life, a resistance on one with all three
+  const full = { ...boots, modLines: [{ text: '+80 to maximum Life', type: 'explicit' }, ...['Fire', 'Cold', 'Lightning'].map((e) => ({ text: `+30% to ${e} Resistance`, type: 'explicit' }))] };
+  assert.equal(craftRoom(full, bf, index), null);
+  assert.equal(craftRoom({ ...boots, slots: { ...boots.slots, suffix: 3 } }, { ...bf, category: { label: 'Jewel' } }, index), null); // a jewel: no bench crafts here
   const both = withCrafts(bf, br.ideas);
   assert.deepEqual(both.stats.map((x) => [x.key, x.min, x.enabled]), [['pseudo:res', 101, true], ['pseudo:life', 56, true]]);
   assert.deepEqual(bf.stats[0].min, 72); // the item's own choices are left as they were

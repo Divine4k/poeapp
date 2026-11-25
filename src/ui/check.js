@@ -288,8 +288,8 @@
       return `<li class="${on ? 'on' : 'off'}" title="The usual craft for an open ${esc(i.slot)}, priced at its lowest roll. Ticked: searched as if it were already on the item.">
         <label class="pc-tick"><input type="checkbox" data-craft="${esc(i.stat)}" ${on ? 'checked' : ''} ${i.priced ? '' : 'disabled'}><span class="m-crafted">${esc(i.text)}</span><small>${esc(i.slot)}</small></label>${right}</li>`;
     }).join('');
-    const note = c.crafted ? ' · it already has a crafted mod' : (c.ideas.length > 1 ? ' · one at a time' : '');
-    return `<div class="pc-craft"><p><b>Possible bench craft</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
+    const note = c.ideas.length > 1 ? ' · one at a time' : '';
+    return `<div class="pc-craft"><p><b>Possible bench crafts</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
   }
 
   function draw() {

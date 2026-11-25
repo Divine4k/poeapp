@@ -29,26 +29,41 @@ function verdict({ price, vendor, divine }) {
 }
 
 // What the crafting bench can still add to a rare: open prefixes and suffixes, and the usual
-// craft for each, for the kinds of gear that take them. Only known from the fuller item text.
-// filters: buildFilters' result. index: the trade stat list, for the total line to search a
-// craft on when the item has none of its own (no life on it yet, say).
+// craft for each, only where the bench would really take it. Only known from the fuller item
+// text. filters: buildFilters' result. index: the trade stat list, for the total line to search
+// a craft on when the item has none of its own (no life on it yet, say).
+// The bench's rules followed here: a craft needs an open prefix or suffix of its kind; it can
+// not add a modifier the item already has (an item with "+# to maximum Life" can not get the
+// life craft; one with fire, cold and lightning resistance can not get a resistance craft); and
+// it adds one craft, so an item that already has a crafted modifier is left out (a craft would
+// replace that one, and its price would be wrong).
 const LIFE_CRAFT = { Helmet: [56, 70], 'Body Armour': [56, 70], Gloves: [56, 70], Boots: [56, 70], Shield: [56, 70] };
 const RES_CRAFT = [29, 35]; // one resistance, the bench's usual best
+// Kinds of gear the resistance crafts are made for: weapons, armour, jewellery, belts, quivers.
+const NO_RES_CRAFT = new Set(['Jewel', 'Abyss Jewel', 'Cluster Jewel', 'Flask', 'Tincture', 'Trinket', 'Fishing Rod']);
 const TOTALS = { 'pseudo:life': ['+# total maximum Life', 'total maximum Life'], 'pseudo:res': ['+#% total Elemental Resistance', 'total Elemental Resistance'] };
+const shape = (t) => String(t || '').replace(/[+-]?\d+(\.\d+)?/g, '#').replace(/^#/, '+#');
 function craftRoom(item, filters, index = null) {
-  if (!item || item.rarity !== 'Rare' || !item.slots || !item.slots.known || item.corrupted) return null;
+  if (!item || item.rarity !== 'Rare' || !item.slots || !item.slots.known || item.corrupted || item.slots.crafted) return null;
   const open = { prefix: Math.max(0, 3 - item.slots.prefix), suffix: Math.max(0, 3 - item.slots.suffix) };
   if (!open.prefix && !open.suffix) return null;
   const kind = filters && filters.category ? filters.category.label : '';
+  // the modifiers it has (implicits do not count: the bench only looks at prefixes and suffixes)
+  const has = new Set((item.modLines || []).filter((l) => l.type === 'explicit' || l.type === 'fractured').map((l) => shape(l.text)));
   const idea = (slot, stat, text, add) => {
-    const has = !!((filters && filters.stats) || []).find((x) => x.key === stat);
-    const ids = has ? null : (index && index.pseudo ? index.pseudo(TOTALS[stat][0]) : null);
-    return { slot, stat, text, add, ids, priced: has || !!ids };
+    const line = !!((filters && filters.stats) || []).find((x) => x.key === stat);
+    const ids = line ? null : (index && index.pseudo ? index.pseudo(TOTALS[stat][0]) : null);
+    return { slot, stat, text, add, ids, priced: line || !!ids };
   };
   const ideas = [];
-  if (open.prefix && LIFE_CRAFT[kind]) ideas.push(idea('prefix', 'pseudo:life', `+${LIFE_CRAFT[kind][0]}–${LIFE_CRAFT[kind][1]} to maximum Life`, LIFE_CRAFT[kind][0]));
-  if (open.suffix) ideas.push(idea('suffix', 'pseudo:res', `+${RES_CRAFT[0]}–${RES_CRAFT[1]}% to a resistance`, RES_CRAFT[0]));
-  return { open, crafted: !!item.slots.crafted, ideas };
+  if (open.prefix && LIFE_CRAFT[kind] && !has.has('+# to maximum Life')) ideas.push(idea('prefix', 'pseudo:life', `+${LIFE_CRAFT[kind][0]}–${LIFE_CRAFT[kind][1]} to maximum Life`, LIFE_CRAFT[kind][0]));
+  const missing = ['Fire', 'Cold', 'Lightning'].filter((e) => !has.has(`+#% to ${e} Resistance`));
+  if (open.suffix && kind && !NO_RES_CRAFT.has(kind) && missing.length) {
+    const which = missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(', ')} or ${missing[missing.length - 1]}`;
+    ideas.push(idea('suffix', 'pseudo:res', `+${RES_CRAFT[0]}–${RES_CRAFT[1]}% to ${which} Resistance`, RES_CRAFT[0]));
+  }
+  if (!ideas.length) return null;
+  return { open, ideas };
 }
 
 // The search's choices as if the crafts were already on the item: the total line each one adds
