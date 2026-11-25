@@ -748,4 +748,11 @@ test('worth: vendor recipes, the verdict at a glance, and room for a bench craft
   const both = withCrafts(bf, br.ideas);
   assert.deepEqual(both.stats.map((x) => [x.key, x.min, x.enabled]), [['pseudo:res', 101, true], ['pseudo:life', 56, true]]);
   assert.deepEqual(bf.stats[0].min, 72); // the item's own choices are left as they were
+
+  const { typicalPrice } = require('../src/core/worth');
+  assert.deepEqual(typicalPrice([10, 12, 11, 30, 50, 9, 100, null]), { value: 14.4, n: 7 }); // the five cheapest
+  assert.deepEqual(typicalPrice([10, 12]), { value: null, n: 2 }); // too few to tell
+  // a stricter search keeps some of the same listings: its typical price is never lower
+  const loose = [5, 6, 8, 9, 12, 15, 40], strict = [8, 12, 40, 41];
+  assert.ok(typicalPrice(strict).value >= typicalPrice(loose).value);
 });

@@ -67,4 +67,17 @@ function withCrafts(filters, ideas) {
   return { ...filters, stats };
 }
 
-module.exports = { vendorRecipe, verdict, craftRoom, withCrafts, WORTH_SELLING };
+// The price to compare a craft by: the average of the five cheapest real listings (bait left
+// out). A stricter search only ever keeps some of the same listings, so its five cheapest can
+// not be cheaper than the looser search's: the difference is never below zero, and one odd
+// listing moves it less than a single cheapest or a middle price would. Fewer than three
+// listed: too few to tell (null). chaos: each listing's price in chaos (null when unknown).
+const TYPICAL_OF = 5, TOO_FEW = 3;
+function typicalPrice(chaos) {
+  const known = (chaos || []).filter((c) => c !== null && c !== undefined && isFinite(c)).sort((a, b) => a - b);
+  if (known.length < TOO_FEW) return { value: null, n: known.length };
+  const top = known.slice(0, TYPICAL_OF);
+  return { value: Math.round((top.reduce((a, b) => a + b, 0) / top.length) * 10) / 10, n: known.length };
+}
+
+module.exports = { vendorRecipe, verdict, craftRoom, withCrafts, typicalPrice, WORTH_SELLING };

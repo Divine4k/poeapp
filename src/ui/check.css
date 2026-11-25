@@ -241,3 +241,4 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-craft em { font-style: normal; font-weight: 650; color: var(--ash); margin-right: 4px; }
 .pc-craft em.up { color: var(--moss); }
 .pc-craft .pc-lp small { margin: 0 4px 0 0; color: var(--faint); }
+.pc-craft .pc-lp.rough { opacity: 0.6; }

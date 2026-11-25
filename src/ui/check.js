@@ -251,19 +251,39 @@
   // adds to the price (worked out by itself after each search, ticked or not: runCrafts in
   // main.js), and a tick that searches the item as if the craft were already on it.
   let craftOn = [];  // the crafts ticked, by their total line
+  // Ticks or numbers changed: what each craft adds is worked out again for them, a moment after
+  // the last change (so a run of clicks on + sends one request, not one per click).
+  let craftPending = false, craftTimer = null;
+  function choicesChanged() {
+    if (!data || !data.craft || data.state !== 'done' || !data.craft.ideas.some((i) => i.priced)) return;
+    craftPending = true;
+    redrawCraft();
+    clearTimeout(craftTimer);
+    craftTimer = setTimeout(() => { craftPending = false; api.action({ type: 'craftPrices', edits: edits() }); }, 1200);
+  }
+  function redrawCraft() {
+    const box = panel.querySelector('.pc-craft');
+    if (box && data) box.outerHTML = craftHtml(data);
+  }
   function craftHtml(d) {
     const c = d.craft;
     if (!c) return '';
     const open = [c.open.prefix ? `${c.open.prefix} prefix${c.open.prefix > 1 ? 'es' : ''}` : '', c.open.suffix ? `${c.open.suffix} suffix${c.open.suffix > 1 ? 'es' : ''}` : ''].filter(Boolean).join(' and ');
-    const fresh = (i) => i.rev === d.filtersRev && d.state === 'done';
     const ideas = c.ideas.map((i) => {
       let right;
+      const working = craftPending || i.state === 'waiting' || i.state === 'running';
       if (!i.priced) right = '<small title="The trade site has no total line to search it on">not priced</small>';
-      else if (!fresh(i) || i.state === 'waiting' || i.state === 'running') right = `<small>${d.state === 'done' ? 'working it out…' : 'after the search'}</small>`;
+      else if (d.state !== 'done' || !i.state) right = '<small>after the search</small>';
+      else if (working) right = '<small>working it out…</small>';
       else if (i.state === 'later') right = `<small title="${esc(i.why)}">later</small>`;
       else if (i.state === 'error') right = `<small class="bad" title="${esc(i.why)}">could not search</small>`;
-      else if (i.chaos === null) right = '<small title="Too few items like it with the craft are listed">too few listed</small>';
-      else right = `<span class="pc-lp">${i.delta === null ? '' : i.delta > 0 ? `<em class="up">+${esc(fmtValue(i.delta))}</em>` : '<em>adds ≈ 0</em>'}<small>→</small> ${priceHtml(i.chaos)}</span>`;
+      else if (i.baseFew) right = '<small title="Too few items with these stats are listed to compare with">too few listed</small>';
+      else if (i.chaos === null) right = `<small title="Only ${i.n} item${i.n === 1 ? '' : 's'} like it with the craft listed">too few with it</small>`;
+      else {
+        const sure = i.n >= 5;
+        const tip = `Items like it with the craft: the five cheapest average ${fmtValue(i.chaos)} (${i.n} listed)${sure ? '' : '. Few listed, so take it as a rough guess'}`;
+        right = `<span class="pc-lp${sure ? '' : ' rough'}" title="${esc(tip)}">${i.delta > 0 ? `<em class="up">+${esc(fmtValue(i.delta))}</em>` : '<em>adds ≈ 0</em>'}<small>→</small> ${priceHtml(i.chaos)}</span>`;
+      }
       const on = craftOn.includes(i.stat);
       return `<li class="${on ? 'on' : 'off'}" title="The usual craft for an open ${esc(i.slot)}, priced at its lowest roll. Ticked: searched as if it were already on the item.">
         <label class="pc-tick"><input type="checkbox" data-craft="${esc(i.stat)}" ${on ? 'checked' : ''} ${i.priced ? '' : 'disabled'}><span class="m-crafted">${esc(i.text)}</span><small>${esc(i.slot)}</small></label>${right}</li>`;
@@ -277,7 +297,7 @@
     const kind = d && d.kind === 'bulk' ? 'bulk' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
     if (!kind) { panel.innerHTML = ''; sendSize(0); return; }
     // A new item: the window waits for its height before it shows, so it is always sent.
-    if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; craftOn = []; }
+    if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; craftOn = []; craftPending = false; clearTimeout(craftTimer); }
     if (kind !== 'search') { panel.innerHTML = kind === 'bulk' ? bulkView(d) : pickView(d); sendSize(fullHeight()); return; }
     const key = `${d.at}:${d.filtersRev}`;
     if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
@@ -346,6 +366,7 @@
     const m = li.querySelector('.pc-match');
     if (m) m.classList.toggle('same', row.num === row.mine);
     setOn(li, true);
+    choicesChanged();
   }
 
   // Typing a number: the number becomes a box, and the window asks for the keyboard until
@@ -426,7 +447,7 @@
       return;
     }
     const chip = e.target.closest('.pc-chip');
-    if (chip) { const r = rows[Number(chip.dataset.row)]; r.enabled = !r.enabled; setOn(chip, r.enabled); return; }
+    if (chip) { const r = rows[Number(chip.dataset.row)]; r.enabled = !r.enabled; setOn(chip, r.enabled); choicesChanged(); return; }
     const li = e.target.closest('[data-row]');
     if (!li) return;
     const step = e.target.closest('[data-step]');
@@ -447,6 +468,7 @@
     if (!li || e.target.type !== 'checkbox') return;
     rows[Number(li.dataset.row)].enabled = e.target.checked;
     setOn(li, e.target.checked);
+    choicesChanged();
   });
   // The wheel over a number moves it too.
   panel.addEventListener('wheel', (e) => {
