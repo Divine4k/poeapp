@@ -702,3 +702,15 @@ test('bulk exchange: one request, offers read as the price of one, cheapest firs
   assert.deepEqual(read.map((o) => [o.seller, Math.round(o.price.amount * 100) / 100, o.chaos !== null, o.stock, o.status]), [['cb', 0.33, true, 300, 'afk'], ['ca', 0.2, true, 5000, 'online']]);
   assert.equal(exchangeUrl('Keepers', 'X1'), 'https://www.pathofexile.com/trade/exchange/Keepers/X1');
 });
+
+test('a listing unfolds to the item as the game shows it: name, base, properties, every modifier', () => {
+  const { itemDetail } = require('../src/core/tradeApi');
+  const d = itemDetail({
+    name: 'Rapture Shroud', typeLine: 'Royal Plate', frameType: 2, ilvl: 85, corrupted: true,
+    properties: [{ name: 'Body Armour', values: [] }, { name: 'Quality', values: [['+20%', 1]] }, { name: '[Armour]', values: [['2548', 1]] }],
+    implicitMods: ['+1 to Level of Socketed Gems'], explicitMods: ['+160 to maximum [Life|Life]'], craftedMods: ['13% increased Stun and Block Recovery'], fracturedMods: ['+394 to [Armour]'],
+  });
+  assert.deepEqual([d.name, d.base, d.rarity, d.ilvl, d.corrupted], ['Rapture Shroud', 'Royal Plate', 'rare', 85, true]);
+  assert.deepEqual(d.props, [['Quality', '+20%'], ['Armour', '2548']]);
+  assert.deepEqual(d.mods.map((m) => `${m.kind}: ${m.text}`), ['implicit: +1 to Level of Socketed Gems', 'fractured: +394 to Armour', 'explicit: +160 to maximum Life', 'crafted: 13% increased Stun and Block Recovery']);
+});

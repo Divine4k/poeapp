@@ -190,3 +190,30 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-rate { display: inline-flex; align-items: center; gap: 4px; }
 .pc-rate b { color: var(--soft); font-variant-numeric: tabular-nums; }
 .pc-rate .pc-coin { width: 16px; height: 16px; }
+/* a listing unfolded: the item as the game shows it */
+.pc-list li.can-open { cursor: pointer; }
+.pc-list li.can-open:hover { background: color-mix(in srgb, var(--bone) 4%, transparent); }
+.pc-list li.open { background: color-mix(in srgb, var(--bone) 6%, transparent); border-radius: 9px 9px 0 0; }
+.pc-list li.pc-detail { display: flex; align-items: flex-start; gap: 14px; height: auto; padding: 12px 12px 14px; margin-bottom: 4px; border-radius: 0 0 9px 9px; background: color-mix(in srgb, var(--bone) 6%, transparent); box-shadow: none; cursor: default; }
+.pc-list li.pc-detail + li { box-shadow: none; }
+.pc-detail .pc-art.big { width: 64px; height: 96px; flex: none; }
+.pd-text { flex: 1; min-width: 0; text-align: center; font-size: 12.5px; line-height: 1.4; }
+.pd-name, .pd-base { margin: 0; font-weight: 650; font-size: 13.5px; }
+.pd-base small { font-weight: 500; font-size: 11px; color: var(--faint); }
+.r-rare .pd-name, .r-rare .pd-base { color: #e6d36a; }
+.r-unique .pd-name, .r-unique .pd-base { color: #c8803a; }
+.r-magic .pd-base { color: #8888ff; }
+.r-normal .pd-base { color: var(--bone); }
+.r-relic .pd-name, .r-relic .pd-base { color: #82ad6a; }
+.pd-props { margin-top: 6px; }
+.pd-prop { margin: 0; color: var(--ash); }
+.pd-prop b { color: var(--bone); font-weight: 600; }
+.pd-mods { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.pd-mods hr { margin: 5px 18%; border: 0; border-top: 1px solid var(--line); }
+.pd-mod { margin: 0; }
+.pd-mod small { margin-left: 6px; font-size: 10px; opacity: 0.7; }
+.pd-mod.m-explicit, .pd-mod.m-implicit { color: #9a9cff; }
+.pd-mod.m-crafted, .pd-mod.m-enchant { color: #b8c4ff; }
+.pd-mod.m-fractured { color: #c2ad78; }
+.pd-flag { margin: 6px 0 0; font-weight: 650; color: var(--bone); }
+.pd-flag.corrupted { color: #ec6a5e; }

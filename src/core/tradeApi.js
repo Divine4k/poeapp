@@ -180,6 +180,30 @@ function readListing(raw, chaosOf = () => null, compare = null) {
     icon: /^https:\/\/web\.poecdn\.com\//.test(it.icon || '') ? it.icon : null,
     base: it.baseType || it.typeLine || '', w: it.w || 1, h: it.h || 1, sockets: socketText(it.sockets),
     cmp: cmp === null ? null : Math.round(cmp * 10) / 10,
+    detail: itemDetail(it),
+  };
+}
+
+// The site writes some words as links: "[Life|maximum Life]" or "[Armour]". Only the words shown.
+const plainText = (t) => String(t || '').replace(/\[(?:[^\]|]*\|)?([^\]]*)\]/g, '$1');
+const RARITY = ['normal', 'magic', 'rare', 'unique'];
+// What a listed item is, as the game shows it when you hover it: its name, base, item level,
+// properties (quality, armour, damage...) and every modifier with its kind, in the game's order.
+function itemDetail(it) {
+  const props = [];
+  for (const p of it.properties || []) {
+    const name = plainText(p.name);
+    const v = (p.values || []).map((x) => x && x[0]).filter((x) => x !== undefined && x !== null).join(', ');
+    if (!name || /\{\d\}/.test(name) || !v) continue; // the shape of a weapon's class line, not a number
+    props.push([name, plainText(v)]);
+  }
+  const mods = [];
+  const add = (list, kind) => { for (const t of list || []) for (const line of plainText(t).split('\n')) if (line.trim()) mods.push({ text: line, kind }); };
+  add(it.enchantMods, 'enchant'); add(it.implicitMods, 'implicit'); add(it.fracturedMods, 'fractured');
+  add(it.explicitMods, 'explicit'); add(it.craftedMods, 'crafted');
+  return {
+    name: plainText(it.name), base: plainText(it.typeLine), rarity: RARITY[it.frameType] || (it.frameType === 9 ? 'relic' : 'rare'),
+    ilvl: it.ilvl || null, props, mods, corrupted: !!it.corrupted, mirrored: !!it.duplicated, split: !!it.split,
   };
 }
 
@@ -213,4 +237,4 @@ const currencyName = (id) => CURRENCIES[id] || '';
 const exchangeUrl = (league, queryId) => `${SITE}/trade/exchange/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 const searchUrl = (league, queryId) => `${SITE}/trade/search/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 
-module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, socketText, searchUrl, exchangeUrl, currencyName };
+module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, itemDetail, socketText, searchUrl, exchangeUrl, currencyName };

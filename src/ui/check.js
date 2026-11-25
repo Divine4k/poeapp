@@ -144,7 +144,7 @@
     if (d.state !== 'done') return wrap(`<p class="pc-empty">${d.state === 'error' ? 'The search did not go through.' : 'Press Search to see what is listed.'}</p>`);
     if (!d.listings.length) return wrap('<p class="pc-empty">Nothing listed.</p>');
     const first = d.listings.find((l) => !l.bait);
-    const rowsHtml = d.listings.map((l) => {
+    const rowsHtml = d.listings.map((l, i) => {
       const amount = l.price ? num(l.price.amount) : '';
       const price = l.price ? `<b>${amount}</b>${coin(l.price.currency)}` : '<span class="pc-cw">no price</span>';
       let vs = '';
@@ -152,10 +152,26 @@
         const better = cmp.lower ? l.cmp < cmp.mine : l.cmp > cmp.mine, worse = cmp.lower ? l.cmp > cmp.mine : l.cmp < cmp.mine;
         vs = `<span class="pc-vs ${better ? 'up' : worse ? 'down' : ''}" title="${esc(cmp.label)}: ${l.cmp} (yours ${cmp.mine})">${l.cmp}</span>`;
       } else if (cmp) vs = '<span class="pc-vs">—</span>';
-      return `<li class="${l.bait ? 'bait' : l === first ? 'first' : ''}">${art(l.icon, l.sockets, l.w, l.h, 'sm')}<span class="pc-lp">${price}</span>
+      return `<li class="${l.bait ? 'bait' : l === first ? 'first' : ''}${l.detail ? ' can-open' : ''}" data-li="${i}"${l.detail ? ' title="Click to see the whole item"' : ''}>${art(l.icon, l.sockets, l.w, l.h, 'sm')}<span class="pc-lp">${price}</span>
         <span class="pc-who"><b>${esc(l.seller)}</b><small>${l.bait ? '<em>price looks like bait</em> · ' : ''}<i class="st ${esc(l.status)}"></i>${STATUS_WORDS[l.status] || ''}${l.stock ? ` · ${l.stock.toLocaleString()} in stock` : ''}${l.listedAt ? ` · ${ago(l.listedAt)}` : ''}</small></span>${vs}</li>`;
     }).join('');
     return wrap(`<ul class="pc-list${cmp ? ' cmp' : ''}">${rowsHtml}</ul>`);
+  }
+  // A listing unfolded: the item as the game shows it when hovered, under its row.
+  function detailHtml(l) {
+    const x = l.detail;
+    const props = x.props.map(([n, v]) => `<p class="pd-prop">${esc(n)}: <b>${esc(v)}</b></p>`).join('');
+    let last = '';
+    const mods = x.mods.map((m) => {
+      // a line between the implicits and the rest, as in game
+      const sep = last && (last === 'implicit' || last === 'enchant') !== (m.kind === 'implicit' || m.kind === 'enchant') ? '<hr>' : '';
+      last = m.kind;
+      return `${sep}<p class="pd-mod m-${esc(m.kind)}">${esc(m.text)}${m.kind === 'crafted' || m.kind === 'fractured' || m.kind === 'enchant' ? `<small>${m.kind}</small>` : ''}</p>`;
+    }).join('');
+    const flags = [x.corrupted ? '<p class="pd-flag corrupted">Corrupted</p>' : '', x.mirrored ? '<p class="pd-flag">Mirrored</p>' : '', x.split ? '<p class="pd-flag">Split</p>' : ''].join('');
+    return `<li class="pc-detail">${art(l.icon, l.sockets, l.w, l.h, 'big')}<div class="pd-text r-${esc(x.rarity)}">
+        ${x.name ? `<p class="pd-name">${esc(x.name)}</p>` : ''}<p class="pd-base">${esc(x.base)}${x.ilvl ? ` <small>item level ${x.ilvl}</small>` : ''}</p>
+        ${props ? `<div class="pd-props">${props}</div>` : ''}${mods ? `<div class="pd-mods">${mods}</div>` : ''}${flags}</div></li>`;
   }
   const shortLabel = (t) => { const s = String(t).replace(/^[+#%\s]+/, '').replace(/^total /i, ''); return s.length > 26 ? `${s.slice(0, 24)}…` : s; };
 
@@ -343,6 +359,16 @@
       const b = e.target.closest('[data-sockets]');
       b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); b.title = `${on ? 'Hide' : 'Show'} the sockets on item pictures`;
       api.action({ type: 'checkSockets' });
+      return;
+    }
+    // a listing: unfolds to the whole item under it, or folds back
+    const row = e.target.closest('li.can-open');
+    if (row) {
+      const l = data && data.listings && data.listings[Number(row.dataset.li)];
+      const open = row.nextElementSibling && row.nextElementSibling.classList.contains('pc-detail');
+      if (open) row.nextElementSibling.remove();
+      else if (l) { row.insertAdjacentHTML('afterend', detailHtml(l)); row.nextElementSibling.scrollIntoView({ block: 'nearest' }); }
+      row.classList.toggle('open', !open);
       return;
     }
     const site = e.target.closest('[data-site]');
