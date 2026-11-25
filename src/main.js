@@ -698,11 +698,12 @@ function updateUnknown(found) {
   if (added) saveBacklog();
 }
 
-// Which inventory slot the mouse is over, or null.
+// Which inventory slot the mouse is over, with where in it (fx, fy: 0 to 1), or null.
 function cursorCell(cur, rect) {
   if (!cur) return null;
-  const col = Math.floor((cur.x - rect.x0) / rect.cell), row = Math.floor((cur.y - rect.y0) / rect.cell);
-  return col >= 0 && col < COLS && row >= 0 && row < ROWS ? { row, col } : null;
+  const gx = (cur.x - rect.x0) / rect.cell, gy = (cur.y - rect.y0) / rect.cell;
+  const col = Math.floor(gx), row = Math.floor(gy);
+  return col >= 0 && col < COLS && row >= 0 && row < ROWS ? { row, col, fx: gx - col, fy: gy - row } : null;
 }
 
 // force: asked for by hand in the app's own window. Otherwise nothing is read while another
@@ -735,9 +736,9 @@ async function readInventory(force) {
     // the window goes too. Only on that change, so a screen the reader cannot make out never
     // closes it.
     if (wasOpen && !status.inventory.open && checkPanel && checkPanel.visible) closeCheckPanel();
-    if (!status.inventory.open) return;
-    // With the mouse over the inventory a tooltip covers some slots; the reader keeps what it
-    // knew about those and reads the rest.
+    if (!status.inventory.open) { stopFollow(); return; }
+    // A tooltip (or the mouse pointer) may cover some slots; the reader finds them, keeps what
+    // it knew about those and reads the rest.
     const result = reader.read(frame, { cursor: cursorCell(cursorInFrame(frame), rect) });
     if (!result) return;
     status.inventory.lastReadAt = Date.now();
@@ -771,6 +772,7 @@ async function readInventory(force) {
       session.setUncounted(session.currentId, result.unknown.length, Math.max(0, lastSingles - singlesBaseline));
     }
     try { keepSnapshot(result); } catch (e) { console.error('snapshot failed', e.message); }
+    followUp(result.hidden);
     scheduleSave();
   } catch (e) {
     status.inventory.error = e.message || String(e);
@@ -779,6 +781,36 @@ async function readInventory(force) {
     // A look at a closed inventory changes nothing; the window is only told when something did.
     if (`${inv.open}|${inv.error}|${inv.lastReadAt}` !== was) push();
   }
+}
+
+// After a reading with covered slots, a few more follow while the mouse moves: each move shows
+// the slots under the old tooltip, and every slot takes what a clear view of it shows. Stops
+// when a reading has nothing covered, the inventory closes, or the limits are reached. Nothing
+// is read while the mouse stands still: the picture would be the same.
+const FOLLOW = { everyMs: 250, forMs: 3000, reads: 6 };
+let follow = null; // { until, reads, at, timer }
+function mouseSpot() {
+  const p = cursorOnDisplay(config.inventory.displayId);
+  return p ? `${Math.round(p.x / 6)},${Math.round(p.y / 6)}` : 'off';
+}
+function followUp(hidden) {
+  if (!hidden) { stopFollow(); return; }
+  if (follow) return; // already watching
+  follow = { until: Date.now() + FOLLOW.forMs, reads: 0, at: mouseSpot(), timer: setInterval(followTick, FOLLOW.everyMs) };
+}
+function followTick() {
+  if (!follow) return;
+  if (Date.now() > follow.until || follow.reads >= FOLLOW.reads || !status.inventory.open) { stopFollow(); return; }
+  if (invBusy) return;
+  const at = mouseSpot();
+  if (at === follow.at) return;
+  follow.at = at; follow.reads++;
+  readInventory();
+}
+function stopFollow() {
+  if (!follow) return;
+  clearInterval(follow.timer);
+  follow = null;
 }
 
 function syncTimedWatch() {

@@ -1,6 +1,6 @@
 'use strict';
 // Reads the whole inventory from one captured frame.
-const { COLS, ROWS, gridRect, extractCell, isEmptyCell, isInventoryOpen, multiSlotCells } = require('./grid');
+const { COLS, ROWS, gridRect, extractCell, isEmptyCell, isInventoryOpen, multiSlotCells, coveredCells } = require('./grid');
 const { readStack } = require('./digits');
 const { fingerprint, similarity, sharpShifts } = require('./icons');
 const { readMapTier } = require('./maps');
@@ -51,9 +51,10 @@ class InventoryReader {
     return true;
   }
 
-  // cursor: { row, col } when the mouse is over the grid, otherwise null. The hovered item's
-  // tooltip opens upwards, so the hovered slot and every row above it may be covered: what was
-  // known there is kept, and nothing new is concluded from those slots in this read.
+  // cursor: { row, col, fx, fy } when the mouse is over the grid (fx, fy: where in the slot,
+  // 0 to 1), otherwise null. Slots that may be covered are those a tooltip (or anything dark)
+  // lies over, found from the grid lines (coveredCells), and those under the mouse pointer.
+  // There, what was known is kept and nothing new is concluded in this read.
   //
   // Returns null when the inventory is not open, otherwise:
   // { counts: Map(name -> qty), recognised, unknown: [{ cell, qty, print, rgb }], empties: [cell],
@@ -63,6 +64,7 @@ class InventoryReader {
   read(frame, { cursor = null } = {}) {
     const rect = gridRect(frame.width, frame.height);
     if (!isInventoryOpen(frame, rect)) return null;
+    const hidden = unsureSlots(coveredCells(frame, rect), cursor);
     const counts = new Map();
     const unknown = [];
     const cells = [];
@@ -82,7 +84,7 @@ class InventoryReader {
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
         const k = r * COLS + c;
-        const unsure = !!cursor && (r < cursor.row || (r === cursor.row && c === cursor.col));
+        const unsure = hidden.has(k);
         const rgb = rgbs[k];
         if (empty[k]) {
           if (unsure && this.memory[k]) {
@@ -113,6 +115,14 @@ class InventoryReader {
           }
           this.pins[k] = null; // something else is in this slot now
           this.memory[k] = null;
+        }
+
+        // Covered and known from before: the item stays, and the covered picture is not matched
+        // at all (it would only be slow and unsure). A later clear view settles the slot.
+        if (unsure && this.memory[k]) {
+          info.status = 'remembered'; info.name = this.memory[k].name; info.qty = this.memory[k].qty;
+          add(k);
+          continue;
         }
 
         if (pieces.has(k) && !unsure) {
@@ -160,16 +170,16 @@ class InventoryReader {
         add(k);
       }
     }
-    this.cleanUp(cells, cursor);
-    return { counts, recognised, unknown, cells, empties };
+    this.cleanUp(cells, hidden);
+    return { counts, recognised, unknown, cells, empties, hidden: hidden.size };
   }
 
   // A slot read clearly keeps its picture as the clean one. A slot that may be covered and still
   // holds the same item gets the clean picture and fingerprint back in place of what is on screen.
-  cleanUp(cells, cursor) {
+  cleanUp(cells, hidden) {
     for (const c of cells) {
-      const k = c.cell, r = Math.floor(k / COLS), col = k % COLS;
-      const unsure = !!cursor && (r < cursor.row || (r === cursor.row && col === cursor.col));
+      const k = c.cell;
+      const unsure = hidden.has(k);
       const kept = this.clean[k];
       const named = (c.status === 'item' || c.status === 'remembered') && c.name;
       if (named && kept && kept.name === c.name && (unsure || c.status === 'remembered')) {
@@ -183,6 +193,21 @@ class InventoryReader {
   }
 }
 
+// The slots that may be covered: those found covered, and the one under the mouse pointer with,
+// when the pointer sits near its right or bottom edge, the slots it reaches into (the arrow
+// hangs down and to the right of the point).
+function unsureSlots(covered, cursor) {
+  const out = new Set(covered);
+  if (!cursor) return out;
+  const { row, col } = cursor, fx = cursor.fx === undefined ? 0.5 : cursor.fx, fy = cursor.fy === undefined ? 0.5 : cursor.fy;
+  const right = fx > 0.55 && col + 1 < COLS, down = fy > 0.4 && row + 1 < ROWS;
+  out.add(row * COLS + col);
+  if (right) out.add(row * COLS + col + 1);
+  if (down) out.add((row + 1) * COLS + col);
+  if (right && down) out.add((row + 1) * COLS + col + 1);
+  return out;
+}
+
 // Which slots of a reading are safe to save as "this is how the item really looks in game":
 // recognised only through downloaded art, with a stack number, a comfortable score, and either
 // no look-alike near or a sharp verdict.
@@ -190,4 +215,4 @@ function learnable(cells, minScore = 0.84) {
   return cells.filter((c) => c.status === 'item' && c.source === 'art' && c.stack > 0 && c.clear && c.score >= minScore && c.print && c.rgb);
 }
 
-module.exports = { InventoryReader, SINGLE_ART_SCORE, learnable };
+module.exports = { InventoryReader, SINGLE_ART_SCORE, learnable, unsureSlots };

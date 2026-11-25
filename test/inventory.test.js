@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { COLS, ROWS, gridRect, extractGrid, isEmptyCell, isInventoryOpen } = require('../src/core/inventory/grid');
+const { COLS, ROWS, gridRect, extractGrid, isEmptyCell, isInventoryOpen, coveredCells } = require('../src/core/inventory/grid');
 const { readStack } = require('../src/core/inventory/digits');
 const { fingerprint, similarity, IconIndex, compositeOnCell, encodePrint, decodePrint } = require('../src/core/inventory/icons');
 const { InventoryReader } = require('../src/core/inventory/reader');
@@ -123,10 +123,12 @@ test('reader: slots near the mouse keep what was known, slots counted by hand st
   assert.equal(hover.counts.get('item-0-0'), total);            // still counted from memory
   assert.equal(hover.empties.some((k) => k < 24), false);        // nothing in the covered rows is called empty
   assert.equal(hover.unknown.length, 0);
-  // Without the mouse there, the same picture means those slots really are empty now.
-  const gone = reader.read(covered);
-  assert.equal(gone.counts.has('item-0-0'), false);
-  assert.ok(gone.empties.includes(0));
+  // Without the mouse there it is the same: black grid lines are something lying over the
+  // slots, not empty slots (those keep their lit lines).
+  const still = reader.read(covered);
+  assert.equal(still.counts.get('item-0-0'), total);
+  assert.equal(still.empties.some((k) => k < 24), false);
+  assert.equal(still.hidden, 24);
 
   // A slot counted by hand: the unrecognised single item at row 2, column 1 of the map capture.
   const r2 = new InventoryReader(taughtIndex());
@@ -368,7 +370,13 @@ test('reader: a real tooltip capture, mouse on the bottom-left slot', () => {
   assert.ok(r);
   for (let t = 1; t <= 15; t++) assert.equal(r.counts.get(`Map (Tier ${t})`), 1, `tier ${t}`);
   assert.equal(r.counts.get('Map (Tier 16)'), 2);               // including the hovered, highlighted one
-  assert.equal(r.unknown.some((u) => u.cell < 48), false);       // nothing is reported from the covered rows
+  // Nothing is reported from the slots under the tooltip (columns 1 to 6 of the top four rows);
+  // the stacks plainly visible beside it are.
+  const under = coveredCells(tooltipFrame);
+  for (let r0 = 0; r0 < 4; r0++) for (let c = 0; c < 6; c++) assert.ok(under.has(r0 * COLS + c), `slot ${r0 * COLS + c} is covered`);
+  for (let r0 = 0; r0 < 4; r0++) for (let c = 7; c < COLS; c++) assert.ok(!under.has(r0 * COLS + c), `slot ${r0 * COLS + c} is clear`);
+  assert.equal(r.unknown.some((u) => under.has(u.cell)), false);
+  assert.ok(r.unknown.some((u) => u.cell === 7 && u.qty === 40));
   assert.equal(r.empties.length, 0);
 });
 

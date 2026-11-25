@@ -140,10 +140,50 @@ function multiSlotCells(cells) {
   return linked;
 }
 
+// Slots something dark lies over: an item tooltip, most of all. Every slot is framed by the
+// grid's lines, which are lit (brightness 40 and up) whatever is in the slot; a tooltip's
+// near-black box darkens them to 5 or less. So a slot counts as covered when a good share of
+// the points along its four edges has no lit pixel close by.
+// Measured on real captures: clean slots have 0 to 9% of their edge points dark (an item drawn
+// over its frame, a bow across slots), slots under a tooltip 16 to 100% (only touched by its
+// edge: 16 to 25%).
+const COVER_DARK = 18, COVER_SHARE = 0.15, COVER_POINTS = 8;
+function coveredCells(frame, rect = gridRect(frame.width, frame.height)) {
+  const w = frame.width, h = frame.height, d = frame.data, s = h / 1080;
+  const lit = (x, y) => {
+    x = Math.round(x); y = Math.round(y);
+    if (x < 0 || y < 0 || x >= w || y >= h) return 0;
+    const p = (y * w + x) * 4;
+    return (d[p] + d[p + 1] + d[p + 2]) / 3;
+  };
+  // Is the grid line at (x, y) dark? Looked for within 2 pixels across it.
+  const dark = (x, y, vertical) => {
+    for (let o = -2; o <= 2; o++) if ((vertical ? lit(x + o * s, y) : lit(x, y + o * s)) >= COVER_DARK) return false;
+    return true;
+  };
+  const covered = new Set();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x0 = rect.x0 + c * rect.cell, y0 = rect.y0 + r * rect.cell, x1 = x0 + rect.cell, y1 = y0 + rect.cell;
+      let n = 0, black = 0;
+      for (let i = 1; i <= COVER_POINTS; i++) {
+        const t = rect.cell * (0.1 + 0.8 * i / (COVER_POINTS + 1));
+        n += 4;
+        if (dark(x0, y0 + t, true)) black++;
+        if (dark(x1, y0 + t, true)) black++;
+        if (dark(x0 + t, y0, false)) black++;
+        if (dark(x0 + t, y1, false)) black++;
+      }
+      if (black / n >= COVER_SHARE) covered.add(r * COLS + c);
+    }
+  }
+  return covered;
+}
+
 function extractGrid(frame, rect = gridRect(frame.width, frame.height)) {
   const cells = [];
   for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) cells.push(extractCell(frame, rect, r, c));
   return cells;
 }
 
-module.exports = { multiSlotCells, sameItemAcross, CANON, COLS, ROWS, GEOMETRY, gridRect, extractCell, extractGrid, cellStats, isEmptyCell, isInventoryOpen };
+module.exports = { coveredCells, multiSlotCells, sameItemAcross, CANON, COLS, ROWS, GEOMETRY, gridRect, extractCell, extractGrid, cellStats, isEmptyCell, isInventoryOpen };
