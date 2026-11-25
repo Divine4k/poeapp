@@ -171,6 +171,15 @@ const CURRENCIES = {
 };
 const currencyName = (id) => CURRENCIES[id] || '';
 
+// The trade site's bulk exchange for a currency, bought with chaos (chaos itself with divines),
+// or '' when the app does not know the site's name for it.
+function exchangeUrl(league, name) {
+  const id = Object.keys(CURRENCIES).find((k) => CURRENCIES[k] === name);
+  if (!id || !league) return '';
+  const q = { query: { status: { option: 'online' }, have: [id === 'chaos' ? 'divine' : 'chaos'], want: [id] } };
+  return `${SITE}/trade/exchange/${encodeURIComponent(league)}?q=${encodeURIComponent(JSON.stringify(q))}`;
+}
+
 const searchUrl = (league, queryId) => `${SITE}/trade/search/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 
-module.exports = { TradeClient, TradeError, parseLimits, readListing, socketText, searchUrl, currencyName };
+module.exports = { TradeClient, TradeError, parseLimits, readListing, socketText, searchUrl, exchangeUrl, currencyName };

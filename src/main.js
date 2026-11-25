@@ -37,7 +37,7 @@ const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
-const { TradeClient, readListing, searchUrl, currencyName } = require('./core/tradeApi');
+const { TradeClient, readListing, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
 const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
@@ -1160,9 +1160,49 @@ function chaosOfPrice(amount, currency) {
 }
 // always: search whatever the item is (the price check key). Otherwise, with the key that
 // also counts loot, a search is only sent where it says something without any ticking.
+// A price check that is not a search: what the window shows for currency and other things
+// poe.ninja prices (kind 'price'), and the uniques an unidentified one can be (kind 'pick').
+const checkBase = (extra) => ({ at: Date.now(), rev: ++tradeRev, filtersRev: 0, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, inGame: false, ninja: null, icon: null, ...extra });
+const CATEGORY_NAMES = Object.fromEntries(CATEGORY_LABELS.flatMap(([, list]) => list));
+function quickPrice(item) {
+  const entry = prices.get(priceName(item));
+  if (!entry) return;
+  tradeCheck = checkBase({
+    kind: 'price', filters: { ok: false, why: '' }, icon: entry.icon || null, ninja: entry.chaos,
+    url: exchangeUrl(config.league, entry.name),
+    price: { name: entry.name, category: CATEGORY_NAMES[entry.category] || entry.category || '', each: entry.chaos, qty: item.stackSize || 1, change: entry.change ?? null, spark: entry.spark || null, listings: entry.listings ?? null },
+  });
+  showCheckPanel();
+}
+function pickUnique(item) {
+  const base = item.baseType;
+  const choices = prices.uniquesOfBase(base);
+  const why = choices.length ? `Unidentified ${base}: it can be ${choices.length === 1 ? choices[0].name : `any of ${choices.length} uniques`}. Pick which in the window over the game.` : `Unidentified ${base}: no unique on this base has a price on poe.ninja. Identify it first.`;
+  tradeCheck = checkBase({ kind: 'pick', filters: { ok: false, why }, item, choices, picked: '', base, why });
+  if (choices.length === 1) { pickChoice(choices[0].name); return; }
+  if (choices.length) showCheckPanel();
+}
+// name: one of the choices, or '' to go back to the list.
+function pickChoice(name) {
+  const tc = tradeCheck;
+  if (!tc || tc.kind !== 'pick') return;
+  const ch = tc.choices.find((c) => c.name === name);
+  Object.assign(tc, { state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, iconW: 0, iconH: 0 });
+  if (!ch) Object.assign(tc, { picked: '', filters: { ok: false, why: tc.why }, ninja: null, icon: null });
+  else {
+    let filters;
+    try { statIndex = statIndex || StatIndex.load(); filters = buildFilters({ ...tc.item, name: ch.name, unidentified: false }, statIndex); } catch (e) { filters = { ok: false, why: `The list of trade stats could not be read: ${e.message || e}` }; }
+    Object.assign(tc, { picked: ch.name, filters, ninja: ch.chaos, icon: ch.icon });
+  }
+  tc.filtersRev += 1; tc.rev = ++tradeRev;
+  push();
+  if (ch && tc.filters.ok && (config.priceSearch || {}).auto !== false) runTradeSearch(false);
+}
+
 function startTradeCheck(item, { always = false } = {}) {
   tradeCheck = null;
-  if (!searchable(item)) return;
+  if (!searchable(item)) { quickPrice(item); return; }
+  if (item.rarity === 'Unique' && item.unidentified) { pickUnique(item); return; }
   let filters;
   try {
     statIndex = statIndex || StatIndex.load();
@@ -1813,6 +1853,7 @@ const actions = {
   tradeClose: () => { tradeCheck = null; if (checkPanel) checkPanel.hide(); },
   // The cross on the window in game: the search stays on the Prices page.
   checkPanelClose: () => closeCheckPanel(),
+  checkPickUnique: (a) => pickChoice(String(a.name || '')),
   tradeOpen: () => { if (tradeCheck && /^https:\/\/www\.pathofexile\.com\//.test(tradeCheck.url)) shell.openExternal(tradeCheck.url); },
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),

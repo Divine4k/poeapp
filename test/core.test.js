@@ -44,9 +44,10 @@ test('prices: exchange and item overview parsing', () => {
 
   const it = parseItemOverview({ lines: [
     { name: 'Tabula Rasa', chaosValue: 30, links: 6 },
-    { name: 'Headhunter', chaosValue: 9000 }, { name: 'Headhunter', chaosValue: 8000 },
+    { name: 'Headhunter', chaosValue: 9000, baseType: 'Leather Belt' }, { name: 'Headhunter', chaosValue: 8000, baseType: 'Leather Belt' },
+    { name: 'Wurm\'s Molt', chaosValue: 2, baseType: 'Leather Belt' },
   ] }, 'UniqueAccessory');
-  assert.deepEqual(it.map((e) => [e.name, e.chaos]), [['Tabula Rasa', 30], ['Headhunter', 8000]]);
+  assert.deepEqual(it.map((e) => [e.name, e.chaos]), [['Tabula Rasa', 30], ['Headhunter', 8000], ['Wurm\'s Molt', 2]]);
 
   const t = new PriceTable();
   t.load([...ex, ...it]);
@@ -56,6 +57,9 @@ test('prices: exchange and item overview parsing', () => {
   assert.equal(t.search('orb')[0].name, 'Orb of Alteration'); // prefix matches first
   assert.deepEqual(t.iconEntries(), [{ name: 'Orb of Alteration', icon: 'https://web.poecdn.com/gen/image/x/y/CurrencyRerollMagic.png' }]);
   assert.equal(PriceTable.fromJSON(JSON.parse(JSON.stringify(t))).chaosOf('Headhunter'), 8000);
+  // an unidentified Leather Belt: the uniques it can be, dearest first (kept in the saved copy too)
+  assert.deepEqual(PriceTable.fromJSON(JSON.parse(JSON.stringify(t))).uniquesOfBase('Leather Belt').map((e) => [e.name, e.chaos]), [['Headhunter', 8000], ['Wurm\'s Molt', 2]]);
+  assert.deepEqual(t.uniquesOfBase('Golden Mask'), []);
 });
 
 const MAP_TEXT = `Item Class: Maps

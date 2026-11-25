@@ -161,13 +161,70 @@
     return n > 4 ? [2, 3] : [1, n > 3 ? 4 : 3];
   }
 
+  // A number of chaos with as many digits as it needs: 1,240 · 85 · 3.5 · 0.04.
+  function num(x) {
+    const a = Math.abs(x);
+    if (a >= 100) return Math.round(x).toLocaleString();
+    if (a >= 10) return String(Math.round(x * 10) / 10);
+    if (a >= 1) return String(Math.round(x * 100) / 100);
+    return String(Number(x.toPrecision(2)));
+  }
+  // A price in chaos, or in divines once it is worth one or more, with the currency's picture.
+  function valueHtml(c) {
+    const divine = data ? data.divine : 0;
+    const inDiv = divine > 0 && c >= divine;
+    return `<b>${num(inDiv ? c / divine : c)}</b>${coin(inDiv ? 'divine' : 'chaos')}`;
+  }
+  // The week's price as a small line, its end marked.
+  function sparkHtml(pts) {
+    if (!pts || pts.length < 2) return '';
+    const lo = Math.min(...pts), hi = Math.max(...pts), w = 120, h = 28;
+    const xy = pts.map((v, i) => [Math.round((i / (pts.length - 1)) * w * 10) / 10, Math.round((h - 3 - ((v - lo) / (hi - lo || 1)) * (h - 6)) * 10) / 10]);
+    const up = pts[pts.length - 1] >= pts[0];
+    const [ex, ey] = xy[xy.length - 1];
+    return `<svg class="pc-spark ${up ? 'up' : 'down'}" viewBox="-3 0 ${w + 6} ${h}" aria-hidden="true"><polyline points="${xy.map((p) => p.join(',')).join(' ')}"/><circle cx="${ex}" cy="${ey}" r="2.5"/></svg>`;
+  }
+
+  // Currency and anything else poe.ninja prices: what one is worth, what the stack is worth,
+  // how the price went this week.
+  function priceView(d) {
+    const p = d.price, divine = d.divine || 0;
+    const facts = [];
+    if (p.qty > 1) facts.push(`<div class="pc-fact"><span>Stack of ${p.qty.toLocaleString()}</span><span class="pc-lp">${valueHtml(p.each * p.qty)}</span></div>`);
+    if (divine > 0 && p.each > 0 && p.each < divine && p.name !== 'Divine Orb') facts.push(`<div class="pc-fact"><span>For one divine</span><span class="pc-lp"><b>${num(divine / p.each)}</b><small>of these</small></span></div>`);
+    if (p.name === 'Divine Orb' || p.name === 'Chaos Orb') facts.push(`<div class="pc-fact"><span>${p.name === 'Divine Orb' ? 'One divine' : 'One divine is'}</span><span class="pc-lp"><b>${num(divine)}</b>${coin('chaos')}</span></div>`);
+    if (p.listings !== null && p.listings !== undefined) facts.push(`<div class="pc-fact"><span>Listed on poe.ninja's count</span><span class="pc-lp"><b>${p.listings.toLocaleString()}</b></span></div>`);
+    const change = p.change !== null && p.change !== undefined ? `<span class="pc-chg ${p.change >= 0 ? 'up' : 'down'}">${p.change >= 0 ? '+' : ''}${Math.round(p.change * 10) / 10}%</span>` : '';
+    return `<div class="pc-head">${art(d.icon, '', 1, 1, 'cur')}
+        <div class="pc-meta"><h1>${esc(p.name)}</h1><p class="pc-about">${esc(p.category)}</p>
+          <div class="pc-price">${valueHtml(p.each)}<small>${p.name === 'Chaos Orb' ? '' : 'each'}</small></div>
+          <p class="pc-sub">poe.ninja</p></div>
+        <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
+      ${change || p.spark ? `<div class="pc-week"><span>This week ${change}</span>${sparkHtml(p.spark)}</div>` : ''}
+      ${facts.length ? `<div class="pc-facts">${facts.join('')}</div>` : ''}
+      ${d.url ? '<div class="pc-go"><button type="button" class="pc-site wide" data-open>Bulk exchange on the trade site ↗</button></div>' : '<div class="pc-gap"></div>'}`;
+  }
+
+  // An unidentified unique: the uniques its base can be, dearest first. A click searches for it.
+  function pickView(d) {
+    const rowsHtml = d.choices.map((c) => `<li><button type="button" data-pick="${esc(c.name)}">${art(c.icon, '', 1, 1, 'sm')}
+        <span class="pc-pn">${esc(c.name)}</span><span class="pc-lp">${valueHtml(c.chaos)}</span></button></li>`).join('');
+    return `<div class="pc-head">
+        <div class="pc-meta"><h1>Unidentified ${esc(d.base)}</h1><p class="pc-about">${d.choices.length} uniques come on this base</p>
+          <p class="pc-say">Which one is it? Pick it to see its price and what is listed.</p></div>
+        <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
+      <div class="pc-listings pick"><div class="pc-lh"><span>Dearest first</span><span>poe.ninja</span></div><ul class="pc-list pick">${rowsHtml}</ul></div>`;
+  }
+
   function draw() {
     const d = data;
-    if (!d || !d.filters || !d.filters.ok) { panel.innerHTML = ''; sendSize(0); return; }
-    const key = `${d.at}:${d.filtersRev}`;
-    if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
+    const kind = d && d.kind === 'price' && d.price ? 'price' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
+    if (!kind) { panel.innerHTML = ''; sendSize(0); return; }
     // A new item: the window waits for its height before it shows, so it is always sent.
     if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; }
+    if (kind !== 'search') { panel.innerHTML = kind === 'price' ? priceView(d) : pickView(d); sendSize(fullHeight()); return; }
+    const key = `${d.at}:${d.filtersRev}`;
+    if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
     const f = d.filters;
     const tabs = f.presets ? `<div class="pc-tabs" role="tablist">
         <button type="button" role="tab" class="pc-tab${mode === 'stats' ? ' on' : ''}" aria-selected="${mode === 'stats'}" data-mode="stats" title="Items with stats like this one">Stats</button>
@@ -176,7 +233,7 @@
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
     const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
     panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
-        <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
+        <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${d.picked ? 'Unidentified · <button type="button" class="pc-link" data-pick="">Not this one?</button> · ' : ''}${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
         <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
       ${tabs}
       <div class="pc-body"><div class="pc-chips">${chips}</div>
@@ -276,6 +333,8 @@
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) { api.action({ type: 'checkPickUnique', name: pick.dataset.pick }); return; }
     const tab = e.target.closest('[data-mode]');
     if (tab && data.filters.presets) {
       // A ready-made search: its ticks replace the ones on screen. Numbers stay as set.

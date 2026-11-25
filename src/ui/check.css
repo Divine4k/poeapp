@@ -154,3 +154,30 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-list.wait .sk-art { width: 28px; height: 28px; border-radius: 7px; justify-self: center; }
 .pc-list.wait .sk-p { width: 52px; }
 .pc-list.wait .sk-w { width: 55%; }
+
+/* currency and other poe.ninja prices */
+.pc-art.cur { width: 60px; height: 60px; }
+.pc-week { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 12px; color: var(--ash); }
+.pc-chg { margin-left: 6px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.pc-chg.up, .pc-spark.up { color: var(--moss); }
+.pc-chg.down, .pc-spark.down { color: var(--blood); }
+.pc-spark { width: 126px; height: 28px; flex: none; }
+.pc-spark polyline { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.pc-spark circle { fill: currentColor; }
+.pc-facts { margin: 0 16px; border-top: 1px solid var(--line); }
+.pc-fact { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; font-size: 12.5px; color: var(--ash); }
+.pc-fact + .pc-fact { box-shadow: inset 0 1px 0 var(--line); }
+.pc-fact .pc-lp b { color: var(--bone); }
+.pc-lp small { margin-left: 2px; font-size: 11.5px; color: var(--ash); }
+.pc-site.wide { flex: 1; }
+.pc-go:has(.wide) { padding-top: 12px; }
+.pc-gap { height: 12px; }
+
+/* an unidentified unique: which one it is */
+.pc-listings.pick { height: auto; max-height: 488px; }
+.pc-list.pick li { display: block; height: auto; padding: 0; }
+.pc-list.pick button { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; height: 45px; padding: 0 8px; border: 0; border-radius: 9px; background: transparent; box-shadow: none; text-align: left; color: var(--soft); }
+.pc-list.pick button:hover { background: color-mix(in srgb, var(--gold) 9%, transparent); color: var(--bone); }
+.pc-pn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 13px; color: #c8803a; }
+.pc-link { padding: 0; border: 0; background: none; box-shadow: none; color: var(--gold); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.pc-link:hover { color: var(--bone); background: none; }

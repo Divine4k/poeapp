@@ -92,6 +92,7 @@ function parseItemOverview(json, category) {
     return s && isFinite(Number(s.totalChange)) ? Number(s.totalChange) : null;
   };
   const extra = (line) => ({
+    ...(/^Unique/.test(category) && line.baseType ? { base: line.baseType } : {}), // for unidentified uniques
     icon: iconUrl(line.icon), change: trend(line), listings: isFinite(Number(line.listingCount)) ? Number(line.listingCount) : null,
     spark: sparkOf(line.sparkLine || line.sparkline || line.lowConfidenceSparkLine),
   });
@@ -160,6 +161,12 @@ class PriceTable {
   // Your own price for a name, or null.
   ownPrice(name) { const e = this.custom && this.custom.get(normalize(name)); return e ? e.chaos : null; }
   chaosOf(name) { const e = this.get(name); return e ? e.chaos : 0; }
+  // The uniques that come on a base type, dearest first: what an unidentified unique can be.
+  uniquesOfBase(base) {
+    const out = [];
+    for (const e of this.byNorm.values()) if (e.base === base && !e.variant && /^Unique/.test(e.category)) out.push({ name: e.name, chaos: e.chaos, icon: e.icon || null });
+    return out.sort((a, b) => b.chaos - a.chaos);
+  }
   get divine() { return this.chaosOf('Divine Orb'); }
 
   // Items that can be recognised by their inventory picture.

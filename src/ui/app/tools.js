@@ -123,7 +123,7 @@ function tradeResultHtml(tc) {
 }
 
 function renderTradeCheck() {
-  const tc = state.tradeCheck, box = $('trade-check');
+  const tc = state.tradeCheck && state.tradeCheck.kind !== 'price' ? state.tradeCheck : null, box = $('trade-check'); // currency stays a line on the price lists
   document.querySelector('#tab-prices .prices').hidden = !!tc;
   $('price-global').hidden = !!tc;
   box.hidden = !tc;
