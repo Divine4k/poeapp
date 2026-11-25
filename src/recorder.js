@@ -10,7 +10,7 @@ const { BrowserWindow, desktopCapturer, ipcMain, screen } = require('electron');
 const MAX_WIDTH = 1920;   // full HD: a bigger screen is scaled down to 1920 wide
 const MAX_HEIGHT = 1080;
 const FPS = 60;
-const BITRATE = 8000000;  // bits per second, about 60 MB a minute; sent in pieces GitHub takes
+const BITRATE = 8000000;  // bits per second, about 60 MB a minute; sent in 20 MB pieces
 
 class ScreenRecorder {
   constructor({ page, preload }) {

@@ -19,7 +19,10 @@ const { uploadFolder, readFile, latestTree, readBlob } = require('./github');
 const { performance } = require('perf_hooks');
 
 const MAX_MS = 5 * 60 * 1000;      // at full HD and 60 frames that is about 300 MB at most
-const PART = 90 * 1024 * 1024;     // GitHub takes files up to 100 MB: a bigger video goes in parts
+// A video goes to GitHub in parts. Each part is sent as base64 text (a third bigger) in one
+// request, and GitHub refuses big requests long before its 100 MB file limit ("input too large",
+// 422), so the parts are kept small.
+const PART = 20 * 1024 * 1024;
 // The PC's clock to a fraction of a millisecond, the same one the recorder window times the
 // video's first frame with, so a key's time is its place in the video.
 const clock = () => performance.timeOrigin + performance.now();

@@ -5,7 +5,9 @@
 // reach the web, so this is tested against a stand-in for GitHub (test/recording.test.js).
 
 const API = 'https://api.github.com';
-const MAX_FILE = 95 * 1024 * 1024; // GitHub refuses single files from 100 MB
+// One file goes up as base64 in one request; GitHub answers "input too large" (422) well below
+// its 100 MB file limit, so callers keep files under this (videos are cut into 20 MB parts).
+const MAX_FILE = 40 * 1024 * 1024;
 
 // GitHub lets its answers be kept for up to a minute, and the app's web requests (Chromium's)
 // do keep them. A minute-old branch or file made marks and commits clash with newer ones, so
