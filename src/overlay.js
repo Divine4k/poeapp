@@ -9,6 +9,24 @@ const { overlayBounds, OVERLAY_WIDTH: WIDTH } = require('./core/trade');
 const { checkPanelBounds, inside, shouldClose, PANEL_WIDTH } = require('./core/checkPanel');
 const { menuBounds, MENU_WIDTH } = require('./core/stashSearch');
 
+// The app's own windows over the game are left out of screen captures (Windows 10 2004 and
+// later), so an inventory reading sees the game behind them, never the price check or a
+// message. Streams and recordings by other programs do not show them either. While a
+// troubleshooting recording runs they are shown again, so the recording has them.
+let hiddenFromCapture = true;
+const guarded = new Set();
+function guard(win) {
+  guarded.add(win);
+  win.on('closed', () => guarded.delete(win));
+  try { win.setContentProtection(hiddenFromCapture); } catch (_) { /* not on this system */ }
+  return win;
+}
+function hideFromCapture(on) {
+  if (hiddenFromCapture === !!on) return;
+  hiddenFromCapture = !!on;
+  for (const w of guarded) if (!w.isDestroyed()) try { w.setContentProtection(hiddenFromCapture); } catch (_) { /* not on this system */ }
+}
+
 class Overlay {
   constructor({ preload, page }) {
     this.preload = preload;
@@ -34,6 +52,7 @@ class Overlay {
       focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: 'Map Companion trades',
       webPreferences: { preload: this.preload, contextIsolation: true, nodeIntegration: false },
     });
+    guard(this.win);
     this.win.setAlwaysOnTop(true, 'screen-saver');
     this.win.setMenuBarVisibility(false);
     this.win.loadFile(this.page);
@@ -104,6 +123,7 @@ class Toast {
         minimizable: false, maximizable: false, fullscreenable: false, focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
         title: 'Map Companion message', webPreferences: { contextIsolation: true, nodeIntegration: false },
       });
+      guard(this.win);
       this.win.setIgnoreMouseEvents(true);
       this.win.setAlwaysOnTop(true, 'screen-saver');
       this.win.on('closed', () => { this.win = null; });
@@ -159,6 +179,7 @@ class CheckPanel {
       focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: 'Map Companion price check',
       webPreferences: { preload: this.preload, contextIsolation: true, nodeIntegration: false },
     });
+    guard(this.win);
     this.win.setAlwaysOnTop(true, 'screen-saver');
     this.win.setMenuBarVisibility(false);
     this.win.loadFile(this.page);
@@ -285,6 +306,7 @@ class SearchMenu {
       focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: 'Map Companion stash searches',
       webPreferences: { preload: this.preload, contextIsolation: true, nodeIntegration: false },
     });
+    guard(this.win);
     this.win.setAlwaysOnTop(true, 'screen-saver');
     this.win.setMenuBarVisibility(false);
     this.win.loadFile(this.page);
@@ -358,4 +380,4 @@ class SearchMenu {
   }
 }
 
-module.exports = { Overlay, Toast, CheckPanel, SearchMenu, overlayBounds, WIDTH };
+module.exports = { Overlay, Toast, CheckPanel, SearchMenu, overlayBounds, WIDTH, guard, hideFromCapture };

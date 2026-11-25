@@ -145,6 +145,35 @@ test('reader: slots near the mouse keep what was known, slots counted by hand st
   assert.equal(r2.read(frames.inv_hideout).counts.has('Strand Map (T16)'), false);
 });
 
+test('reader: a covered slot that still holds its item keeps its clean picture, not the tooltip', () => {
+  const reader = new InventoryReader(taughtIndex());
+  const clean = reader.read(frames.inv_map);
+  const before = new Map(clean.cells.filter((c) => c.status === 'item').map((c) => [c.cell, c]));
+  // A tooltip over the top two rows (blacked out), and tooltip text over one slot of row 3.
+  const covered = { ...frames.inv_map, data: Buffer.from(frames.inv_map.data) };
+  const rect = gridRect(1920, 1080);
+  for (let y = Math.floor(rect.y0); y < rect.y0 + rect.cell * 2; y++) covered.data.fill(0, (y * 1920 + Math.floor(rect.x0)) * 4, (y * 1920 + 1903) * 4);
+  const texted = [...before.keys()].find((k) => k >= 24 && k < 36);
+  if (texted !== undefined) {
+    const x0 = Math.floor(rect.x0 + (texted % COLS) * rect.cell), y0 = Math.floor(rect.y0 + 2 * rect.cell);
+    for (let y = y0 + 8; y < y0 + rect.cell - 8; y += 3) covered.data.fill(255, (y * 1920 + x0) * 4, (y * 1920 + x0 + Math.floor(rect.cell)) * 4);
+  }
+  const hover = reader.read(covered, { cursor: { row: 2, col: 11 } });
+  let checked = 0;
+  for (const c of hover.cells) {
+    const was = before.get(c.cell);
+    if (!was || c.cell >= 24 && c.cell !== texted) continue;
+    if (c.cell === texted && c.name !== was.name) continue; // the text hid it too much to be named: fine either way
+    assert.equal(Buffer.compare(c.rgb, was.rgb), 0, `slot ${c.cell} shows the clean picture`);
+    assert.equal(c.print, was.print);
+    checked++;
+  }
+  assert.ok(checked > 0);
+  // Read clearly again: the pictures are the ones on screen.
+  const again = reader.read(frames.inv_map);
+  for (const c of again.cells) if (before.has(c.cell)) assert.equal(c.cleanView, undefined);
+});
+
 // Builds a reading from { name: qty } with every item in its own fixed slot.
 const SLOT = { portal: 0, chaos: 1, divine: 2, alt: 3, scarab: 4, thread: 5 };
 function obs(items, hidden = []) {

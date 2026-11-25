@@ -32,7 +32,7 @@ const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat, typeSearch, copyItem } = require('./chat');
-const { Overlay, Toast, CheckPanel, SearchMenu } = require('./overlay');
+const { Overlay, Toast, CheckPanel, SearchMenu, guard, hideFromCapture } = require('./overlay');
 const { cleanSearches, menuEntries } = require('./core/stashSearch');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
@@ -1142,7 +1142,7 @@ function setupTrouble() {
     who: () => ({ name: cloud && cloud.signedIn ? cloud.name : '', role: cloud ? cloud.role : '' }),
     version: require('../package.json').version, // the exact commit is filled in once the updater knows it
     cloud, fetchImpl: webFetch, say,
-    changed: () => { troubleRev++; push(); },
+    changed: () => { syncCaptureHiding(); troubleRev++; push(); },
   });
   // Admins and moderators see everyone's recordings: the reports repository is looked at once a minute.
   const look = () => { if (trouble && canTrouble() && !trouble.current) trouble.syncRemote().catch(() => {}); };
@@ -1154,6 +1154,9 @@ function setupTrouble() {
     console[level] = (...args) => { was(...args); if (trouble) trouble.event('console', { level, text: args.map((x) => (x instanceof Error ? x.stack : typeof x === 'string' ? x : JSON.stringify(x))).join(' ') }); };
   }
 }
+// The overlays are left out of screen captures, except while a troubleshooting recording starts
+// or runs, so the recording shows them (readings in that time may see them too).
+function syncCaptureHiding() { hideFromCapture(!(trouble && (trouble.current || trouble.busy === 'starting'))); }
 // The record key and the Record button: starts a recording, or stops the one running.
 async function toggleRecording() {
   if (!trouble) return;
@@ -1743,6 +1746,7 @@ function toggleLayout() {
     minimizable: false, maximizable: false, fullscreenable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: 'Map Companion layout',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
+  guard(layoutWin);
   layoutWin.setAlwaysOnTop(true, 'screen-saver');
   layoutWin.setMenuBarVisibility(false);
   layoutWin.loadFile(path.join(__dirname, 'ui', 'layout.html'));

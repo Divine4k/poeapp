@@ -21,6 +21,10 @@ class InventoryReader {
     // them, on most readings) is not read again: the same pixels against the same lists give
     // the same answer, and the matching is by far the slowest part of a reading.
     this.seen = new Array(COLS * ROWS).fill(null);
+    // The last clear view of each slot's item: { name, rgb, print }. A slot covered by a tooltip
+    // (or anything else) that still holds the same item is shown and kept with this picture, so
+    // the inventory pictures never show a tooltip in place of an item.
+    this.clean = new Array(COLS * ROWS).fill(null);
   }
 
   // The kept answers for slot k, started afresh when its picture changed.
@@ -36,7 +40,7 @@ class InventoryReader {
     return s;
   }
 
-  forgetCells() { this.memory.fill(null); this.pins.fill(null); }
+  forgetCells() { this.memory.fill(null); this.pins.fill(null); this.clean.fill(null); }
 
   // Counts whatever sits in this slot as the named item until the slot changes. Used for items
   // that cannot be told apart by picture (divination cards, maps, uniques).
@@ -85,7 +89,7 @@ class InventoryReader {
             cells.push({ cell: k, rgb, print: this.prints[k], status: 'remembered', name: this.memory[k].name, qty: this.memory[k].qty, score: null, source: null });
             add(k);
           } else if (!unsure) {
-            this.memory[k] = null; this.prints[k] = null; this.pins[k] = null;
+            this.memory[k] = null; this.prints[k] = null; this.pins[k] = null; this.clean[k] = null;
             empties.push(k);
           }
           continue;
@@ -156,7 +160,26 @@ class InventoryReader {
         add(k);
       }
     }
+    this.cleanUp(cells, cursor);
     return { counts, recognised, unknown, cells, empties };
+  }
+
+  // A slot read clearly keeps its picture as the clean one. A slot that may be covered and still
+  // holds the same item gets the clean picture and fingerprint back in place of what is on screen.
+  cleanUp(cells, cursor) {
+    for (const c of cells) {
+      const k = c.cell, r = Math.floor(k / COLS), col = k % COLS;
+      const unsure = !!cursor && (r < cursor.row || (r === cursor.row && col === cursor.col));
+      const kept = this.clean[k];
+      const named = (c.status === 'item' || c.status === 'remembered') && c.name;
+      if (named && kept && kept.name === c.name && (unsure || c.status === 'remembered')) {
+        c.rgb = kept.rgb; c.print = kept.print; c.cleanView = true;
+      } else if (c.status === 'item' && !unsure) {
+        this.clean[k] = { name: c.name, rgb: c.rgb, print: c.print };
+      } else if (!unsure && c.status !== 'remembered') {
+        this.clean[k] = null;
+      }
+    }
   }
 }
 
