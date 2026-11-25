@@ -841,6 +841,11 @@ function syncKeyHook() {
   if (config.inventory.onClick) {
     lib.uIOhook.on('mouseup', () => {
       if (ledger.inMap || !ledger.pendingArrival || !watch.gameInFront()) return;
+      // A click in the price check window moves nothing in the inventory: no reading for it.
+      if (checkPanel && checkPanel.visible && checkPanel.rect) {
+        const p = screen.getCursorScreenPoint(), r = checkPanel.rect;
+        if (p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height) return;
+      }
       clearTimeout(clickTimer);
       clickTimer = setTimeout(readInventory, 300);
     });

@@ -438,7 +438,22 @@
     if (el.classList.contains('pc-chip')) el.setAttribute('aria-pressed', String(on));
   }
 
+  // Ticks and chips answer the press of the mouse, not the click. A click only counts when the
+  // button goes down and comes up on the same thing, and going quickly down a list the mouse is
+  // already on its way to the next row when the button comes up: those clicks were lost.
+  panel.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    const chip = e.target.closest('.pc-chip');
+    if (chip) { const r = rows[Number(chip.dataset.row)]; r.enabled = !r.enabled; setOn(chip, r.enabled); choicesChanged(); return; }
+    const tick = e.target.closest('.pc-tick');
+    const box = tick && tick.querySelector('input[type=checkbox]');
+    if (!box || box.disabled) return;
+    box.checked = !box.checked;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  });
   panel.addEventListener('click', (e) => {
+    // The click that follows such a press has been dealt with (detail 0: made by the keyboard, not the mouse).
+    if (e.detail > 0 && e.target.closest('.pc-tick, .pc-chip')) { e.preventDefault(); return; }
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
