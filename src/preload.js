@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('api', {
   troubleAddImage: (id, bytes, type) => ipcRenderer.invoke('trouble-add-image', id, bytes, type),
   troubleImage: (id, name) => ipcRenderer.invoke('trouble-image', id, name),
   dev: (a) => ipcRenderer.invoke('dev', a),
+  tracker: (a) => ipcRenderer.invoke('tracker', a), // the Tracker page: list, add, update
   // the trade overlay window
   onTrade: (cb) => ipcRenderer.on('trade', (_e, data) => cb(data)),
   layout: () => ipcRenderer.invoke('layout-get'),

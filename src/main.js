@@ -26,6 +26,7 @@ const { Updater } = require('./updater');
 const { webFetch } = require('./http');
 const { SharedItems } = require('./shared');
 const { Cloud } = require('./cloud');
+const tracker = require('./tracker');
 const { SnapshotStore, SessionArchive, markCarried, recheckCells } = require('./core/store');
 const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
@@ -1031,6 +1032,21 @@ async function devAction(a) {
     const r = await cloud.setGithub(patch);
     return r.error ? r : { ok: true };
   }
+  return { error: 'Unknown request.' };
+}
+// The Tracker page (admins): ideas and work on the app, kept as GitHub issues in
+// config.trackerRepo with the same token the recordings use (src/tracker.js).
+async function trackerAction(a) {
+  if (!cloud || !isAdmin()) return { error: 'Only admins can use the tracker.' };
+  const g = await cloud.github();
+  if (g.error) return { error: g.error };
+  if (!g.token) return { error: 'No GitHub token is saved. Save one in Settings, Developer tools.' };
+  const base = { fetchImpl: webFetch, token: g.token, repo: String(config.trackerRepo || '').trim() };
+  try {
+    if (a.type === 'list') return { repo: base.repo, items: await tracker.listItems(base) };
+    if (a.type === 'add') return { item: await tracker.addItem({ ...base, title: a.title, body: a.body, status: a.status, priority: a.priority }) };
+    if (a.type === 'update') return { item: await tracker.updateItem({ ...base, number: a.number, patch: a.patch || {} }) };
+  } catch (e) { return { error: e.message || String(e) }; }
   return { error: 'Unknown request.' };
 }
 
@@ -2067,6 +2083,7 @@ function setupIpc() {
     try { return await trouble.videoFor(String(id || '')); } catch (e) { say(`The video could not be fetched: ${e.message || e}`, true); push(); return null; }
   });
   ipcMain.handle('dev', (_e, a) => devAction(a || {}));
+  ipcMain.handle('tracker', (_e, a) => trackerAction(a || {}));
   // Written reports: a new one (answers its id), pictures added to it, and pictures to show.
   ipcMain.handle('trouble-new', async () => (trouble && canTrouble() ? trouble.newReport() : null));
   ipcMain.handle('trouble-add-image', (_e, id, bytes, type) => (trouble ? trouble.addImage(String(id || ''), bytes, String(type || '')) : 'Not ready.'));

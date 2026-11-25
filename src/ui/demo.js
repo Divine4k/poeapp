@@ -215,6 +215,29 @@
       if (q.type === 'users') return { users: [['Divine4k', 'admin', 31], ['Marek', 'moderator', 12], ['Anna', '', 4], ['newplayer', '', 0]].map(([name, role, sessions], i) => ({ name, role, sessions, last: sessions ? now - i * 86400000 : 0, created: now - (40 - i) * 86400000 })) };
       return { ok: true };
     },
+    // The Tracker page (open index.html?account=in&role=admin to see it). Kept while the page is open.
+    tracker: async (q) => {
+      const day = 86400000;
+      const mk = (number, title, status, priority, body, age, extra = {}) => ({ number, title, body, status, priority, dropped: false, labels: [], progress: window.Steps.progress(body), url: `https://github.com/Divine4k/poeapp/issues/${number}`, by: 'Divine4k', created: now - age * day, updated: now - age * day / 2, closed: status === 'done' ? now - day : 0, ...extra });
+      const list = (window.demoTracker = window.demoTracker || [
+        mk(14, 'Pick a new name for the app', 'idea', 'normal', 'Map Companion is too narrow now that it does trade and price checks.', 6),
+        mk(15, 'Heist contract value in the price check', 'idea', 'low', '', 3),
+        mk(12, 'Stash tab pricing', 'todo', 'high', 'Read a whole stash tab and price it.\n\n- [x] Find the tab grid\n- [ ] Read the items\n- [ ] Show the total', 9),
+        mk(16, 'More map pictures (Crimson Temple, Cemetery)', 'todo', 'normal', '', 2, { labels: ['look'] }),
+        mk(11, 'Tracker page', 'doing', 'high', '- [x] Issues on GitHub\n- [x] The board\n- [ ] Claude works from it', 1),
+        mk(9, 'Bundle Inter font', 'done', 'normal', '', 20),
+        mk(8, 'Separate launcher window', 'done', 'normal', '', 25, { dropped: true }),
+      ]);
+      if (q.type === 'list') return { repo: state.config.trackerRepo || 'Divine4k/poeapp', items: list.map((i) => ({ ...i })) };
+      if (q.type === 'add') { const it = mk(Math.max(...list.map((i) => i.number)) + 1, q.title, q.status || 'idea', 'normal', '', 0); list.push(it); return { item: { ...it } }; }
+      if (q.type === 'update') {
+        const it = list.find((i) => i.number === q.number);
+        Object.assign(it, q.patch, { updated: Date.now() });
+        it.progress = window.Steps.progress(it.body); it.closed = it.status === 'done' ? it.closed || Date.now() : 0;
+        return { item: { ...it } };
+      }
+      return { error: 'Unknown request.' };
+    },
     runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },
     inventory: async () => {

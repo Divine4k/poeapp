@@ -7,7 +7,7 @@ function render() {
   applyTheme();
   renderBoot();
   renderTrade();
-  renderStatus(); renderToasts(); renderArrival(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderSettings(); renderRefresh();
+  renderStatus(); renderToasts(); renderArrival(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderTracker(); renderSettings(); renderRefresh();
 }
 
 // Refresh buttons turn while what they fetch is on its way, and cannot be pressed twice.
@@ -114,11 +114,12 @@ function showTab(name) {
   if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
   for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
   if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
-  for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'trouble', 'settings']) $(`tab-${id}`).hidden = id !== name;
+  for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'trouble', 'tracker', 'settings']) $(`tab-${id}`).hidden = id !== name;
   $('strat').hidden = name !== 'mapping'; // strategies sit in the top bar, for the Mapping page only
   if (name === 'inventory') renderInventory(true);
   if (name === 'items') { refreshKnown(); renderKnown(); }
   if (name === 'prices') renderPrices(true);
   if (name === 'trouble') troubleShown();
+  if (name === 'tracker') trackerShown();
   if (name === 'settings') renderSettings();
 }
