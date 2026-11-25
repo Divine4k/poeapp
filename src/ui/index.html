@@ -384,6 +384,7 @@
       <button type="button" data-set="loot" aria-pressed="false">Loot counting</button>
       <button type="button" data-set="check" aria-pressed="false">Price check</button>
       <button type="button" data-set="overlay" aria-pressed="false">Overlay</button>
+      <button type="button" data-set="searches" aria-pressed="false">Stash searches</button>
       <button type="button" data-set="trade" aria-pressed="false">Trade</button>
       <button type="button" data-set="help" aria-pressed="false">Help</button>
       <button type="button" data-set="dev" aria-pressed="false" id="set-nav-dev" hidden>Developer tools</button>
@@ -525,6 +526,14 @@
           </div>
         </div>
         <p class="set-foot" id="overlay-info"></p>
+      </section>
+
+      <section class="set-sec" id="set-searches" aria-label="Stash searches" hidden>
+        <h2>Stash searches</h2>
+        <p class="set-lead">Searches you use often, such as regex from poe.re, kept under a name. In game, press <span class="keyname" data-keyname="hotkeys.stashSearch"></span> to open them at the mouse and click one: it goes into the stash search box (the app presses Ctrl+F, pastes it and presses Enter, once per click). <button type="button" class="link" data-settings="keys">Change the key</button></p>
+        <div class="set-list ss-rows" id="ss-rows"></div>
+        <p class="set-foot"><button type="button" id="ss-add">Add a search</button></p>
+        <p class="set-foot">The game's search box takes 50 characters at most; a longer search is cut off there.</p>
       </section>
 
       <section class="set-sec" id="set-trade" aria-label="Trade" hidden>

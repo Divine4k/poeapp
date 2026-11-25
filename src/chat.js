@@ -34,6 +34,24 @@ let giveBack = null;
 const LINE_GAP_MS = 35;
 const RESTORE_MS = 400;
 
+// Borrows the clipboard for one paste and puts it back a moment after the last one.
+async function pasteWith(clipboard, text, keys) {
+  clearTimeout(giveBack);
+  if (!borrowed) borrowed = { text: clipboard.readText() };
+  try {
+    clipboard.writeText(text);
+    keys();
+    await sleep(LINE_GAP_MS);
+  } finally {
+    giveBack = setTimeout(() => {
+      const mine = borrowed;
+      borrowed = null;
+      // Only if the clipboard still holds our text: you may have copied something since.
+      try { if (mine && clipboard.readText() === text) clipboard.writeText(mine.text); } catch (_) { /* nothing to restore to */ }
+    }, RESTORE_MS);
+  }
+}
+
 // Types one line into the game's chat: Enter, paste, Enter, all at once. The
 // clipboard is put back a moment after the last line.
 // hook: the uiohook-napi module. clipboard: Electron's clipboard.
@@ -42,23 +60,27 @@ async function typeChat(hook, clipboard, text, { send = true } = {}) {
   const line = send ? String(text || '').replace(/[\r\n]+/g, ' ').trim() : String(text || '').replace(/[\r\n]+/g, ' ');
   if (!line) return false;
   const { uIOhook, UiohookKey } = hook;
-  clearTimeout(giveBack);
-  if (!borrowed) borrowed = { text: clipboard.readText() };
-  try {
-    clipboard.writeText(line);
+  await pasteWith(clipboard, line, () => {
     uIOhook.keyTap(UiohookKey.Enter);
     uIOhook.keyTap(UiohookKey.A, [UiohookKey.Ctrl]); // replace anything half typed
     uIOhook.keyTap(UiohookKey.V, [UiohookKey.Ctrl]);
     if (send) uIOhook.keyTap(UiohookKey.Enter);
-    await sleep(LINE_GAP_MS);
-  } finally {
-    giveBack = setTimeout(() => {
-      const mine = borrowed;
-      borrowed = null;
-      // Only if the clipboard still holds our line: you may have copied something since.
-      try { if (mine && clipboard.readText() === line) clipboard.writeText(mine.text); } catch (_) { /* nothing to restore to */ }
-    }, RESTORE_MS);
-  }
+  });
+  return true;
+}
+
+// Puts a search into the game's stash search box: Ctrl+F (the game's key for that box), paste
+// over what was there, Enter. The same keys Awakened PoE Trade sends for its stash searches.
+async function typeSearch(hook, clipboard, text) {
+  const line = String(text || '').replace(/[\r\n]+/g, ' ').trim();
+  if (!line) return false;
+  const { uIOhook, UiohookKey } = hook;
+  await pasteWith(clipboard, line, () => {
+    uIOhook.keyTap(UiohookKey.F, [UiohookKey.Ctrl]);
+    uIOhook.keyTap(UiohookKey.A, [UiohookKey.Ctrl]); // the old search is replaced, not added to
+    uIOhook.keyTap(UiohookKey.V, [UiohookKey.Ctrl]);
+    uIOhook.keyTap(UiohookKey.Enter);
+  });
   return true;
 }
 
@@ -86,4 +108,4 @@ async function copyItem(hook, wait = sleep) {
   }
 }
 
-module.exports = { focusGame, typeChat, copyItem, LINE_GAP_MS, COPY_STEP_MS };
+module.exports = { focusGame, typeChat, typeSearch, copyItem, LINE_GAP_MS, COPY_STEP_MS };

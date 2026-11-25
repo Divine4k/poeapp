@@ -81,6 +81,7 @@ function renderSettings() {
     : !oi.helper ? 'the app cannot tell which window is in front on this PC, so the overlay shows whenever there is something to show'
       : oi.allowed ? `the overlay can show; the window in front is "${oi.front}"` : `the overlay is hidden, because the window in front is "${oi.front}" and not the game`}.`;
   renderKeys();
+  renderSearches();
 }
 
 // Every key the app uses, in one list. id: where the key is kept in the settings.
@@ -94,6 +95,10 @@ const KEY_GROUPS = [
       bad: (st) => !st.hotkeys.clipboard },
     { id: 'inventory.key', name: 'Your inventory key in game', needed: true, game: true, hint: 'The key that opens your inventory in the game. The app only listens for it, to read your inventory once each time you press it.',
       bad: (st) => st.inventory.keyHook === 'badkey' },
+  ] },
+  { title: 'Stash', keys: [
+    { id: 'hotkeys.stashSearch', name: 'Stash searches', hint: 'Opens your saved searches at the mouse; a click puts one in the stash search box. Only held while the game is the window in front.',
+      bad: (st) => st.hotkeys.stashSearchHeld && !st.hotkeys.stashSearch },
   ] },
   { title: 'Overlay', keys: [
     { id: 'trade.hotkeys.layout', name: 'Move the overlay', hint: 'Dims the game and shows a box for each part of the overlay, to drag where you want it.', bad: (st) => !st.hotkeys.layout },
@@ -268,3 +273,69 @@ $('custom-grid').addEventListener('input', (e) => {
 });
 $('custom-grid').addEventListener('change', (e) => { const k = e.target.dataset.ckx; if (k && state.config.themeCustom) e.target.value = state.config.themeCustom[k]; }); // an unfinished code goes back to the real colour
 $('custom-base').addEventListener('change', (e) => { const id = e.target.value; e.target.value = ''; if (id) setTheme('custom', { ...Theme.BASES[id] }); });
+
+// ---- Stash searches ----------------------------------------------------------------------
+// One row per saved search: its name, the search, up, down and remove. Saved on each change,
+// as the whole list. A row being typed in is not drawn again under the cursor.
+const SS_LIMIT = 50; // the game's search box (GAME_LIMIT in src/core/stashSearch.js)
+let ssDrawn = ''; // the list as last drawn: a save of what was typed does not draw it again
+const ssList = () => (Array.isArray(state.config.stashSearches) ? state.config.stashSearches : []).map((x) => ({ name: x.name || '', text: x.text || '' }));
+function renderSearches() {
+  const box = $('ss-rows');
+  if (!box || $('set-searches').hidden) return;
+  if (box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+  const list = ssList(), key = JSON.stringify(list);
+  if (key === ssDrawn && box.childElementCount) return;
+  ssDrawn = key;
+  setHtml(box, list.length ? list.map((x, i) => `<div class="ss-row">
+      <input type="text" class="ss-in-name" data-ss="${i}" data-ss-field="name" value="${esc(x.name)}" placeholder="Name, such as Maps 16" maxlength="60" aria-label="Name of search ${i + 1}">
+      <input type="text" class="ss-in-text" data-ss="${i}" data-ss-field="text" value="${esc(x.text)}" placeholder="The search, such as &quot;m q.*1[6-9]&quot;" maxlength="250" spellcheck="false" autocomplete="off" aria-label="Search ${i + 1}">
+      <span class="ss-btns"><button type="button" class="link" data-ss-move="${i}" data-dir="-1" ${i ? '' : 'disabled'} aria-label="Move up">Up</button><button type="button" class="link" data-ss-move="${i}" data-dir="1" ${i < list.length - 1 ? '' : 'disabled'} aria-label="Move down">Down</button><button type="button" class="link" data-ss-del="${i}" aria-label="Remove this search">Remove</button></span>
+      ${x.text.length > SS_LIMIT ? `<small class="ss-warn" role="alert">${x.text.length} characters: the game keeps only the first ${SS_LIMIT}.</small>` : ''}</div>`).join('')
+    : '<p class="set-off">No searches yet. Add one below, then open them in game with the key.</p>');
+}
+function saveSearches(list) {
+  state.config.stashSearches = list; // shown at once; the app sends back the cleaned list
+  saveSetting('stashSearches', list);
+}
+$('set-searches').addEventListener('change', (e) => {
+  const el = e.target.closest('[data-ss]');
+  if (!el) return;
+  const list = ssList(), i = Number(el.dataset.ss);
+  if (!list[i]) return;
+  list[i][el.dataset.ssField] = el.value;
+  ssDrawn = JSON.stringify(list); // the fields already show it; drawing now would lose the cursor
+  saveSearches(list);
+});
+// Leaving the list draws it again, so a warning about length shows.
+$('set-searches').addEventListener('focusout', (e) => {
+  if (e.relatedTarget && $('ss-rows').contains(e.relatedTarget)) return;
+  setTimeout(() => { if (state) { ssDrawn = ''; renderSearches(); } }, 0);
+});
+$('set-searches').addEventListener('click', (e) => {
+  if (e.target.closest('#ss-add')) {
+    const list = ssList();
+    list.push({ name: '', text: '' });
+    saveSearches(list);
+    renderSearches();
+    const rows = $('ss-rows').querySelectorAll('.ss-in-name');
+    if (rows.length) rows[rows.length - 1].focus();
+    return;
+  }
+  const mv = e.target.closest('[data-ss-move]');
+  if (mv) {
+    const list = ssList(), i = Number(mv.dataset.ssMove), j = i + Number(mv.dataset.dir);
+    if (!list[i] || !list[j]) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    saveSearches(list);
+    renderSearches();
+    return;
+  }
+  const del = e.target.closest('[data-ss-del]');
+  if (del) {
+    const list = ssList();
+    list.splice(Number(del.dataset.ssDel), 1);
+    saveSearches(list);
+    renderSearches();
+  }
+});

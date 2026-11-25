@@ -7,6 +7,7 @@ const { BrowserWindow, screen } = require('electron');
 
 const { overlayBounds, OVERLAY_WIDTH: WIDTH } = require('./core/trade');
 const { checkPanelBounds, inside, shouldClose, PANEL_WIDTH } = require('./core/checkPanel');
+const { menuBounds, MENU_WIDTH } = require('./core/stashSearch');
 
 class Overlay {
   constructor({ preload, page }) {
@@ -255,4 +256,106 @@ class CheckPanel {
   }
 }
 
-module.exports = { Overlay, Toast, CheckPanel, overlayBounds, WIDTH };
+// Saved stash searches, opened at the mouse with their key. Like the price check it never
+// takes the keyboard, so the game keeps it and the search typed after a click lands in the
+// game's stash search box. It closes on a pick, its key, Escape or a click anywhere else
+// (main.js), and once the mouse has left it for a moment.
+const MENU_LEAVE_MS = 1200;
+class SearchMenu {
+  constructor({ preload, page }) {
+    this.preload = preload;
+    this.page = page;
+    this.win = null;
+    this.wanted = false;
+    this.last = null;
+    this.bounds = null;
+    this.cursor = null;
+    this.height = 0;
+    this.rect = null;
+    this.timer = null;
+    this.entered = false;
+    this.outsideAt = 0;
+  }
+
+  create() {
+    if (this.win && !this.win.isDestroyed()) return;
+    this.win = new BrowserWindow({
+      width: MENU_WIDTH, height: 10, show: false, frame: false, transparent: true, backgroundColor: '#00000000',
+      resizable: false, movable: false, minimizable: false, maximizable: false, fullscreenable: false,
+      focusable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false, title: 'Map Companion stash searches',
+      webPreferences: { preload: this.preload, contextIsolation: true, nodeIntegration: false },
+    });
+    this.win.setAlwaysOnTop(true, 'screen-saver');
+    this.win.setMenuBarVisibility(false);
+    this.win.loadFile(this.page);
+    this.win.webContents.on('did-finish-load', () => { if (this.last) this.send(this.last); });
+    this.win.on('closed', () => { this.win = null; });
+  }
+
+  get visible() { return this.wanted; }
+
+  send(data) {
+    this.last = data;
+    if (this.win && !this.win.isDestroyed()) this.win.webContents.send('searches', data);
+  }
+
+  // data: { entries, key }. bounds: the game's screen. cursor: the mouse, in screen points.
+  show(data, { bounds, cursor }) {
+    this.bounds = bounds;
+    this.cursor = cursor;
+    this.wanted = true;
+    this.entered = false;
+    this.outsideAt = Date.now();
+    this.create();
+    this.send(data);
+    this.place();
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.watch(), 150);
+  }
+
+  setHeight(h) {
+    const height = Math.max(0, Number(h) || 0);
+    if (height === this.height && this.win && !this.win.isDestroyed() && this.win.isVisible()) return;
+    this.height = height;
+    this.place();
+  }
+
+  place() {
+    if (!this.win || this.win.isDestroyed() || !this.wanted || !this.bounds || this.height < 2) return;
+    const rect = menuBounds(this.bounds, this.cursor, this.height);
+    const same = this.rect && ['x', 'y', 'width', 'height'].every((k) => this.rect[k] === rect[k]);
+    this.rect = rect;
+    if (!same || !this.win.isVisible()) this.win.setBounds(rect);
+    if (!this.win.isVisible()) { this.win.showInactive(); this.win.setAlwaysOnTop(true, 'screen-saver'); }
+  }
+
+  // Whether a point on the screen is on the menu.
+  holds(p) { return !!(this.wanted && this.rect && inside(this.rect, p)); }
+
+  // A press of the left mouse button the app saw on the menu, at this spot of the window: over
+  // the game the window does not always get the click itself (as with the price check).
+  press(x, y) { if (this.wanted && this.win && !this.win.isDestroyed()) this.win.webContents.send('search-press', { x, y }); }
+
+  // Opened by mistake or looked at and left: it goes once the mouse has been off it a moment.
+  watch() {
+    if (!this.wanted || !this.rect) return;
+    const now = Date.now();
+    if (inside(this.rect, screen.getCursorScreenPoint(), 16)) { this.entered = true; this.outsideAt = now; return; }
+    if (this.entered && now - this.outsideAt > MENU_LEAVE_MS) this.hide();
+  }
+
+  hide() {
+    this.wanted = false;
+    clearInterval(this.timer);
+    this.timer = null;
+    if (this.win && !this.win.isDestroyed() && this.win.isVisible()) this.win.hide();
+  }
+
+  destroy() {
+    clearInterval(this.timer);
+    if (this.win && !this.win.isDestroyed()) this.win.destroy();
+    this.win = null;
+  }
+}
+
+module.exports = { Overlay, Toast, CheckPanel, SearchMenu, overlayBounds, WIDTH };

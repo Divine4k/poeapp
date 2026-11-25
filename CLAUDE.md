@@ -14,14 +14,14 @@ Electron 33 desktop app for Windows, a second-screen companion for Path of Exile
 ```
 npm run t            all tests, short output (~5 s, no Electron needed): one dot per test, failures in full
 npm test             all tests, full output (CI uses this)
-npm run test:<area>  one area: core, inventory, trade, keys, store, cloud, trouble, tracker, update, jewels
+npm run test:<area>  one area: core, inventory, trade, keys, store, cloud, trouble, tracker, update, jewels, stash
 npm start            run the app (needs npm install; Electron)
 npm run perf         the speed check (needs npm install; opens a hidden Electron window, ~10 s): times with limits, see "Performance"
 node scripts/build-stats.js <stats.ndjson>   rebuild trade-site stat list at a new league
 node scripts/build-jewels.js <PathOfBuilding> <skilltree-export>   rebuild the tree and jewel data (new tree)
 node scripts/demo-server.js [port] [tables dir]   the main window in a browser with demo data and working Jewels page
 ```
-The whole suite is fast, so `npm run t` after any change is fine. Tests cover `src/core` (jewels with real slices of the timeless tables in `test/fixtures/timeless.json.gz`), `src/shared.js`, `src/cloud.js`, `src/updater.js`, `src/github.js`, `src/troubleshoot.js`, `src/tracker.js`, `src/ui/keys.js`, `src/ui/steps.js`; `main.js` and the UI pages have no unit tests. For UI changes, the page can be opened in a browser with demo data (`src/ui/index.html`, see demo.js). To boot the real app on Linux: `npm install`, then `xvfb-run -a npx electron --no-sandbox .` with `HOME` set to a temp folder (the network is mostly blocked here; that is fine).
+The whole suite is fast, so `npm run t` after any change is fine. Tests cover `src/core` (stash searches in `test/stashSearch.test.js`; jewels with real slices of the timeless tables in `test/fixtures/timeless.json.gz`), `src/shared.js`, `src/cloud.js`, `src/updater.js`, `src/github.js`, `src/troubleshoot.js`, `src/tracker.js`, `src/ui/keys.js`, `src/ui/steps.js`; `main.js` and the UI pages have no unit tests. For UI changes, the page can be opened in a browser with demo data (`src/ui/index.html`, see demo.js). To boot the real app on Linux: `npm install`, then `xvfb-run -a npx electron --no-sandbox .` with `HOME` set to a temp folder (the network is mostly blocked here; that is fine).
 
 ## File map
 | Path | What |
@@ -43,6 +43,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `src/ui/overlay.*`, `tradecard.js` | Trade overlay over the game; how one offer is drawn |
 | `src/ui/layout.*` | Layout mode (drag overlay parts, Shift+F2) |
 | `src/ui/toast.*` | Short message over the game |
+| `src/ui/search.*`, `src/core/stashSearch.js` | Stash searches (as in Awakened PoE Trade): saved `{ name, text }` in `config.stashSearches`, written on Settings, Stash searches (app/settings.js, `renderSearches`). Its key (`hotkeys.stashSearch`, Ctrl+Shift+F, only while the game is in front) opens the menu at the mouse (`SearchMenu` in src/overlay.js; `toggleSearchMenu`/`pickSearch` in main.js, section "stash searches"). A click types Ctrl+F, Ctrl+A, paste, Enter (`typeSearch` in src/chat.js) through `sendChat(text, { search: true })`. Closes on a pick, its key, Escape, a click elsewhere (the key helper), or the mouse leaving it. The game's box takes 50 characters (`GAME_LIMIT`) |
 | `src/ui/recorder.*`, `src/recorder-preload.js` | Hidden window that records the screen (MP4 or WebM) for `src/recorder.js` |
 | `src/core/session.js` | Map runs, timers, deaths, loot, costs (pure logic) |
 | `src/core/clientLog.js` | Reads Client.txt (read-only) |

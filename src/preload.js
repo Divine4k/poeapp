@@ -37,4 +37,8 @@ contextBridge.exposeInMainWorld('api', {
   checkSize: (height) => ipcRenderer.send('check-size', height),
   checkKeys: (on) => ipcRenderer.send('check-keys', !!on), // a number is being typed: the app holds the keys a number needs
   onCheckKey: (cb) => ipcRenderer.on('check-key', (_e, k) => cb(k)), // one of those keys, or 'done'
+  // the stash searches menu on top of the game
+  onSearches: (cb) => ipcRenderer.on('searches', (_e, data) => cb(data)),
+  onSearchPress: (cb) => ipcRenderer.on('search-press', (_e, p) => cb(p)), // a press of the mouse the app saw land in the menu
+  searchSize: (height) => ipcRenderer.send('search-size', height),
 });

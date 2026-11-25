@@ -811,6 +811,17 @@ label.set-row { cursor: pointer; }
 .set-what small.bad, .set-what .key-msg { color: var(--blood); }
 .set-ctl { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
 .set-ctl.wide { flex: 1 1 auto; }
+/* Stash searches: name, search, then up, down and remove, one row each */
+.ss-rows > .set-off { margin: 0; padding: 14px 16px; color: var(--ash); }
+.ss-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 2.4fr) auto; align-items: center; gap: 6px 10px; padding: 8px 12px; border-top: 1px solid var(--seam); }
+.ss-row:first-child { border-top: 0; }
+.ss-row input[type=text] { width: 100%; min-width: 0; }
+.ss-in-text { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+.ss-btns { display: flex; gap: 10px; }
+.ss-btns .link { padding: 0; font-size: 12.5px; color: var(--ash); }
+.ss-btns .link:hover:not(:disabled) { color: var(--bone); }
+.ss-btns .link:disabled { opacity: 0.35; cursor: default; }
+.ss-warn { grid-column: 1 / -1; font-size: 12.5px; color: var(--blood); }
 /* a list of text fields: the names take one width, so the fields line up */
 .set-list.fields .set-what { flex: 0 0 150px; }
 .set-ctl input:not([type=checkbox]):not([type=number]) { width: 250px; }

@@ -34,8 +34,9 @@
     .map(([id, label, enabled]) => ({ id, label, enabled: !!enabled, pattern: '' }));
   const state = {
     config: {
-      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
+      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
       inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
+      stashSearches: [{ name: 'Currency', text: 'currency' }, { name: 'Maps 16', text: '"m q.*1[6-9]"' }, { name: 'Gem regex', text: '"(anoma|diverg|phant).*(blood|enfeeb|frenz|lightning|tempes)"' }, { name: '', text: 'unique' }],
       loadout: [{ name: 'Ambush Scarab of Containment', qty: 2, chaos: null }, { name: 'Map', qty: 1, chaos: 4 }],
     },
     status: {
@@ -115,7 +116,7 @@
     id, dir, player, item, qty, price, league: 'Demo', tab, left, top, note: '', at: now - id * 47000, lastAt: now, asks: 1,
     state: 'new', here: false, thanked: false, soldAlready: false, value: null, market: null, low: false, next: dir === 'in' ? 'invite' : 'hideout', nextLabel: '', waiting: '', grid: tab ? 12 : 0, ...more,
   });
-  const KEYS = { hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9' }, trade: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' } };
+  const KEYS = { hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, trade: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' } };
   state.config.trade = { enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { ...KEYS.trade }, auto: { thankSold: true, kickSold: true, thankBought: false, leaveBought: false, homeBought: false, joinHideout: false, ignoreSold: false, closeBoughtSec: 0 }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
   state.status.hotkeys.layout = true; state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
   state.trade = {
@@ -143,6 +144,8 @@
   window.api = {
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, sockets: true, league: 'Keepers', coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {}, checkKeys: () => {}, onCheckPress: (cb) => { window.demoPress = cb; },
+    // The stash searches menu, opened as search.html in a browser.
+    onSearches: (cb) => setTimeout(() => cb({ key: 'Ctrl+Shift+F', entries: state.config.stashSearches.map((x, i) => ({ i, name: x.name || x.text, text: x.text, long: x.text.length > 50 })) }), 0), searchSize: () => {}, onSearchPress: () => {},
     // Settings changed in the preview are kept for as long as the page is open, as the app would keep them.
     getState: async () => state, onState: (cb) => { listener = cb; },
     // The Jewels page needs the real tree and tables: scripts/demo-server.js answers these when

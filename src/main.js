@@ -31,8 +31,9 @@ const { SnapshotStore, SessionArchive, markCarried, recheckCells } = require('./
 const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
-const { focusGame, typeChat, copyItem } = require('./chat');
-const { Overlay, Toast, CheckPanel } = require('./overlay');
+const { focusGame, typeChat, typeSearch, copyItem } = require('./chat');
+const { Overlay, Toast, CheckPanel, SearchMenu } = require('./overlay');
+const { cleanSearches, menuEntries } = require('./core/stashSearch');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
@@ -94,6 +95,7 @@ const book = new TradeBook();
 let overlay = null;
 let toast = null; // the short message shown in game after the check key
 let checkPanel = null; // the price check window on top of the game
+let searchMenu = null; // the saved stash searches, opened at the mouse with their key
 let layoutWin = null; // the full-screen window for dragging overlay parts into place
 const watch = new GameWatch();
 let sharedLoading = false; // the shared item list is being fetched because Refresh was pressed
@@ -203,6 +205,7 @@ function loadConfig() {
     config.inventory = { ...config.inventory, autoCopy: true };
     config.autoCopyOn = true;
   }
+  config.stashSearches = cleanSearches(config.stashSearches);
   if (!Array.isArray(config.strategies) || !config.strategies.length) config.strategies = DEFAULT_CONFIG.strategies;
   if (!config.strategies.some((x) => x.id === config.activeStrategy)) config.activeStrategy = config.strategies[0].id;
   // Keep the user's rule choices but pick up rules added in newer versions.
@@ -792,7 +795,7 @@ const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape
 // The helper is also what types chat lines: for trade offers, and for the /hideout and
 // /remaining keys, which work with trade offers switched off too.
 let keyReadTimer = null;
-const hookWanted = () => !!((trouble && trouble.recording) || config.inventory.onKey || config.inventory.onClick || config.inventory.autoCopy || config.trade.enabled || config.trade.hotkeys.hideout || config.trade.hotkeys.remaining);
+const hookWanted = () => !!((trouble && trouble.recording) || config.inventory.onKey || config.inventory.onClick || config.inventory.autoCopy || config.trade.enabled || config.trade.hotkeys.hideout || config.trade.hotkeys.remaining || config.hotkeys.stashSearch);
 // What the helper is set up from. It is only started again when one of these changes.
 const hookSetup = () => JSON.stringify([hookWanted(), !!config.inventory.onKey, config.inventory.key, !!config.inventory.onClick, !!(trouble && trouble.recording)]);
 // The helper is started once and then left running: only what it listens for is swapped when
@@ -824,6 +827,15 @@ function syncKeyHook() {
       }, 200);
     });
   }
+  // The stash searches menu: Escape closes it, a press on it is passed on (as for the price
+  // check below), a press anywhere else closes it. The keys and clicks still reach the game.
+  lib.uIOhook.on('keydown', (e) => { if (e.keycode === lib.UiohookKey.Escape && searchMenu && searchMenu.visible) closeSearchMenu('Escape'); });
+  lib.uIOhook.on('mousedown', (e) => {
+    if (!searchMenu || !searchMenu.visible) return;
+    const p = screen.getCursorScreenPoint();
+    if (!searchMenu.holds(p)) { closeSearchMenu('click elsewhere'); return; }
+    if (e.button === 1) searchMenu.press(p.x - searchMenu.rect.x, p.y - searchMenu.rect.y);
+  });
   // The price check window over the game goes with the game's own panels: Escape, or the
   // inventory key (the item was checked in the open inventory, so the key closes it). The key
   // still reaches the game as well; the app only listens.
@@ -1620,7 +1632,7 @@ function registerHotkeys() {
   typingHeld = [];
   if (checkPanel && checkPanel.typing) typingKeys(true); // a number being typed keeps its keys
   gameKeysOn = false;
-  status.hotkeys = { clipboard: false, snapshot: false, priceCheck: false, tradeNext: false, tradeDismiss: false, layout: false };
+  status.hotkeys = { clipboard: false, snapshot: false, priceCheck: false, tradeNext: false, tradeDismiss: false, layout: false, stashSearch: false };
   // Keys that only mean something in the game are held only while the game is in front.
   // Anywhere else they stay with the program you are in (Ctrl+D bookmarks, F5 refreshes).
   gameKeysOn = watch.gameInFront();
@@ -1636,6 +1648,9 @@ function registerHotkeys() {
   // The price check key: the same check without naming or counting anything.
   status.hotkeys.priceCheckHeld = gameKeysOn && !!config.hotkeys.priceCheck;
   if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { checkHovered({ count: false }); });
+  // The stash searches menu: only while the game is in front, like the price check key.
+  status.hotkeys.stashSearchHeld = gameKeysOn && !!config.hotkeys.stashSearch;
+  if (gameKeysOn) reg('stashSearch', config.hotkeys.stashSearch, () => { toggleSearchMenu(); });
   const hk = config.trade.hotkeys, taken = [];
   const extra = (accel, fn) => { if (!accel) return; try { if (!globalShortcut.register(accel, noted('chat or trade key', accel, fn))) taken.push(accel); } catch (_) { taken.push(accel); } };
   // Layout mode places every part of the overlay (the price check window and the check message
@@ -1755,13 +1770,39 @@ function syncOverlay() {
   });
 }
 
+// ---- stash searches ------------------------------------------------------------
+// The menu of saved searches, at the mouse, over the game. Its key opens and closes it.
+function toggleSearchMenu() {
+  if (!searchMenu || !overlay) return;
+  if (searchMenu.visible) { closeSearchMenu('key'); return; }
+  if (layoutWin || !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
+  const entries = menuEntries(config.stashSearches);
+  if (trouble) trouble.event('stashSearchMenu', { open: true, entries: entries.length });
+  searchMenu.show({ entries, key: config.hotkeys.stashSearch }, { bounds: overlay.display().bounds, cursor: screen.getCursorScreenPoint() });
+}
+function closeSearchMenu(why) {
+  if (!searchMenu || !searchMenu.visible) return;
+  if (trouble) trouble.event('stashSearchMenu', { open: false, why });
+  searchMenu.hide();
+}
+// One click on a saved search: the menu closes and the search goes into the game's stash
+// search box. Typed only on that click, never by itself.
+async function pickSearch(i) {
+  const s = (config.stashSearches || [])[Number(i)];
+  closeSearchMenu('picked');
+  if (!s || !s.text) return false;
+  await sleep(80); // the menu picks on the press: let the mouse button come up before the keys go out
+  return sendChat(s.text, { search: true });
+}
+
 // Sends one chat line to the game. Returns true when it went out.
 // Nothing is typed unless Path of Exile is confirmed to be the window in front: keys go to
 // whatever window has the keyboard, so typing blind could put the line in a browser or a chat.
 // auto: the line is not the result of a click or key press, so the game window is never pulled
 // to the front for it and failures stay quiet. send: false leaves the line unsent in the chat box.
-async function sendChat(text, { auto = false, send = true } = {}) {
-  if (trouble) trouble.event('chat', { text, auto, send, busy: chatBusy || undefined });
+// search: the text goes into the stash search box (Ctrl+F) instead of the chat.
+async function sendChat(text, { auto = false, send = true, search = false } = {}) {
+  if (trouble) trouble.event(search ? 'stashSearch' : 'chat', { text, auto, send, busy: chatBusy || undefined });
   if (chatBusy) return false;
   if (auto && !(hook && watch.gameInFront())) return false;
   if (!hook) { say('Nothing was sent: the keyboard helper is not installed, so the app cannot type in the game. Run npm install in the app folder.', true); return false; }
@@ -1781,7 +1822,7 @@ async function sendChat(text, { auto = false, send = true } = {}) {
     }
     if (!watch.gameInFront()) { say('Nothing was sent: the game is not the window in front.', true); return false; }
     if (trouble) trouble.ownKeys(500);
-    return await typeChat(hook, clipboard, text, { send });
+    return search ? await typeSearch(hook, clipboard, text) : await typeChat(hook, clipboard, text, { send });
   } catch (e) {
     if (!auto) say(`Nothing was sent: ${e.message || e}`, true);
     return false;
@@ -1910,12 +1951,13 @@ function createWindow() {
   win.once('ready-to-show', () => { if (second) win.maximize(); win.show(); });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); });
+  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); if (searchMenu) searchMenu.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
 function applyConfig(patch) {
   if (trouble) trouble.event('setting', patch);
+  if (patch.stashSearches) patch = { ...patch, stashSearches: cleanSearches(patch.stashSearches) };
   const leagueBefore = config.league, logBefore = config.logPath, hookBefore = hookSetup();
   if (patch.trade) patch = { ...patch, trade: mergeTrade(config.trade, patch.trade) };
   config = {
@@ -1943,6 +1985,7 @@ function applyConfig(patch) {
 }
 
 const actions = {
+  stashSearch: (a) => pickSearch(a.i),
   startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(); },
   endRun: () => { session.endRun(); syncLedger(); },
   recheckMaps: () => { recheckMaps(); },
@@ -2318,6 +2361,7 @@ function setupIpc() {
     if (!checkPanel || !checkPanel.win || e.sender !== checkPanel.win.webContents) return;
     checkPanel.takeKeys(!!on);
   });
+  ipcMain.on('search-size', (e, h) => { if (searchMenu && searchMenu.win && e.sender === searchMenu.win.webContents) searchMenu.setHeight(h); });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
   ipcMain.handle('trouble-list', () => (trouble ? trouble.list() : []));
   ipcMain.handle('trouble-details', (_e, id) => (trouble ? trouble.details(String(id || '')) : null));
@@ -2370,11 +2414,13 @@ app.whenReady().then(() => {
   book.restore(readJson('trades.json', null));
   overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
   toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
+  searchMenu = new SearchMenu({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'search.html') });
   checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; }, onKeys: (on) => typingKeys(on) });
   watch.on('change', syncOverlay);
   watch.on('change', () => { if (trouble) trouble.event('front', { game: watch.gameInFront(), own: watch.ownInFront(), name: watch.name || '' }); });
   // Away from the game nothing is drawn over the screen.
   watch.on('change', () => { if (checkPanel.visible && !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; } });
+  watch.on('change', () => { if (searchMenu && searchMenu.visible && !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) closeSearchMenu('game left the front'); });
   watch.on('change', () => { if (watch.gameInFront() !== gameKeysOn) { registerHotkeys(); push(); } });
   watch.start();
   const cached = PriceTable.fromJSON(readJson('prices.json', null));

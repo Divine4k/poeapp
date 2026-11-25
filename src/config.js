@@ -11,7 +11,8 @@ const DEFAULT_CONFIG = {
   // clipboard: check the hovered item and, over the inventory, name or count its slot.
   // priceCheck: only check its price; nothing is named or counted. Held only while the game is in front.
   // record: starts and stops a troubleshooting recording (admins and moderators only).
-  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9' },
+  // stashSearch: opens the saved stash searches at the mouse. Held only while the game is in front.
+  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' },
   checkToast: true, // after the check key, say in game for a moment what was read
   // auto: checking an item searches the trade site straight away (two web requests).
   // overlay: show the search on top of the game, beside the inventory or stash.
@@ -25,6 +26,8 @@ const DEFAULT_CONFIG = {
   // What you are farming: each has a name and an atlas tree link, and its own sessions.
   strategies: [{ id: 'default', name: 'Default', atlasUrl: '' }],
   activeStrategy: 'default',
+  // Saved stash searches, [{ name, text }]: a click in their menu puts the text in the game's stash search box.
+  stashSearches: [],
   customPrices: {}, // name -> chaos, for items poe.ninja does not list
   ignoredItems: [], // names of items never to count, whatever the picture
   theme: 'slate', // how the window looks: an id from Theme.STANDARD or Theme.PREMIUM (src/ui/theme.js)
