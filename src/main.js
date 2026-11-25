@@ -32,8 +32,14 @@ const { Backlog } = require('./core/inventory/backlog');
 const { checkMessage, noteMessage, tradeMessage } = require('./core/checkMessage');
 const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBounds, placementFromRect, DEFAULT_MESSAGES, LABELS } = require('./core/trade');
 const { focusGame, typeChat, copyItem } = require('./chat');
-const { Focuser } = require('./focus');
-const focuser = new Focuser(); // brings the price check window or the game to the front (typing a number)
+// Brings the price check window or the game to the front (typing a number). Loaded with care:
+// an antivirus may remove focus.js (it runs PowerShell that moves windows), and the app must
+// still start then; typing a number falls back to the slower way.
+let focuser;
+try { focuser = new (require('./focus').Focuser)(); } catch (err) {
+  console.error('focus helper not loaded:', err && err.message);
+  focuser = { start() {}, stop() {}, game: () => focusGame().catch(() => 'no'), window: async () => 'no' };
+}
 const { Overlay, Toast, CheckPanel } = require('./overlay');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
