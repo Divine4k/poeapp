@@ -403,7 +403,8 @@
   // the game out of the front, and Windows put Explorer there instead): the app holds the keys a
   // number needs while it is typed and passes each one here (onCheckKey). Enter keeps the
   // number, Escape drops it, a click anywhere else keeps it.
-  let typing = null; // { row, input, fresh }
+  let typing = null; // { row, input, fresh, at }
+  let drawLater = false; // news came in while typing: draw once it ends
   function startTyping(b) {
     const li = b.closest('li[data-row]');
     const row = rows[Number(li.dataset.row)];
@@ -412,7 +413,7 @@
     input.type = 'text'; input.readOnly = true; input.tabIndex = -1; input.className = 'pc-type fresh';
     input.value = String(shown(row, row.num));
     b.replaceWith(input);
-    typing = { row, input, fresh: true }; // the first key replaces the number shown
+    typing = { row, input, fresh: true, at: data && data.at }; // the first key replaces the number shown
     api.checkKeys(true);
   }
   function typeKey(k) {
@@ -425,8 +426,13 @@
     t.input.classList.remove('fresh');
     if (k === 'Backspace') v = v.slice(0, -1);
     else if (k === '-') v = v.startsWith('-') ? v.slice(1) : `-${v}`;
-    else if (k === '.') { if (!v.includes('.')) v = `${v || '0'}.`; }
-    else if (/^[0-9]$/.test(k)) { if (v.replace(/[-.]/g, '').length < 7) v += k; }
+    // A point only where the item's own number has one (damage per second), and then one digit
+    // after it, as the + and - steps go; whole-number stats take whole numbers only.
+    else if (k === '.') { if (t.row.step < 1 && !v.includes('.')) v = `${v || '0'}.`; }
+    else if (/^[0-9]$/.test(k)) {
+      const after = v.includes('.') ? v.split('.')[1].length : 0;
+      if (v.replace(/[-.]/g, '').length < 6 && !(v.includes('.') && after >= 1)) v += k;
+    }
     t.input.value = v;
   }
   if (api.onCheckKey) api.onCheckKey(typeKey);
@@ -440,7 +446,11 @@
     b.textContent = shown(row, row.num);
     if (input.isConnected) input.replaceWith(b);
     api.checkKeys(false);
-    if (keep && input.value.trim() !== '' && input.value.trim() !== '-' && isFinite(v)) setNum(row, Math.round(shown(row, v) * 100) / 100);
+    if (keep && input.value.trim() !== '' && input.value.trim() !== '-' && isFinite(v)) {
+      const n = row.step < 1 ? Math.round(shown(row, v) * 10) / 10 : Math.round(shown(row, v));
+      if (n !== row.num) setNum(row, n); // unchanged: nothing to search again
+    }
+    if (drawLater) { drawLater = false; draw(); }
   }
   function setOn(el, on) {
     el.classList.toggle('on', on); el.classList.toggle('off', !on);
@@ -574,6 +584,14 @@
     const key = d && d.filters ? `${d.at}:${d.filtersRev}:${d.rev}:${Math.round(d.divine || 0)}` : '';
     data = d;
     panel.classList.toggle('no-sk', !!d && d.sockets === false);
-    if (key !== drawnFor || !key) { drawnFor = key; if (typing) stopTyping(true); draw(); }
+    if (key !== drawnFor || !key) {
+      drawnFor = key;
+      // News while a number is typed (the bench craft prices come in a moment after any change)
+      // waits until the typing ends: drawing now took the box away under the user's fingers,
+      // and the keys typed after that went to the game. A new item ends the typing.
+      if (typing && d && d.at === typing.at) { drawLater = true; return; }
+      if (typing) stopTyping(false);
+      draw();
+    }
   });
 })();
