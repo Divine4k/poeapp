@@ -232,6 +232,8 @@ test('search choices: weapons, uniques, magic items, cluster jewels and what can
   assert.match(buildFilters(parseItemText('Item Class: Rings\nRarity: Rare\nTwo-Stone Ring\n--------\nItem Level: 80\n--------\nUnidentified\n'), index).why, /Identify/);
   assert.equal(buildFilters(parseItemText('Item Class: Rings\nRarity: Rare\nDoom Loop\nSynthesised Two-Stone Ring\n--------\nItem Level: 80\n--------\n+72 to maximum Life\n'), index).type.value, 'Two-Stone Ring');
   assert.deepEqual([floorFor(1), floorFor(88), floorFor(-10), floorFor(1.5), floorFor(null)], [1, 79, -11, 1.4, null]);
+  // Numbers of 10 or more are whole: damage per second 211.03 gives 190, not 189.9.
+  assert.deepEqual([floorFor(211.03), floorFor(12.5), floorFor(9.5)], [190, 11, 8.6]);
 });
 
 test('search request: what is ticked becomes the trade site query', () => {

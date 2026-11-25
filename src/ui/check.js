@@ -34,8 +34,10 @@
     if (m < 48 * 60) return `${Math.floor(m / 60)} h`;
     return `${Math.floor(m / 1440)} d`;
   }
-  // One per click; a tenth for values with a decimal point (1.5% crit).
-  const stepFor = (value) => (Number.isInteger(Number(value)) ? 1 : 0.1);
+  // One per click; a tenth only for small values with a decimal point (1.5% crit). Numbers of
+  // 10 or more go in whole steps (wholeFor in core/tradeQuery.js), so Match and typing do too.
+  const stepFor = (value) => (Number.isInteger(Number(value)) || Math.abs(Number(value)) >= 10 ? 1 : 0.1);
+  const mineFor = (value, step) => (value === null || step < 1 ? value : Math.round(value));
 
   function rowsFrom(f) {
     const out = [];
@@ -45,13 +47,13 @@
     if (f.type) out.push({ tc: 'type', pk: 'type', chip: true, label: f.type.value, title: 'Only this base type', enabled: f.type.enabled });
     for (const x of f.flags) out.push({ tc: 'flag', pk: `flag:${x.key}`, chip: true, key: x.key, label: x.label, enabled: x.enabled });
     out.push({ tc: 'offline', chip: true, label: 'Offline sellers too', enabled: f.offline });
-    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}`, enabled: x.enabled, bound: 'min', num: x.min === null ? x.value : x.min, mine: x.value, step: stepFor(x.value) });
+    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}`, enabled: x.enabled, bound: 'min', num: x.min === null ? mineFor(x.value, stepFor(x.value)) : x.min, mine: mineFor(x.value, stepFor(x.value)), step: stepFor(x.value) });
     for (const x of f.stats) {
       // The number shown is the one the search asks for: a lowest value for most stats, a
       // highest where less is better. A "reduced" stat is kept below zero by the trade site;
       // it is shown the way the item words it.
       const bound = x.value === null ? null : (x.min === null && x.max !== null ? 'max' : 'min');
-      out.push({ tc: 'stat', pk: `stat:${x.key}`, key: x.key, label: x.text, mk: x.kind || 'explicit', kind: KIND_WORDS[x.kind] || '', tiers: x.tiers || [], enabled: x.enabled, bound, num: bound ? x[bound] : null, mine: x.value === null ? null : (x.negated ? -Math.abs(x.value) : x.value), step: stepFor(x.value), flip: !!x.negated });
+      out.push({ tc: 'stat', pk: `stat:${x.key}`, key: x.key, label: x.text, mk: x.kind || 'explicit', kind: KIND_WORDS[x.kind] || '', tiers: x.tiers || [], enabled: x.enabled, bound, num: bound ? x[bound] : null, mine: x.value === null ? null : mineFor(x.negated ? -Math.abs(x.value) : x.value, stepFor(x.value)), step: stepFor(x.value), flip: !!x.negated });
     }
     return out;
   }

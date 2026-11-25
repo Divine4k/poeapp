@@ -54,12 +54,16 @@ const STRENGTH = ['+# to Strength', '+# to all Attributes', '+# to Strength and 
 const LIFE = '+# to maximum Life';
 
 const round1 = (v) => Math.round(v * 10) / 10;
+// Whole numbers for a stat that is whole on the item, and for any number of 10 or more
+// (damage per second 211.03): a tenth there means nothing to anyone. Small numbers with a
+// point keep it (1.5% critical strike chance).
+const wholeFor = (value) => Number.isInteger(value) || Math.abs(value) >= 10;
 // The lowest roll still counted as "like mine": a tenth below it. Small whole numbers keep
 // their value ("+1 to Level of Socketed Gems" must not become 0).
 function floorFor(value) {
   if (value === null || !isFinite(value)) return null;
   const v = value >= 0 ? value * 0.9 : value * 1.1;
-  return Number.isInteger(value) ? Math.round(v) : round1(v);
+  return wholeFor(value) ? Math.round(v) : round1(v);
 }
 
 // Numbers the game works out for the whole item, which the trade site can search on directly.
@@ -93,7 +97,7 @@ function keyStat(category, m) {
 // span: how far apart the roll could have been; 0 when it is always the same.
 function uniqueFloor(value, span) {
   const v = Math.abs(value) - span * 0.1;
-  return Number.isInteger(value) || Number.isInteger(value * 2) ? Math.round(v) : round1(v);
+  return wholeFor(value) || Number.isInteger(value * 2) ? Math.round(v) : round1(v);
 }
 
 // tiers: the tier of each modifier the stat comes from, best first (1 is the best there is).
@@ -352,4 +356,4 @@ function markBait(listings) {
   return listings;
 }
 
-module.exports = { gearKind, searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks, compareSpec, markBait };
+module.exports = { wholeFor, gearKind, searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks, compareSpec, markBait };
