@@ -118,6 +118,8 @@ body.wide-side .navdot { position: static; margin-left: auto; box-shadow: none; 
 .strat-info a { color: var(--ash); text-decoration: none; }
 .strat-info a:hover, .strat-info .link:hover { color: var(--bone); }
 .strat-info .link { font-size: 12.5px; }
+/* Atlas tree and Edit read as buttons */
+.strat-info a, .strat-info .link { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line2); text-decoration: none; }
 #strategy-dialog { width: min(520px, 92vw); }
 #strategy-dialog input { width: 100%; }
 #btn-strategy-delete:hover { color: var(--blood); }
@@ -185,7 +187,7 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .mc-name .eb.idle + .map-name { font-size: 30px; color: var(--soft); }
 .map-meta { color: var(--ash); font-size: 13px; }
 .mapcard small { display: block; font-size: 11.5px; font-weight: 560; color: var(--ash); margin-bottom: 6px; }
-.clock { font: 300 clamp(36px, 3.8vw, 54px)/0.9 var(--display); letter-spacing: -0.04em; }
+.clock { font: 640 clamp(36px, 3.8vw, 54px)/0.9 var(--display); letter-spacing: -0.04em; }
 .clock.paused { color: var(--ash); }
 /* the thousandths: same size as the rest, digits of one width so the clock does not jump */
 .clock { font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -200,6 +202,9 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .mc-net { justify-self: end; }
 .mc-acts { display: flex; flex-direction: column; gap: 8px; min-width: 168px; }
 .mc-acts button { height: 38px; padding: 0 16px; border-radius: var(--r-md); white-space: nowrap; }
+/* one main button; reading the inventory is the quiet second action under it */
+.mc-acts button.quiet, .mapcard.has-photo .mc-acts button.quiet { height: 26px; padding: 0; border: 0; background: none; box-shadow: none; backdrop-filter: none; font-size: 12.5px; font-weight: 560; color: var(--soft); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--bone) 30%, transparent); }
+.mc-acts button.quiet:hover { color: var(--bone); background: none; }
 .mapcard.has-photo .mc-acts button:not(.primary) { background: rgba(14, 15, 18, 0.55); border-color: rgba(255, 255, 255, 0.14); color: #f4f1ea; backdrop-filter: blur(6px); }
 
 /* back from a map: one line under the map card */
@@ -252,6 +257,8 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .statbar b { font: 600 19px/1.25 var(--display); letter-spacing: -0.02em; }
 .statbar .lead b { color: var(--gold); text-shadow: 0 0 20px color-mix(in srgb, var(--gold) 25%, transparent); }
 .statbar .lead.neg b { color: var(--blood); text-shadow: none; }
+.statbar .rate b { color: var(--moss); }
+.statbar .rate.neg b { color: var(--blood); }
 
 /* the maps: which session, then one line each */
 .sess .p-head { padding-right: 14px; }
@@ -268,6 +275,18 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .sess .table-wrap { border-top: 1px solid var(--line); }
 
 .sess .table-wrap { flex: none; overflow: visible; border-top: 1px solid var(--line); }
+/* the session as bars under the maps */
+.sess-bars { flex: none; margin: auto 18px 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.sess-bars[hidden] { display: none; }
+.sess-bars p { display: flex; justify-content: space-between; gap: 12px; margin: 0 0 10px; font-size: 11.5px; font-weight: 560; color: var(--ash); }
+.sess-bars .b { display: flex; align-items: flex-end; gap: 6px; height: 110px; padding-bottom: 18px; }
+.sess-bars .b i { --h: 4%; position: relative; flex: 0 1 46px; min-width: 6px; height: var(--h); border-radius: 6px 6px 2px 2px; background: color-mix(in srgb, var(--bone) 12%, transparent); }
+.sess-bars .b.many { gap: 3px; padding-bottom: 0; }
+.sess-bars .b i.up { background: linear-gradient(180deg, color-mix(in srgb, var(--moss) 80%, transparent), color-mix(in srgb, var(--moss) 22%, transparent)); }
+.sess-bars .b i.neg { background: color-mix(in srgb, var(--blood) 55%, transparent); }
+.sess-bars .b i.best { background: linear-gradient(180deg, var(--gold), color-mix(in srgb, var(--gold) 25%, transparent)); box-shadow: 0 0 18px color-mix(in srgb, var(--gold) 30%, transparent); }
+.sess-bars .b i.now { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--gold) 30%, transparent) 0 5px, transparent 5px 10px); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 60%, transparent); }
+.sess-bars .b i em { position: absolute; bottom: -18px; left: -6px; right: -6px; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; font-style: normal; font-size: 10.5px; color: var(--faint); }
 
 /* tables */
 .table-wrap { flex: 1; overflow: auto; min-height: 0; }
@@ -1254,3 +1273,5 @@ progress::-webkit-progress-value { background: var(--moss); border-radius: 3px; 
 .jw-verdict.ok { box-shadow: inset 3px 0 0 var(--portal); }
 .jw-verdict.poor { background: color-mix(in srgb, var(--blood) 7%, transparent); box-shadow: inset 3px 0 0 var(--blood); }
 .jw-verdict.poor b { color: var(--blood); }
+/* a short window: no room for the bars under the maps */
+@media (max-height: 800px) { .sess-bars { display: none; } }

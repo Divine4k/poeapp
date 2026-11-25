@@ -14,7 +14,7 @@ const totalsHtml = (t, divine, runs) => {
   const short = (n) => n.replace(/ Orb$/, '').replace(/^Orb of /, '');
   return `
       <div class="lead ${t.net < 0 ? 'neg' : ''}"><small>Session</small><b>${fmtValue(t.net, divine)}</b></div>
-      <div><small>Per hour</small><b>${t.netPerHour ? fmtValue(t.netPerHour, divine) : 'n/a'}</b></div>
+      <div class="rate ${t.netPerHour < 0 ? 'neg' : ''}"><small>Per hour</small><b>${t.netPerHour ? fmtValue(t.netPerHour, divine) : 'n/a'}</b></div>
       <div><small>Maps</small><b>${t.maps}</b></div>
       <div><small>Average</small><b>${t.maps ? fmtTime(t.avgMapMs) : 'n/a'}</b></div>
       <div title="${best ? esc(`${best.qty} × ${best.name}, ${fmtValue(best.chaos, divine)}`) : ''}"><small>Best drop</small><b>${best ? esc(`${best.qty > 1 ? `${best.qty} ` : ''}${short(best.name)}`) : '—'}</b></div>`;
@@ -156,4 +156,30 @@ function renderSession() {
   const rows = runsHtml(sum, { open: expanded, readonly: sum !== live, redraw: renderSession, divine: sum.divine });
   if (rows !== runsShown) { runsShown = rows; $('runs').innerHTML = rows; }
   setHtml($('runs-total'), runsTotal(sum, sum.divine));
+  renderBars(sum);
+}
+
+// Under the maps: each map of the session as a bar, as tall as what it made. Green above the
+// session's average, gold for the best, striped for the map being run. The heights are set
+// through a CSS variable (the page allows no style attributes).
+function renderBars(sum) {
+  const box = $('sess-bars');
+  const runs = sum.runs.slice(-30);
+  box.hidden = runs.length < 2;
+  if (box.hidden) return;
+  const done = sum.runs.filter((r) => r.id !== sum.currentId);
+  const avg = done.length ? done.reduce((a, r) => a + r.net, 0) / done.length : 0;
+  const best = done.length > 1 ? done.reduce((a, r) => (r.net > a.net ? r : a), done[0]) : null;
+  const top = Math.max(1, ...runs.map((r) => r.net));
+  const many = runs.length > 12;
+  const bars = runs.map((r) => {
+    const live = r.id === sum.currentId;
+    const cls = live ? 'now' : r === best ? 'best' : r.net < 0 ? 'neg' : r.net >= avg ? 'up' : '';
+    const h = Math.max(4, Math.round((Math.max(0, r.net) / top) * 100));
+    const tip = `${r.name}: ${r.net > 0 ? '+' : ''}${fmtValue(r.net, sum.divine)} in ${fmtTime(live ? liveDuration(r) : r.durationMs)}${live ? ' (running)' : ''}`;
+    return `<i class="${cls}" data-h="${h}" title="${esc(tip)}">${many ? '' : `<em>${live ? 'now' : esc(r.name.split(' ')[0])}</em>`}</i>`;
+  }).join('');
+  const head = `<p><span>Each map this session, by what it made</span>${best ? `<span>best: ${esc(best.name)} ${best.net > 0 ? '+' : ''}${esc(fmtValue(best.net, sum.divine))}</span>` : ''}</p>`;
+  setHtml(box, `${head}<div class="b${many ? ' many' : ''}">${bars}</div>`);
+  for (const i of box.querySelectorAll('i[data-h]')) i.style.setProperty('--h', `${i.dataset.h}%`);
 }
