@@ -334,16 +334,16 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .runs-table .vs .dim { padding: 0; color: var(--faint); }
 .runs-table .net { font-weight: 650; color: var(--bone); }
 .runs-table .net.gold { color: var(--gold); }
-/* the map being run: its left edge glows green and breathes slowly, and its striped bar moves,
-   like a progress bar at work (all still when animations are off in Settings) */
+/* the map being run: its left edge glows green and breathes slowly, and a soft green light
+   passes along the whole row now and then (all still when animations are off in Settings).
+   The light is the row's own background, so the clipped name cell does not cut it off. */
 .runs-table tr.live td:first-child { position: relative; }
-.runs-table tr.live td:first-child::before, .runs-table tr.live td:first-child::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none; }
-.runs-table tr.live td:first-child::before { width: 3px; background: var(--moss); filter: saturate(1.8) brightness(1.15); box-shadow: 0 0 10px var(--moss); animation: live-breathe 2.4s ease-in-out infinite; }
-.runs-table tr.live td:first-child::after { width: 56px; background: linear-gradient(90deg, color-mix(in srgb, var(--moss) 45%, transparent), transparent); filter: saturate(1.8); animation: live-breathe 2.4s ease-in-out infinite; }
-@keyframes live-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
-.runs-table .track .fill.now { background-size: 11.31px 100%; animation: live-stripes 0.9s linear infinite; }
-@keyframes live-stripes { from { background-position: 0 0; } to { background-position: 11.31px 0; } }
-@media (prefers-reduced-motion: reduce) { .runs-table tr.live td:first-child::before, .runs-table tr.live td:first-child::after, .runs-table .track .fill.now { animation: none; } }
+.runs-table tr.live td:first-child::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none; }
+.runs-table tr.live td:first-child::before { z-index: 1; width: 3px; background: var(--moss); filter: saturate(1.8) brightness(1.15); box-shadow: 0 0 10px var(--moss), 0 0 22px color-mix(in srgb, var(--moss) 60%, transparent); animation: live-breathe 2.4s ease-in-out infinite; }
+.runs-table tr.live { background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--moss) 16%, transparent) 50%, transparent) no-repeat; background-size: 35% 100%; animation: live-sweep 3.6s ease-in-out infinite; }
+@keyframes live-breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+@keyframes live-sweep { 0% { background-position: -60% 0; } 70%, 100% { background-position: 160% 0; } }
+@media (prefers-reduced-motion: reduce) { .runs-table tr.live td:first-child::before, .runs-table tr.live { animation: none; } }
 .runs-table .x { width: 26px; text-align: center; }
 .runs-table .x .link { font-size: 16px; line-height: 1; opacity: 0; }
 .runs-table tr.run:hover .x .link, .runs-table .x .link:focus-visible { opacity: 1; }
