@@ -16,6 +16,24 @@ class InventoryReader {
     this.prints = new Array(COLS * ROWS).fill(null); // picture fingerprint per filled cell, from the last clear view of it
     this.pins = new Array(COLS * ROWS).fill(null);   // items counted by hand for one slot: { name, qty, print }
     this.ignoreNames = new Set();                    // items you chose never to count, by name
+    // What was worked out from each slot's picture the last time: { rgb, empty, stack, print,
+    // stamp, hit, near, map }. A slot whose picture is exactly the same as last time (most of
+    // them, on most readings) is not read again: the same pixels against the same lists give
+    // the same answer, and the matching is by far the slowest part of a reading.
+    this.seen = new Array(COLS * ROWS).fill(null);
+  }
+
+  // The kept answers for slot k, started afresh when its picture changed.
+  look(k, rgb) {
+    const s = this.seen[k];
+    if (s && Buffer.compare(s.rgb, rgb) === 0) return s;
+    return (this.seen[k] = { rgb, empty: isEmptyCell(rgb), stack: undefined, print: null, stamp: null, hit: undefined, near: undefined, map: undefined });
+  }
+  // The answers that depend on the item lists are dropped when those changed.
+  fresh(s) {
+    const stamp = this.index.stamp;
+    if (s.stamp !== stamp) { s.stamp = stamp; s.hit = undefined; s.near = undefined; }
+    return s;
   }
 
   forgetCells() { this.memory.fill(null); this.pins.fill(null); }
@@ -50,11 +68,11 @@ class InventoryReader {
     // First the whole grid is cut out, so pieces of items that take several slots (a bow, a
     // body armour) can be told from items of one slot. A piece is never matched to a picture:
     // a corner of a bow on its backdrop can look like a thin one-slot item.
-    const rgbs = [], empty = [], stacks = [];
+    const rgbs = [], empty = [], stacks = [], seen = [];
     for (let k = 0; k < COLS * ROWS; k++) {
-      rgbs.push(extractCell(frame, rect, Math.floor(k / COLS), k % COLS));
-      empty.push(isEmptyCell(rgbs[k]));
-      stacks.push(empty[k] ? 0 : readStack(rgbs[k]));
+      const s = this.look(k, extractCell(frame, rect, Math.floor(k / COLS), k % COLS));
+      if (s.stack === undefined) s.stack = s.empty ? 0 : readStack(s.rgb);
+      seen.push(s); rgbs.push(s.rgb); empty.push(s.empty); stacks.push(s.stack);
     }
     const pieces = multiSlotCells(rgbs.map((rgb, k) => (empty[k] || stacks[k] ? null : rgb)));
     for (let r = 0; r < ROWS; r++) {
@@ -72,7 +90,8 @@ class InventoryReader {
           }
           continue;
         }
-        const print = fingerprint(rgb);
+        const s = this.fresh(seen[k]);
+        const print = s.print || (s.print = fingerprint(rgb));
         if (!unsure) this.prints[k] = print;
         // near: the closest names with their scores, kept when the read was not clear-cut.
         // how: 'sharp' when look-alikes were told apart on the sharp picture, 'doubt' when they could not be.
@@ -98,12 +117,13 @@ class InventoryReader {
           continue;
         }
 
-        let hit = this.index.match(print, () => sharpShifts(rgb));
+        if (s.hit === undefined) s.hit = this.index.match(print, () => sharpShifts(rgb)) || null;
+        let hit = s.hit;
         if (hit && hit.ignored) { this.memory[k] = null; info.status = 'ignored'; continue; }
         const stack = stacks[k];
         info.qty = stack; info.stack = stack;
         if (hit) { info.how = hit.sharp ? 'sharp' : (hit.doubt ? 'doubt' : null); info.clear = !!hit.clear || !!hit.sharp; }
-        if (!hit || hit.sharp || hit.doubt || hit.score < 0.9) info.near = this.index.nearest(print, 3);
+        if (!hit || hit.sharp || hit.doubt || hit.score < 0.9) info.near = s.near || (s.near = this.index.nearest(print, 3));
         // A cell without a stack number is a single item: one of something that does not stack
         // (an emblem, an invitation), or gear. It counts as one of the matched item, but only on
         // a clearly better match than a numbered cell needs, because gear can resemble an item's
@@ -111,7 +131,8 @@ class InventoryReader {
         if (hit && hit.source === 'art' && !stack && hit.score < SINGLE_ART_SCORE) hit = null;
         // Maps: a single item whose tier is read from the numeral on its picture.
         if (!hit && !stack) {
-          const map = readMapTier(rgb);
+          if (s.map === undefined) s.map = readMapTier(rgb) || null;
+          const map = s.map;
           if (map) hit = { name: map.name, score: map.score, source: 'map' };
         }
         // Recognised, but you chose never to count this item.

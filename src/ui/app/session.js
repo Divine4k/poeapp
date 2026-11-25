@@ -82,7 +82,7 @@ function runsHtml(sum, { open, readonly, redraw, divine }) {
         <td class="nm"${live ? ' title="The map you are in"' : ''}><span>${tierOf(r.level) ? `<span class="tier" title="Area level ${r.level}">T${tierOf(r.level)}</span>` : ''}<b>${esc(r.name)}</b>${best === r ? '<u>best</u>' : ''}${deathsHtml(r.deaths)}</span></td>
         <td class="mbar"${tip ? ` title="${esc(tip)}"` : ''}><span class="track">${avgAt !== null ? `<i class="avg" data-at="${avgAt}"></i>` : ''}<i class="fill ${cls}" data-w="${w}"></i></span></td>
         <td class="num end"${!live && r.endedAt ? ` title="${esc(`${dayOf(r.endedAt)}, ${clock(r.endedAt)}`)}"` : ''}>${live ? 'in progress' : r.endedAt ? clock(r.endedAt) : ''}</td>
-        <td class="num t">${fmtTime(live ? liveDuration(r) : r.durationMs)}</td>
+        <td class="num t"${live ? ' data-live' : ''}>${live ? '' : fmtTime(r.durationMs)}</td>
         <td class="num net ${r.net < 0 ? 'neg' : live ? 'gold' : ''}">${r.net > 0 ? '+' : ''}${fmtValue(r.net, divine)}</td>
         <td class="x">${readonly ? '' : `<button type="button" class="link" data-act="deleteRun" data-run="${esc(r.id)}" data-confirm="${esc(`Delete ${r.name} from this session?`)}" title="Delete this map" aria-label="Delete ${esc(r.name)}">×</button>`}</td></tr>`;
     if (open === r.id) {
@@ -179,6 +179,10 @@ function renderSession() {
   // hovered slot from ever showing.
   const rows = runsHtml(sum, { open: expanded, readonly: sum !== live, redraw: renderSession, divine: sum.divine });
   if (rows !== runsShown) { runsShown = rows; $('runs').innerHTML = rows; sizeBars($('runs')); }
+  // The running map's time is written into its own cell, so a second passing does not redraw
+  // the whole table (its buttons, its hover texts, the open map's pictures).
+  const liveCell = $('runs').querySelector('[data-live]'), liveRun = sum === live ? currentRun() : null;
+  if (liveCell && liveRun) { const t = fmtTime(liveDuration(liveRun)); if (liveCell.textContent !== t) liveCell.textContent = t; }
   setHtml($('runs-total'), runsTotal(sum, sum.divine));
 }
 

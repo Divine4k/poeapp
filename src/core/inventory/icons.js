@@ -112,6 +112,7 @@ class IconIndex {
     this.learned = []; // { name, print }  name '' means "ignore this item"
     this.shared = [];  // same shape, downloaded from the repository
     this.art = [];     // { name, print }
+    this.rev = 0;      // goes up with every change to the lists (see stamp)
     this.closeCall = 0.03; // two names this close in score count as look-alikes
     this.priceOf = null;   // optional: name -> price, used to settle look-alikes
     this.lookalike = 0.12;      // names within this of the leader get the sharp second look
@@ -122,11 +123,15 @@ class IconIndex {
   get size() { return this.learned.length + this.shared.length + this.art.length; }
 
   // sharp: the sharp print of the same picture, when it is known. auto: learned by the app itself.
-  addLearned(name, print, { sharp = null, auto = false } = {}) { this.learned.push({ name, print, sharp, auto }); }
-  setShared(list) { this.shared = list; }
-  addArt(name, print, sharp = null) { this.art.push({ name, print, sharp }); }
-  clearArt() { this.art = []; }
-  forget(name) { this.learned = this.learned.filter((e) => e.name !== name); }
+  addLearned(name, print, { sharp = null, auto = false } = {}) { this.learned.push({ name, print, sharp, auto }); this.rev++; }
+  setShared(list) { this.shared = list; this.rev++; }
+  addArt(name, print, sharp = null) { this.art.push({ name, print, sharp }); this.rev++; }
+  clearArt() { this.art = []; this.rev++; }
+  forget(name) { this.learned = this.learned.filter((e) => e.name !== name); this.rev++; }
+  // Changes whenever what the lists hold may have changed. An answer kept for a picture (the
+  // reader keeps them per slot) is only good while this is the same. The lengths are in it
+  // because a list can be filled from outside between two calls here.
+  get stamp() { return `${this.rev}:${this.learned.length}:${this.shared.length}:${this.art.length}`; }
 
   static best(list, print) {
     let best = null, score = -1, second = -1;

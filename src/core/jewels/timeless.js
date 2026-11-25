@@ -422,23 +422,32 @@ function search(data, table, { jewel: key, want, sockets, smalls = false, limit 
 
 // How one seed does against every other seed of the jewel in the same socket, for the verdict:
 // { score, totals, better (seeds that score higher), count, best: { seed, score } }.
-function rank(data, table, { jewel: key, want, socket, seed, smalls = false, onlyNodes = null }) {
-  const jewel = jewelByKey(key);
+function rank(data, table, { jewel: jewelKey, want, socket, seed, smalls = false, onlyNodes = null }) {
+  const jewel = jewelByKey(jewelKey);
   const lines = mergeWant(want);
   if (!lines.length) return null;
   const mine = seed / step(jewel);
-  const scores = [];
-  let own = null, best = null;
-  eachSeed(data, table, jewel, lines, socket, { smalls, onlyNodes }, (tableSeed, acc) => {
-    const { score } = scoreOf(lines, acc);
-    scores.push(score);
-    if (tableSeed === mine) own = { score: round2(score), totals: totalsOf(lines, acc) };
-    if (!best || score > best.score) best = { seed: tableSeed * step(jewel), score: round2(score) };
-  });
-  if (!own) return null;
-  const better = scores.filter((v) => round2(v) > own.score).length;
-  return { ...own, better, count: scores.length, best };
+  // Every seed's score depends on the jewel, the socket and what is wanted, not on the seed
+  // being looked at: kept from the last asking, so going through seeds one by one (the usual
+  // way of using the page) scores them all once instead of once per seed.
+  const key = JSON.stringify([jewelKey, lines, socket, !!smalls, onlyNodes ? [...onlyNodes] : null]);
+  if (!(ranked && ranked.table === table && ranked.key === key)) {
+    const seeds = [], scores = [], accs = [];
+    let best = null;
+    eachSeed(data, table, jewel, lines, socket, { smalls, onlyNodes }, (tableSeed, acc) => {
+      const { score } = scoreOf(lines, acc);
+      seeds.push(tableSeed); scores.push(score); accs.push(acc);
+      if (!best || score > best.score) best = { seed: tableSeed * step(jewel), score: round2(score) };
+    });
+    ranked = { table, key, seeds, scores, accs, best };
+  }
+  const at = ranked.seeds.indexOf(mine);
+  if (at < 0) return null;
+  const own = { score: round2(ranked.scores[at]), totals: totalsOf(lines, ranked.accs[at]) };
+  const better = ranked.scores.filter((v) => round2(v) > own.score).length;
+  return { ...own, better, count: ranked.scores.length, best: ranked.best };
 }
+let ranked = null; // the last full scoring: { table, key, seeds, scores, accs, best }
 
 // Adds up what the chosen passives give: [{ tpl, vals, count }], biggest first by count.
 function totals(nodes) {

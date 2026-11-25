@@ -81,7 +81,7 @@ let leftMapAt = 0;    // when the map was last left for the hideout, to tell if 
 let lastSingles = 0; // what the last clean read saw, for the Inventory tab
 // Items the reader could not name, kept until named, ignored or dismissed: [{ id, qty, print, image, guesses, at, here }]
 const backlog = new Backlog({ similar: (a, b) => similarity(a, b) > 0.95 });
-const saveBacklog = () => writeJson('unrecognised.json', backlog.save(encodePrint));
+const saveBacklog = () => writeJsonSoon('unrecognised.json', () => backlog.save(encodePrint));
 let learned = []; // [{ name, print(base64), image? }] image: the slot as it looked, kept for items named from 0.16 on
 let itemsRev = 0; // goes up whenever a named item changes, so the Items page reads its list again
 const session = new Session();
@@ -124,6 +124,48 @@ function readJson(name, fallback) {
 }
 function writeJson(name, value) {
   try { fs.writeFileSync(dataFile(name), JSON.stringify(value)); } catch (e) { console.error('save failed', name, e.message); }
+}
+// The same, for files that change in the middle of things (a setting, a box dragged on the
+// Tracker, an item learned during a reading): written a moment later and without holding the
+// app up. Changes close together become one write of the newest value (get() is asked when it
+// is written). Written beside the file and then swapped in, so a half-written file is never
+// read back. flushSaves() writes whatever is still waiting at once: before quitting or restarting.
+const SAVE_WAIT_MS = 400;
+const savesWaiting = new Map(); // name -> { get, timer }
+const savesRunning = new Map(); // name -> get, while its write is under way
+let savesClosed = false;
+function writeJsonSoon(name, get) {
+  if (savesClosed) { writeJson(name, get()); return; }
+  const w = savesWaiting.get(name);
+  if (w) { w.get = get; return; }
+  savesWaiting.set(name, { get, timer: setTimeout(() => saveWaiting(name), SAVE_WAIT_MS) });
+}
+async function saveWaiting(name) {
+  const w = savesWaiting.get(name);
+  if (!w) return;
+  // One write per file at a time: a second one waits its turn.
+  if (savesRunning.has(name)) { w.timer = setTimeout(() => saveWaiting(name), 100); return; }
+  savesWaiting.delete(name);
+  savesRunning.set(name, w.get);
+  const file = dataFile(name), tmp = `${file}.tmp`;
+  let text;
+  try { text = JSON.stringify(w.get()); } catch (e) { console.error('save failed', name, e.message); savesRunning.delete(name); return; }
+  try {
+    await fs.promises.writeFile(tmp, text);
+    // Swapped in at once (not in the background), so it cannot land after a newer write.
+    if (!savesClosed) fs.renameSync(tmp, file);
+  } catch (_) {
+    // The swap can fail on Windows while another program looks at the file: written the plain way.
+    if (!savesClosed) { try { fs.writeFileSync(file, text); } catch (e) { console.error('save failed', name, e.message); } }
+  }
+  savesRunning.delete(name);
+}
+function flushSaves() {
+  savesClosed = true;
+  const gets = new Map([...savesRunning, ...[...savesWaiting].map(([name, w]) => [name, w.get])]);
+  for (const w of savesWaiting.values()) clearTimeout(w.timer);
+  savesWaiting.clear();
+  for (const [name, get] of gets) { try { writeJson(name, get()); } catch (e) { console.error('save failed', name, e.message); } }
 }
 
 function loadConfig() {
@@ -343,6 +385,7 @@ function startLog() {
 function setPrices(table) {
   prices = table;
   prices.setCustom(config.customPrices);
+  index.rev++; // look-alikes are settled by price: answers kept per slot are worked out again
   status.prices.count = prices.size;
   status.prices.updatedAt = prices.updatedAt;
   status.prices.league = prices.league || '';
@@ -359,7 +402,7 @@ async function refreshPrices() {
   status.prices.loading = true; push();
   try {
     if (!leagues.length) leagues = await priceService.leagues();
-    if (!config.league && leagues.length) { config.league = leagues[0].id; writeJson('config.json', config); }
+    if (!config.league && leagues.length) { config.league = leagues[0].id; writeJsonSoon('config.json', () => config); }
     if (!config.league) throw new Error('No league selected');
     const { table, errors } = await priceService.refresh(config.league);
     status.prices.errors = errors;
@@ -471,22 +514,27 @@ function relearn() {
   index.learned = [];
   for (const l of learned) indexLearned(l);
   itemsRev++;
-  writeJson('learned.json', learned);
+  writeJsonSoon('learned.json', () => learned);
   reader.forgetCells();
 }
 
 // Does a named picture look clearly more like another item's official picture than like the
 // one it is named after? Returns { name, icon } of that other item, or null.
-function looksLikeAnother(name, print) {
+// The name of that other item, or null. Compares with every downloaded picture.
+function otherLookalike(name, print) {
   if (!name) return null;
   const a = IconIndex.best(index.art, print);
   if (!a.best || a.best.name === name || a.score < 0.8) return null;
   let own = null;
   for (const e of index.art) if (e.name === name) own = Math.max(own === null ? -1 : own, similarity(print, e.print));
   if (own === null || a.score - own < index.artMargin) return null;
-  const other = prices.get(a.best.name);
-  return { name: a.best.name, icon: (other && other.icon) || null };
+  return a.best.name;
 }
+// What the Items page list costs most to work out, kept between two askings: which shared
+// picture is one of your own, which pictures look like another item, and the drawn pictures.
+// The first two are only good while the item lists are the same (index.stamp); a picture drawn
+// from a print never changes.
+const itemKept = { stamp: null, twins: new Map(), doubts: new Map(), drawn: new Map(), drawnShared: new WeakMap() };
 
 // The name your additions to the item database are signed with: your account's. Empty when
 // not logged in, as nothing is added then.
@@ -515,14 +563,19 @@ function noteSeen(cells) {
 // on this PC and those in the shared database are one list; the same picture in both shows once.
 function itemDatabase() {
   const pics = [];
+  const stamp = `${index.stamp}:${learned.length}`;
+  if (itemKept.stamp !== stamp) { itemKept.stamp = stamp; itemKept.twins = new Map(); itemKept.doubts = new Map(); }
+  const mine = new Map(); // place in the list of your own pictures -> its line here
   learned.forEach((l, i) => {
-    try { pics.push({ id: `mine:${i}`, name: l.name, print: decodePrint(l.print), image: l.image || null, auto: !!l.auto, local: true, shared: false, by: '', over: null }); } catch (_) { /* skip a broken entry */ }
+    try { pics.push({ id: `mine:${i}`, key: `m:${l.print}`, name: l.name, print: decodePrint(l.print), image: l.image || null, auto: !!l.auto, local: true, shared: false, by: '', over: null }); mine.set(i, pics[pics.length - 1]); } catch (_) { /* skip a broken entry */ }
   });
+  const locals = pics.slice();
   index.shared.forEach((e, i) => {
-    const twin = pics.find((p) => p.local && similarity(p.print, e.print) > 0.95);
+    if (!itemKept.twins.has(e.print)) { const t = locals.find((p) => similarity(p.print, e.print) > 0.95); itemKept.twins.set(e.print, t ? Number(t.id.slice(5)) : -1); }
+    const twin = mine.get(itemKept.twins.get(e.print));
     if (twin && twin.name === e.name) { twin.shared = true; twin.by = e.by || ''; twin.auto = !!e.auto; return; }
     // Your own name for the same picture differs: yours is the one used on this PC.
-    pics.push({ id: `shared:${i}`, name: e.name, print: e.print, image: null, auto: !!e.auto, local: false, shared: true, by: e.by || '', over: twin ? (twin.name || 'ignored') : null });
+    pics.push({ id: `shared:${i}`, key: e.print, name: e.name, print: e.print, image: null, auto: !!e.auto, local: false, shared: true, by: e.by || '', over: twin ? (twin.name || 'ignored') : null });
   });
   const downloaded = new Set(index.art.map((e) => e.name));
   const off = new Set(config.ignoredItems || []);
@@ -542,9 +595,18 @@ function itemDatabase() {
   for (const e of prices.iconEntries()) rowOf(e.name);
   for (const name of MAP_NAMES) rowOf(name, 'tier');
   for (const p of pics) {
+    const dk = typeof p.key === 'string' ? `${p.key}|${p.name}` : p.key; // a shared picture has one name
+    if (!itemKept.doubts.has(dk)) itemKept.doubts.set(dk, otherLookalike(p.name, p.print));
+    const like = itemKept.doubts.get(dk), likeEntry = like ? prices.get(like) : null;
+    let seen = p.image;
+    if (!seen) {
+      const store = typeof p.key === 'string' ? itemKept.drawn : itemKept.drawnShared;
+      seen = store.get(p.key);
+      if (!seen) { seen = printPicture(p.print); store.set(p.key, seen); }
+    }
     rowOf(p.name).pictures.push({
-      id: p.id, seen: p.image || printPicture(p.print), sharp: !!p.image, by: p.by, auto: p.auto,
-      onlyHere: p.local && !p.shared, over: p.over, doubt: looksLikeAnother(p.name, p.print),
+      id: p.id, seen, sharp: !!p.image, by: p.by, auto: p.auto,
+      onlyHere: p.local && !p.shared, over: p.over, doubt: like ? { name: like, icon: (likeEntry && likeEntry.icon) || null } : null,
     });
   }
   // Items read some other way (counted by you for one slot) still belong in the list.
@@ -579,7 +641,7 @@ function autoLearn(cells) {
     added++;
   }
   if (added) {
-    itemsRev++; writeJson('learned.json', learned);
+    itemsRev++; writeJsonSoon('learned.json', () => learned);
     // Uploads are gathered for a minute, so a full inventory becomes one change to the list.
     if (shared && shared.canUpload && shared.pending.length && !autoFlush) {
       autoFlush = setTimeout(async () => { autoFlush = null; await shared.flush(); index.setShared(shared.items); itemsRev++; push(); }, 60000);
@@ -644,6 +706,17 @@ function cursorCell(cur, rect) {
 // program is in front: the game's inventory cannot have changed, and a reading takes a picture of
 // the whole screen. Where the app cannot tell which program is in front (no helper, or its last
 // word is out of date), it reads as before.
+// The closest downloaded picture for a slot's picture. Kept per picture: the reader hands out
+// the same print for a slot that has not changed, and gear sits in its slot for a whole map.
+const guessKept = new WeakMap(); // print -> { stamp, guess }
+function bestGuess(print) {
+  const k = guessKept.get(print), stamp = index.stamp;
+  if (k && k.stamp === stamp) return k.guess;
+  const guess = index.suggest(print, 1)[0] || null;
+  guessKept.set(print, { stamp, guess });
+  return guess;
+}
+
 async function readInventory(force) {
   if (invBusy) return;
   if (force !== true && watch.otherInFront()) return;
@@ -676,8 +749,8 @@ async function readInventory(force) {
       rev: lastInventory.rev + 1, at: Date.now(),
       cells: result.cells.map((c) => {
         const prev = before.get(c.cell);
-        const same = prev && prev.print && c.print && similarity(prev.print, c.print) > 0.98;
-        const guess = c.print && (c.status === 'unknown' || c.status === 'skipped') ? index.suggest(c.print, 1)[0] : null;
+        const same = prev && prev.print && c.print && (prev.print === c.print || similarity(prev.print, c.print) > 0.98);
+        const guess = c.print && (c.status === 'unknown' || c.status === 'skipped') ? bestGuess(c.print) : null;
         return {
           cell: c.cell, print: c.print, status: c.status, name: c.name, qty: c.qty, source: c.source,
           score: c.score ? Math.round(c.score * 100) : null, how: c.how, near: nearList(c.near),
@@ -790,7 +863,7 @@ function learnPrint(typed, print, image = null) {
   learned.push(image ? { name, print: encodePrint(print), image } : { name, print: encodePrint(print) });
   indexLearned(learned[learned.length - 1]);
   itemsRev++;
-  writeJson('learned.json', learned);
+  writeJsonSoon('learned.json', () => learned);
   if (backlog.resolve(print)) saveBacklog();
   if (!name) { say('That item is ignored from now on. Undo it on the Items page, under Items you named.'); return; }
   say(entry ? `Saved: ${name}.` : `Saved as "${name}", but no price is known under that name, so it counts as 0c. Check the spelling if that is wrong.`, !entry);
@@ -1147,6 +1220,7 @@ function restartApp() {
   // Give back everything this copy holds before it goes: a copy that lingers with its hotkeys
   // still taken leaves the new one unable to use them.
   releaseEverything();
+  flushSaves();
   app.exit(0);
 }
 
@@ -1174,6 +1248,7 @@ async function applyUpdate() {
     writeJson('session.json', session.toJSON());
     writeJson('ledger.json', ledger.toJSON());
     writeJson('trades.json', book.toJSON());
+    flushSaves();
     // Long enough for the window to show that the app is about to close and come back.
     status.update.step = 'Restarting';
     push();
@@ -1813,9 +1888,9 @@ function applyConfig(patch) {
     inventory: { ...config.inventory, ...(patch.inventory || {}) },
     priceSearch: { ...config.priceSearch, ...(patch.priceSearch || {}) },
   };
-  writeJson('config.json', config);
+  writeJsonSoon('config.json', () => config);
   if (patch.priceSearch && config.priceSearch.overlay === false && checkPanel) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; }
-  if (patch.customPrices) { prices.setCustom(config.customPrices); itemsRev++; }
+  if (patch.customPrices) { prices.setCustom(config.customPrices); index.rev++; itemsRev++; }
   if (patch.ignoredItems) { reader.ignoreNames = new Set(config.ignoredItems); reader.forgetCells(); itemsRev++; }
   // The map last checked is judged again by the mods ticked now, so its verdict follows the ticks.
   if (patch.mapRules && mapCheck) {
@@ -2051,7 +2126,7 @@ const actions = {
     const name = a.name === '(ignored items)' ? '' : a.name;
     index.forget(name);
     learned = learned.filter((l) => l.name !== name);
-    writeJson('learned.json', learned);
+    writeJsonSoon('learned.json', () => learned);
     reader.forgetCells();
   },
   trade: (a) => tradeDo(a.id, String(a.do || '')),
@@ -2288,6 +2363,7 @@ app.on('will-quit', () => {
   writeJson('ledger.json', ledger.toJSON());
   writeJson('trades.json', book.toJSON());
   writeJson('seen.json', seenItems);
+  flushSaves();
 });
 // The overlay is a window too, so quitting hangs on the main window alone.
 app.on('window-all-closed', () => app.quit());

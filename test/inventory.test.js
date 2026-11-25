@@ -413,3 +413,37 @@ test('a thin limb crossing a slot edge at a slant still joins the two slots', ()
   const [u, v] = pair(1, 4, -26); // crosses the first slot only at its far side... and never reaches the shared edge in view
   assert.equal(sameItemAcross(u, 'b', v, 't'), false);
 });
+
+test('reader: a slot whose picture did not change is not matched again, until the item lists change', () => {
+  const index = new IconIndex();
+  const first = new InventoryReader(new IconIndex()).read(frames.inv_map);
+  // teach the index every numbered slot of the capture under a made-up name
+  first.cells.filter((c) => c.stack > 0).forEach((c, n) => index.addLearned(`Item ${n % 5}`, c.print));
+  const reader = new InventoryReader(index);
+  let matches = 0;
+  const match = index.match.bind(index);
+  index.match = (...a) => { matches++; return match(...a); };
+  const brief = (r) => JSON.stringify([[...r.counts], r.recognised, r.empties, r.cells.map((c) => [c.cell, c.status, c.name, c.qty, c.score, c.source, c.how, c.near]), r.unknown.map((u) => [u.cell, u.qty])]);
+  const a = reader.read(frames.inv_map);
+  const cold = matches;
+  assert.ok(cold > 0);
+  const b = reader.read(frames.inv_map);
+  assert.equal(matches, cold, 'the same picture is not matched twice');
+  assert.equal(brief(b), brief(a), 'and the reading is the same');
+  // a reader that kept nothing gives the same answer
+  assert.equal(brief(new InventoryReader(index).read(frames.inv_map)), brief(a));
+  // a change to the lists: everything is matched again, and the new name is seen
+  const some = a.cells.find((c) => c.status === 'item');
+  const beforeForget = matches;
+  index.forget(some.name);
+  const c = reader.read(frames.inv_map);
+  assert.ok(matches >= beforeForget + cold, 'matched again after the lists changed');
+  assert.ok(!c.cells.some((x) => x.status === 'item' && x.name === some.name && x.source === 'learned'));
+  // another capture: changed slots are read anew, as a fresh reader would
+  assert.equal(brief(reader.read(frames.inv_hideout)).length > 0, true);
+  const again = new InventoryReader(index);
+  again.read(frames.inv_map);
+  const fresh = new InventoryReader(index);
+  fresh.memory = again.memory.slice(); fresh.prints = again.prints.slice();
+  assert.equal(brief(again.read(frames.inv_hideout)), brief(fresh.read(frames.inv_hideout)));
+});

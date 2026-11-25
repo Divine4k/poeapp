@@ -267,6 +267,16 @@ test('rank: one seed against every seed in its socket, and the verdict', () => {
   assert.strictEqual(r.count, 7901);
   assert.strictEqual(r.totals['+#% to Lightning Resistance'], 11);
   assert.ok(r.better < r.count && r.best.score >= r.score);
+  // the scoring is kept between seeds: the same answer again, another seed, and a new
+  // scoring when what is wanted changes
+  const args = { jewel: 'vanity', want, socket: near(eye), seed: 2000, onlyNodes: ids };
+  assert.deepStrictEqual(T.rank(data, tableOf(1), args), r);
+  const other = T.rank(data, tableOf(1), { ...args, seed: 2001 });
+  assert.strictEqual(other.count, 7901);
+  assert.deepStrictEqual(other.best, r.best);
+  const all = T.rank(data, tableOf(1), { ...args, onlyNodes: null });
+  assert.ok(all.score >= r.score);
+  assert.deepStrictEqual(T.rank(data, tableOf(1), args), r);
   const v = verdict({ r, goals: ['Resistances'], jewelKey: 'vanity' });
   assert.ok(['great', 'good', 'ok'].includes(v.level));
   assert.match(v.notes[0], /11% to Lightning Resistance/);
