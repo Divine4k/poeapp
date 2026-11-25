@@ -353,9 +353,10 @@
     <button type="submit" class="primary">Add</button>
   </form>
   <p class="warn" id="tk-error" hidden></p>
+  <nav class="tk-crumbs" id="tk-crumbs" aria-label="Where you are on the map" hidden></nav>
   <div class="tk-map" id="tk-map"><div class="tk-canvas" id="tk-canvas"><svg class="tk-lines" id="tk-lines" aria-hidden="true"></svg><div id="tk-nodes"></div></div></div>
   <div class="tk-board" id="tk-board" hidden></div>
-  <p class="fine" id="tk-hint-map">Drag a box to move it (what hangs under it moves along). To connect, drag from the dot on a box's right edge onto another box: that one then hangs under it. Click a line to take it off, + to add something under a box, a box to open it.</p>
+  <p class="fine" id="tk-hint-map">The map shows one layer at a time: "N inside" on a box opens what hangs under it, the path above the map (or Escape) goes back up. Drag a box to move it. To connect, drag from the dot on a box's right edge onto another box: that one then hangs under it. Click a line to take it off, + to add something under a box, a box to open it.</p>
   <p class="fine" id="tk-hint-board" hidden>Drag a card to another column, or click it to add notes and steps.</p>
   <p class="fine">Kept as issues on GitHub (connections are GitHub's sub-issues), so Claude works from the same list.</p>
 </main>

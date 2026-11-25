@@ -21,6 +21,10 @@ let tkPos = {};       // where each box sits on the map right now: number or 'ro
 let tkMoved = {};     // moved here and sent to the settings, until the settings come back with it
 let tkView = 'map';
 try { tkView = localStorage.getItem('trackerView') === 'board' ? 'board' : 'map'; } catch (_) { /* storage off: the map */ }
+// The map shows one layer at a time: the box you went into and what hangs straight under it.
+// A box with items under it has an "N inside" button to go in; the path above the map goes back.
+let tkFocus = 'root';
+try { const f = Number(localStorage.getItem('trackerFocus')); if (f > 0) tkFocus = f; } catch (_) { /* start at the top */ }
 const TK_STATUS = { idea: 'Idea', todo: 'To do', doing: 'In progress', done: 'Done' };
 
 // An update from GitHub. Its parent is only taken when GitHub said it (src/tracker.js).
@@ -40,6 +44,32 @@ function tkUnderOf(a, b) {
     if (i.parent === b) return true;
   }
   return false;
+}
+// What hangs straight under a box ('root': under the app).
+const tkKids = (key) => tkItems.filter((i) => tkParentKey(i) === key);
+// The layer being shown; back to the top when its item is gone.
+function tkLayer() {
+  if (tkFocus !== 'root' && !tkFind(tkFocus)) tkFocus = 'root';
+  return tkFocus;
+}
+function tkGo(key) {
+  tkFocus = key;
+  tkUnder = null;
+  try { localStorage.setItem('trackerFocus', String(key)); } catch (_) { /* not kept */ }
+  $('tk-map').scrollTo(0, 0);
+  tkDraw();
+}
+// The way from the top to the layer shown: ['root', ..., focus].
+function tkTrail() {
+  const out = [], seen = new Set();
+  for (let k = tkLayer(); k !== 'root' && !seen.has(k); k = tkParentKey(tkFind(k))) { seen.add(k); out.unshift(k); }
+  return ['root', ...out];
+}
+// Does the item, or anything under it, match the search? Keeps a box with a match inside lit.
+function tkMatchDeep(i, q, seen = new Set()) {
+  if (!q || tkMatch(i, q)) return true;
+  seen.add(i.number);
+  return tkKids(i.number).some((c) => !seen.has(c.number) && tkMatchDeep(c, q, seen));
 }
 
 function renderTracker() {
@@ -93,7 +123,7 @@ const tkMatch = (i, q) => !q || `#${i.number} ${i.title} ${i.body} ${i.labels.jo
 function tkDraw() {
   const map = tkView === 'map';
   for (const b of $('tk-views').querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', String(b.dataset.view === tkView));
-  $('tk-map').hidden = !map; $('tk-hint-map').hidden = !map;
+  $('tk-map').hidden = !map; $('tk-hint-map').hidden = !map; $('tk-crumbs').hidden = !map || !tkLoaded;
   $('tk-board').hidden = map; $('tk-hint-board').hidden = map;
   tkUnderLine();
   if (!tkLoaded) return;
@@ -217,7 +247,7 @@ $('tk-add').addEventListener('submit', async (e) => {
   if (!title) return;
   const btn = f.querySelector('button[type=submit]');
   btn.disabled = true;
-  const parent = tkUnder;
+  const parent = tkUnder != null ? tkUnder : tkView === 'map' && tkLayer() !== 'root' ? tkLayer() : null;
   const r = await api.tracker({ type: 'add', title, status: f.elements.status.value, parent });
   btn.disabled = false;
   if (r.error) { tkError(r.error); return; }
@@ -279,67 +309,84 @@ $('tk-board').addEventListener('dragend', () => {
 function tkUnderLine() {
   const it = tkUnder != null && tkFind(tkUnder);
   if (tkUnder != null && !it) tkUnder = null;
-  $('tk-under').hidden = !it;
-  $('tk-under-name').textContent = it ? `#${it.number} ${it.title}` : '';
+  // Inside a layer, new items go into it unless + on a box said otherwise.
+  const layer = !it && tkView === 'map' && tkLoaded && tkLayer() !== 'root' && tkFind(tkLayer());
+  const shown = it || layer;
+  $('tk-under').hidden = !shown;
+  $('tk-under-name').textContent = shown ? `#${shown.number} ${shown.title}` : '';
+  $('tk-under-clear').hidden = !it;
 }
 
-// Boxes not moved by hand yet are laid out as a tree: one column per level, each parent
-// halfway along its children (like a drawing of it). height(key): the box's drawn height.
-function tkAutoLayout(height) {
-  const kids = new Map();
-  for (const i of tkItems) { const k = tkParentKey(i); if (!kids.has(k)) kids.set(k, []); kids.get(k).push(i); }
-  for (const list of kids.values()) list.sort((a, b) => (a.status === 'done') - (b.status === 'done') || a.number - b.number);
+// The path above the map: every layer from the top down to the one shown, each one a button.
+function tkCrumbs() {
+  const trail = tkTrail();
+  setHtml($('tk-crumbs'), trail.map((k, n) => {
+    const name = k === 'root' ? 'Map Companion' : tkFind(k).title;
+    return n === trail.length - 1
+      ? `<b aria-current="page">${esc(name)}</b>`
+      : `<button type="button" class="link" data-crumb="${k}">${esc(name)}</button><span class="tk-sep" aria-hidden="true">›</span>`;
+  }).join(''));
+}
+
+// Positions are kept per layer ("layer/box"), so a box can sit elsewhere in each layer.
+const tkLayoutKey = (key) => `${tkLayer()}/${key}`;
+
+// Boxes not moved by hand yet: the layer's own box on the left, what hangs under it in columns
+// of up to 8 on the right (open items first), so a big layer fits without scrolling far; the
+// layer's box halfway along the first column.
+function tkAutoLayout(height, focus, kids) {
   const pos = {};
-  let next = 40; // where the next box without children goes
-  const seen = new Set();
-  // Returns the middle of the box, so a parent can sit halfway along its children.
-  const place = (key, depth) => {
-    seen.add(key);
-    const h = height(key);
-    const ch = (kids.get(key) || []).filter((c) => !seen.has(c.number));
-    let mid;
-    if (!ch.length) { mid = next + h / 2; next += h + 14; } else { const ms = ch.map((c) => place(c.number, depth + 1)); mid = (ms[0] + ms[ms.length - 1]) / 2; next = Math.max(next, mid + h / 2 + 14); }
-    pos[key] = [40 + depth * 300, Math.round(mid - h / 2)];
-    return mid;
-  };
-  place('root', 0);
+  const per = Math.ceil(kids.length / Math.ceil(kids.length / 8 || 1));
+  let y = 40, bottom = 40;
+  kids.forEach((c, n) => {
+    if (n % per === 0) y = 40;
+    pos[c.number] = [380 + Math.floor(n / per) * 270, y];
+    y += height(c.number) + 14;
+    if (n < per) bottom = y;
+  });
+  const mid = kids.length ? (40 + bottom - 14) / 2 : 40 + height(focus) / 2;
+  pos[focus] = [40, Math.max(40, Math.round(mid - height(focus) / 2))];
   return pos;
 }
 
 function tkMapDraw() {
   const q = $('tk-filter').value.trim().toLowerCase();
+  const focus = tkLayer();
   const saved = { ...(state.config.trackerLayout || {}), ...tkMoved };
-  const open = tkItems.filter((i) => i.status !== 'done').length;
-  const node = (i) => {
-    const p = i.progress;
-    return `<div class="tk-node st-${i.status} pri-${i.priority}${i.dropped ? ' dropped' : ''}${tkMatch(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
+  const kids = tkKids(focus).sort((a, b) => (a.status === 'done') - (b.status === 'done') || a.number - b.number);
+  const node = (i, own) => {
+    const p = i.progress, inside = tkKids(i.number), open = inside.filter((c) => c.status !== 'done').length;
+    return `<div class="tk-node st-${i.status} pri-${i.priority}${i.dropped ? ' dropped' : ''}${own ? ' focus' : ''}${own || tkMatchDeep(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
       <span class="tk-ntitle">${esc(i.title)}</span>
       <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${i.dropped ? 'Dropped' : TK_STATUS[i.status]}</span>${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
       ${p.total ? `<progress max="${p.total}" value="${p.done}"></progress>` : ''}
+      ${!own && inside.length ? `<button type="button" class="tk-into" data-into="${i.number}" title="Open what hangs under this">${inside.length} inside${open < inside.length ? `, ${inside.length - open} done` : ''} <span aria-hidden="true">›</span></button>` : ''}
       <button type="button" class="tk-plus" data-plus="${i.number}" title="Add something under this" aria-label="Add something under #${i.number}">+</button>
       <span class="tk-plug" data-plug="${i.number}" title="Drag onto another box to hang it under this one"></span>
     </div>`;
   };
-  setHtml($('tk-nodes'), `<div class="tk-node root" data-node="root" tabindex="0" role="button" aria-label="Map Companion">
+  const all = tkItems.filter((i) => i.status !== 'done').length;
+  const head = focus === 'root'
+    ? `<div class="tk-node root" data-node="root" tabindex="0" role="button" aria-label="Map Companion">
       <span class="tk-ntitle">Map Companion</span>
-      <span class="tk-nmeta">${open} open, ${tkItems.length - open} done</span>
+      <span class="tk-nmeta">${all} open, ${tkItems.length - all} done</span>
       <button type="button" class="tk-plus" data-plus="root" title="Add something straight under the app" aria-label="Add something straight under the app">+</button>
       <span class="tk-plug" data-plug="root" title="Drag onto a box to hang it straight under the app"></span>
-    </div>${tkItems.map(node).join('')}`);
+    </div>`
+    : node(tkFind(focus), true);
+  setHtml($('tk-nodes'), head + kids.map((i) => node(i, false)).join('') + (kids.length ? '' : '<p class="empty tk-loading tk-nothing">Nothing under this yet. Use + or the field above to add something.</p>'));
+  tkCrumbs();
+  tkUnderLine();
   // Laid out once the boxes are drawn, so each one's real height is known.
   const els = new Map([...$('tk-nodes').querySelectorAll('[data-node]')].map((el) => [tkKey(el.dataset.node), el]));
-  const auto = tkAutoLayout((k) => (els.get(k) ? els.get(k).offsetHeight : 60));
-  // A box moved by hand keeps its place; one never moved sits where the tree puts it, shifted
-  // as far as its parent was moved, so a branch stays together under a moved box.
+  const auto = tkAutoLayout((k) => (els.get(k) ? els.get(k).offsetHeight : 60), focus, kids);
+  // A box moved by hand keeps its place; one never moved sits where the layout puts it,
+  // shifted as far as the layer's own box was moved, so the layer stays together.
+  const own = (k) => (Array.isArray(saved[tkLayoutKey(k)]) ? saved[tkLayoutKey(k)].slice(0, 2) : null);
   tkPos = {};
-  const placeAt = (key, shift) => {
-    const own = Array.isArray(saved[key]) ? saved[key].slice(0, 2) : null;
-    tkPos[key] = own || [auto[key][0] + shift[0], auto[key][1] + shift[1]];
-    const next = [tkPos[key][0] - auto[key][0], tkPos[key][1] - auto[key][1]];
-    for (const i of tkItems) if (tkParentKey(i) === key && !(i.number in tkPos) && auto[i.number]) placeAt(i.number, next);
-  };
-  placeAt('root', [0, 0]);
-  for (const key of Object.keys(auto)) if (!(key in tkPos)) tkPos[key] = auto[key];
+  tkPos[focus] = own(focus) || auto[focus];
+  const shift = [tkPos[focus][0] - auto[focus][0], tkPos[focus][1] - auto[focus][1]];
+  for (const c of kids) tkPos[c.number] = own(c.number) || [auto[c.number][0] + shift[0], Math.max(0, auto[c.number][1] + shift[1])];
   for (const el of els.values()) tkPlace(el);
   tkLines();
 }
@@ -390,11 +437,8 @@ function tkLines(temp) {
 // off, or drag the empty map around.
 let tkGesture = null;
 function tkCanvasPoint(e) { const r = $('tk-canvas').getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
-function tkBranch(key) {
-  const out = [key];
-  for (let n = 0; n < out.length; n++) for (const i of tkItems) if (tkParentKey(i) === out[n] && !out.includes(i.number)) out.push(i.number);
-  return out;
-}
+// What moves along with a box: the layer's own box takes the whole layer, any other box itself.
+const tkBranch = (key) => (key === tkLayer() ? Object.keys(tkPos).map(tkKey) : [key]);
 function tkTargetAt(e) {
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const n = el && el.closest('#tk-nodes [data-node]');
@@ -402,7 +446,7 @@ function tkTargetAt(e) {
 }
 
 $('tk-map').addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || e.target.closest('[data-plus]')) return;
+  if (e.button !== 0 || e.target.closest('[data-plus], [data-into]')) return;
   const map = $('tk-map');
   const plug = e.target.closest('[data-plug]');
   const line = e.target.closest('[data-line]');
@@ -453,7 +497,7 @@ function tkGestureEnd(e, cancelled) {
   if (g.kind === 'move') {
     if (!g.moved) { if (!cancelled && g.key !== 'root') tkOpenItem(g.key); return; }
     const layout = { ...(state.config.trackerLayout || {}) };
-    for (const k of Object.keys(g.start)) layout[k] = tkMoved[k] = tkPos[tkKey(k)];
+    for (const k of Object.keys(g.start)) layout[tkLayoutKey(k)] = tkMoved[tkLayoutKey(k)] = tkPos[tkKey(k)];
     api.setConfig({ trackerLayout: layout });
     return;
   }
@@ -467,13 +511,21 @@ function tkGestureEnd(e, cancelled) {
 $('tk-map').addEventListener('pointerup', (e) => tkGestureEnd(e, false));
 $('tk-map').addEventListener('pointercancel', (e) => tkGestureEnd(e, true));
 $('tk-map').addEventListener('click', (e) => {
+  const into = e.target.closest('[data-into]');
+  if (into) { tkGo(Number(into.dataset.into)); return; }
   const plus = e.target.closest('[data-plus]');
   if (!plus) return;
   tkUnder = plus.dataset.plus === 'root' ? null : Number(plus.dataset.plus);
   tkUnderLine();
   $('tk-add').elements.title.focus();
 });
+$('tk-crumbs').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-crumb]');
+  if (c) tkGo(tkKey(c.dataset.crumb));
+});
 $('tk-map').addEventListener('keydown', (e) => {
+  // Backspace or Escape on the map: one layer up.
+  if ((e.key === 'Backspace' || e.key === 'Escape') && tkLayer() !== 'root') { e.preventDefault(); const t = tkTrail(); tkGo(t[t.length - 2]); return; }
   const box = e.target.closest('[data-node]');
   if (box && box.dataset.node !== 'root' && (e.key === 'Enter' || e.key === ' ') && e.target === box) { e.preventDefault(); tkOpenItem(Number(box.dataset.node)); }
 });
