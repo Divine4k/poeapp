@@ -293,7 +293,7 @@ test('a written report goes up with its pictures, and fixed marks are shared thr
   assert.deepStrictEqual(a.meta(id).images, ['image-1.png', 'image-2.jpg']);
   assert.ok(a.image(id, 'image-1.png').equals(png));
   assert.strictEqual(a.image(id, '../meta.json'), null);
-  assert.match(await a.setFixed(id, true), /Send it first/);
+  assert.match(await a.setStatus(id, { state: 'fixed' }), /Send it first/);
   assert.strictEqual(await a.send(id, 'The Items page shows the wrong league.'), '');
 
   const tree = gh.tree();
@@ -306,18 +306,19 @@ test('a written report goes up with its pictures, and fixed marks are shared thr
   // Someone else gets it, pictures included, and marks it fixed; the sender then sees that too.
   assert.strictEqual(await b.syncRemote(), 1);
   const [r] = b.list();
-  assert.deepStrictEqual([r.kind, r.images, r.fixed], ['note', 2, null]);
+  assert.deepStrictEqual([r.kind, r.images, r.state, r.type], ['note', 2, '', 'problem']);
   assert.ok(b.image(id, 'image-1.png').equals(png));
   assert.match(b.addImage(id, png, 'image/png'), /written report/); // not to someone else's
-  assert.strictEqual(await b.setFixed(id, true), '');
-  assert.deepStrictEqual(JSON.parse(gh.blobs[gh.tree()[`fixed/${id}.json`]].toString()).by, 'Divine');
+  assert.strictEqual(await b.setStatus(id, { state: 'fixed' }), '');
+  assert.deepStrictEqual(JSON.parse(gh.blobs[gh.tree()[`status/${id}.json`]].toString()).by, 'Divine');
   await a.syncRemote();
-  assert.strictEqual(a.list()[0].fixed.by, 'Divine');
-  assert.strictEqual(a.details(id).fixed.by, 'Divine');
+  assert.deepStrictEqual([a.list()[0].state, a.list()[0].statusBy, a.list()[0].by], ['fixed', 'Divine', 'Helper']);
+  assert.strictEqual(a.details(id).state, 'fixed');
   // And back.
-  assert.strictEqual(await a.setFixed(id, false), '');
+  assert.strictEqual(await a.setStatus(id, { state: '' }), '');
   await b.syncRemote();
-  assert.strictEqual(b.list()[0].fixed, null);
+  assert.strictEqual(b.list()[0].state, '');
+  assert.ok(!(`status/${id}.json` in gh.tree()), 'back to open leaves no file');
   for (const t of [a, b]) fs.rmSync(t.dir, { recursive: true, force: true });
 });
 
@@ -333,24 +334,24 @@ test('quick marks one after another all stick, the old single list is taken over
   for (let i = 0; i < 3; i++) { const id = await t.newReport(); ids.push(id); await t.send(id, `report ${i}`); await new Promise((r) => setTimeout(r, 1100)); }
   await uploadFolder({ fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/reports', folder: '', files: [{ path: 'status.json', data: Buffer.from(JSON.stringify({ [ids[0]]: { fixed: true, by: 'Old', at: 1 } })) }], message: 'old list' });
   await t.syncRemote();
-  assert.strictEqual(t.fixedOf(ids[0]).by, 'Old');
+  assert.strictEqual(t.statusOf(ids[0]).by, 'Old');
 
   // Clicked quickly: the second and third start before the first is done.
   const looking = t.syncRemote();
-  const done = await Promise.all([t.setFixed(ids[1], true), t.setFixed(ids[2], true), t.setFixed(ids[1], false)]);
+  const done = await Promise.all([t.setStatus(ids[1], { state: 'fixed' }), t.setStatus(ids[2], { state: 'in progress' }), t.setStatus(ids[1], { state: '' })]);
   await looking;
   assert.deepStrictEqual(done, ['', '', '']);
   assert.deepStrictEqual(t.marking.size, 0);
   const tree = gh.tree();
   assert.ok(!('status.json' in tree), 'the old list is gone');
-  assert.ok(`fixed/${ids[0]}.json` in tree, 'its mark lives on as a file');
-  assert.ok(!(`fixed/${ids[1]}.json` in tree));
-  assert.ok(`fixed/${ids[2]}.json` in tree);
-  assert.deepStrictEqual(ids.map((id) => !!t.fixedOf(id)), [true, false, true]);
+  assert.ok(`status/${ids[0]}.json` in tree, 'its mark lives on as a file');
+  assert.ok(!(`status/${ids[1]}.json` in tree));
+  assert.ok(`status/${ids[2]}.json` in tree);
+  assert.deepStrictEqual(ids.map((id) => (t.statusOf(id) || {}).state || ''), ['fixed', '', 'in progress']);
   // A later look agrees.
   await t.syncRemote();
-  assert.deepStrictEqual(ids.map((id) => !!t.fixedOf(id)), [true, false, true]);
-  assert.strictEqual(t.fixedOf(ids[0]).by, 'Old');
+  assert.deepStrictEqual(ids.map((id) => (t.statusOf(id) || {}).state || ''), ['fixed', '', 'in progress']);
+  assert.strictEqual(t.statusOf(ids[0]).by, 'Old');
   fs.rmSync(t.dir, { recursive: true, force: true });
 });
 
@@ -417,4 +418,41 @@ test('the short version folds presses, runs of keys and log noise into a few row
   assert.strictEqual(quiet, 2);
   // Everything keeps the noise.
   assert.strictEqual(summarise(ev, { everything: true }).quiet, 0);
+});
+
+test('a suggestion is chosen before sending; status and type are shared, and the fixed marks of 0.28 to 0.45 still count', async () => {
+  const gh = fakeGithub();
+  const cloud = { github: async () => ({ repo: 'Divine4k/reports', token: 'good' }) };
+  const make = (name) => new Troubleshoot({
+    dir: fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-s-')), recorder: {}, displayId: () => null, version: 'x', cloud, fetchImpl: gh.fetch,
+    snapshot: async () => ({ state: {} }), who: () => ({ name, role: 'moderator' }),
+  });
+  const a = make('Helper');
+  const b = make('Divine');
+  const idea = await a.newReport();
+  assert.ok(a.setType(idea, 'suggestion'));
+  assert.ok(!a.setType(idea, 'rant'));
+  assert.strictEqual(await a.send(idea, 'Save regexes for the stash search.'), '');
+  assert.match(gh.blobs[gh.tree()[`recordings/${idea}/README.md`]].toString(), /- Type: suggestion/);
+  const bug = await a.newReport();
+  await new Promise((r) => setTimeout(r, 5));
+  assert.strictEqual(await a.send(bug, 'Timer runs on.'), '');
+  // A mark as 0.28.2 to 0.45 made it.
+  await uploadFolder({ fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/reports', folder: '', files: [{ path: `fixed/${bug}.json`, data: Buffer.from(JSON.stringify({ fixed: true, by: 'Old', at: 1 })) }], message: 'old mark' });
+
+  await b.syncRemote();
+  const byId = (t) => Object.fromEntries(t.list().map((r) => [r.id, r]));
+  assert.deepStrictEqual([byId(b)[idea].type, byId(b)[idea].state], ['suggestion', '']);
+  assert.deepStrictEqual([byId(b)[bug].type, byId(b)[bug].state, byId(b)[bug].statusBy], ['problem', 'fixed', 'Old']);
+  assert.ok(!b.setType(bug, 'suggestion'), 'someone else\'s type is changed through the status, not before sending');
+
+  assert.strictEqual(await b.setStatus(idea, { state: 'planned' }), '');
+  assert.strictEqual(await b.setStatus(bug, { type: 'suggestion' }), '');
+  assert.match(await b.setStatus(bug, { state: 'maybe' }), /Unknown status/);
+  const tree = gh.tree();
+  assert.ok(!(`fixed/${bug}.json` in tree), 'the old mark moved');
+  assert.deepStrictEqual(JSON.parse(gh.blobs[tree[`status/${bug}.json`]].toString()).state, 'fixed');
+  await a.syncRemote();
+  assert.deepStrictEqual([byId(a)[idea].state, byId(a)[bug].type, byId(a)[bug].state], ['planned', 'suggestion', 'fixed']);
+  for (const t of [a, b]) fs.rmSync(t.dir, { recursive: true, force: true });
 });

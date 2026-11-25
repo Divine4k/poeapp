@@ -27,6 +27,9 @@ const PART = 20 * 1024 * 1024;
 // video's first frame with, so a key's time is its place in the video.
 const clock = () => performance.timeOrigin + performance.now();
 const SYNC_MAX = 20;          // recordings fetched in one go; the rest come with the next look
+const STATES = ['', 'planned', 'in progress', 'fixed', 'wontfix'];
+const STATE_NAMES = { planned: 'Planned', 'in progress': 'In progress', fixed: 'Fixed', wontfix: "Won't do" };
+const TYPES = ['problem', 'suggestion'];
 const MAX_IMAGES = 10;        // pictures in one written report
 const MAX_IMAGE = 8 * 1024 * 1024;
 const IMAGE = /^image-[0-9]{1,2}\.(png|jpg|gif|webp)$/;
@@ -48,7 +51,7 @@ class Troubleshoot {
     this.names = {};
     this.ownUntil = 0; // keys and clicks seen before this time were sent by the app itself
     this.syncing = false;
-    this.fixed = {};   // what is fixed, from fixed/<id>.json in the reports repository: { id: { by, at, sha } }
+    this.fixed = {};   // where each one stands, from status/<id>.json: { id: { state, type, by, at, sha } }
     this.marksLoaded = false;
     this.marking = new Set();          // ids whose mark is being changed right now
     this.markChain = Promise.resolve(); // marks are made one after another
@@ -178,7 +181,7 @@ class Troubleshoot {
     return names.map((id) => this.meta(id)).filter(Boolean)
       .filter((m) => !this.current || m.id !== this.current.id)
       .sort((a, b) => b.startedAt - a.startedAt)
-      .map((m) => ({ id: m.id, startedAt: m.startedAt, endedAt: m.endedAt, by: m.by, note: m.note, sent: m.sent, events: m.events, videoBytes: m.video ? m.video.bytes : 0, videoProblem: m.videoProblem, remote: !!m.remote, seen: m.seen !== false, kind: m.kind || 'recording', images: (m.images || []).length, fixed: this.fixedOf(m.id) }));
+      .map((m) => ({ id: m.id, startedAt: m.startedAt, endedAt: m.endedAt, by: m.by, note: m.note, sent: m.sent, events: m.events, videoBytes: m.video ? m.video.bytes : 0, videoProblem: m.videoProblem, remote: !!m.remote, seen: m.seen !== false, kind: m.kind || 'recording', images: (m.images || []).length, ...this.standing(m) }));
   }
 
   // ---- everyone's recordings, for admins and moderators ----
@@ -193,7 +196,7 @@ class Troubleshoot {
   countUnseen() { this.unseen = this.list().filter((r) => r.remote && !r.seen).length; }
 
   // Looks in the reports repository for recordings this PC does not have yet, and fetches their
-  // facts and events (the video only when one is opened). Also reads who marked what fixed.
+  // facts and events (the video only when one is opened). Also reads where each one stands.
   // Answers how many came in.
   async syncRemote() {
     if (this.syncing) return 0;
@@ -205,10 +208,10 @@ class Troubleshoot {
       if (gh.error) throw new Error(gh.error);
       if (!gh.token || !gh.repo) throw new Error('No reports repository or token is saved in Developer tools.');
       const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
-      // The whole repository as it is right now, in one answer: recordings and fixed marks.
+      // The whole repository as it is right now, in one answer: recordings and their status.
       const tree = await latestTree(where);
-      const fixed = await this.marksFrom(where, tree);
-      if (marksAt === this.marksRev) this.keepMarks(fixed);
+      const marks = await this.marksFrom(where, tree);
+      if (marksAt === this.marksRev) this.keepMarks(marks);
       const hidden = this.hidden();
       const ids = tree.filter((e) => e.type === 'tree' && /^recordings\/[^/]+$/.test(e.path)).map((e) => e.path.slice('recordings/'.length))
         .filter((id) => ID.test(id) && !hidden.has(id) && !this.meta(id))
@@ -240,60 +243,70 @@ class Troubleshoot {
     return added;
   }
 
-  // ---- fixed or not: one small file per mark, fixed/<id>.json in the reports repository ----
-  // One file each, so two people marking at once (or one person clicking quickly) can never
-  // undo each other's marks, as one shared list could.
-  fixedOf(id) {
+  // ---- where each one stands: one small file per recording, status/<id>.json ----
+  // { state, type, by, at }. state: '' (open), 'planned', 'in progress', 'fixed' (Done for a
+  // suggestion), 'wontfix'. type: 'problem' or 'suggestion' when changed after sending (the
+  // one chosen before sending is in meta.json). One file each, so two people changing things
+  // at once (or one person clicking quickly) can never undo each other, as one list could.
+  // Read too: fixed/<id>.json (0.28.2 to 0.45: fixed) and status.json (0.28.1: one list).
+  statusOf(id) {
     if (!this.marksLoaded) {
       this.marksLoaded = true;
-      try { this.fixed = JSON.parse(fs.readFileSync(path.join(this.dir, 'fixed.json'), 'utf8')) || {}; } catch (_) { /* none yet */ }
+      try { this.fixed = JSON.parse(fs.readFileSync(path.join(this.dir, 'status-marks.json'), 'utf8')) || {}; } catch (_) { /* none yet */ }
     }
     const f = this.fixed[id];
-    return f ? { by: f.by || '', at: f.at || 0 } : null;
+    return f ? { state: f.state || '', type: f.type || '', by: f.by || '', at: f.at || 0 } : null;
+  }
+  // What the list and the page show: the type, and the state when it is not open.
+  standing(m) {
+    const st = this.statusOf(m.id);
+    const type = (st && st.type) || m.type || 'problem';
+    return { type, state: st ? st.state : '', statusBy: st ? st.by : '', statusAt: st ? st.at : 0 };
   }
   keepMarks(all) {
     this.fixed = all; this.marksLoaded = true;
     fs.mkdirSync(this.dir, { recursive: true });
-    fs.writeFileSync(path.join(this.dir, 'fixed.json'), JSON.stringify(all));
+    fs.writeFileSync(path.join(this.dir, 'status-marks.json'), JSON.stringify(all));
   }
-  // The marks in a tree from latestTree. Each mark's file is read once and then known by its
-  // content id. The single status.json of version 0.28.1 still counts until the next mark.
+  // The marks in a tree from latestTree. Each file is read once and then known by its content id.
   async marksFrom(where, tree) {
     const known = {};
     for (const [id, f] of Object.entries(this.fixed || {})) if (f && f.sha) known[f.sha] = { id, f };
     const all = {};
+    const read = async (sha) => { try { return JSON.parse((await readBlob({ ...where, sha })).toString('utf8')) || {}; } catch (_) { return {}; } };
     const old = tree.find((e) => e.path === 'status.json' && e.type === 'blob');
     if (old) {
-      try {
-        for (const [id, f] of Object.entries(JSON.parse((await readBlob({ ...where, sha: old.sha })).toString('utf8')) || {})) {
-          if (f && f.fixed && ID.test(id)) all[id] = { by: f.by || '', at: f.at || 0, old: true };
-        }
-      } catch (_) { /* a broken old list is ignored */ }
+      for (const [id, f] of Object.entries(await read(old.sha))) if (f && f.fixed && ID.test(id)) all[id] = { state: 'fixed', by: f.by || '', at: f.at || 0, old: 'status.json' };
     }
-    for (const e of tree) {
-      const m = e.type === 'blob' && /^fixed\/(.+)\.json$/.exec(e.path);
-      if (!m || !ID.test(m[1])) continue;
-      if (known[e.sha] && known[e.sha].id === m[1]) { all[m[1]] = known[e.sha].f; continue; }
-      let f = {};
-      try { f = JSON.parse((await readBlob({ ...where, sha: e.sha })).toString('utf8')) || {}; } catch (_) { /* still fixed */ }
-      all[m[1]] = { by: f.by || '', at: f.at || 0, sha: e.sha };
+    // The older fixed/ files first, so a status/ file for the same one wins.
+    for (const folder of ['fixed', 'status']) {
+      for (const e of tree) {
+        const m = e.type === 'blob' && e.path.startsWith(`${folder}/`) && /^[^/]+\/(.+)\.json$/.exec(e.path);
+        if (!m || !ID.test(m[1])) continue;
+        if (known[e.sha] && known[e.sha].id === m[1]) { all[m[1]] = known[e.sha].f; continue; }
+        const f = await read(e.sha);
+        const state = folder === 'fixed' ? 'fixed' : STATES.includes(f.state) ? f.state : '';
+        all[m[1]] = { state, type: TYPES.includes(f.type) ? f.type : '', by: f.by || '', at: f.at || 0, sha: e.sha, ...(folder === 'fixed' ? { old: e.path } : {}) };
+      }
     }
     return all;
   }
-  // Marks a sent recording or report fixed (or not fixed after all), for everyone. '' when it
-  // worked. Clicks wait for each other, so they are done one at a time, in order.
-  setFixed(id, fixed) {
+  // Changes where a sent recording or report stands, for everyone: { state?, type? }. '' when it
+  // worked. Changes wait for each other, so they are made one at a time, in order.
+  setStatus(id, change) {
     this.marking.add(id);
     this.changed();
-    const run = this.markChain.then(() => this.markNow(id, fixed));
+    const run = this.markChain.then(() => this.markNow(id, change || {}));
     this.markChain = run.catch(() => {});
     return run;
   }
-  async markNow(id, fixed) {
+  async markNow(id, change) {
     const m = ID.test(String(id)) ? this.meta(id) : null;
     try {
       if (!m) return 'That recording is no longer here.';
-      if (!m.remote && !m.sent) return 'Send it first: only what is on GitHub can be marked fixed.';
+      if (!m.remote && !m.sent) return 'Send it first: only what is on GitHub can be marked.';
+      if (change.state !== undefined && !STATES.includes(change.state)) return 'Unknown status.';
+      if (change.type !== undefined && !TYPES.includes(change.type)) return 'Unknown type.';
       const gh = await this.cloud.github();
       if (gh.error) throw new Error(gh.error);
       const where = { fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo };
@@ -301,21 +314,25 @@ class Troubleshoot {
       const all = await this.marksFrom(where, tree);
       const files = [];
       const has = (p) => tree.some((e) => e.path === p);
-      const mark = (mid, f) => files.push({ path: `fixed/${mid}.json`, data: Buffer.from(`${JSON.stringify({ fixed: true, by: f.by, at: f.at })}\n`) });
-      // The old single list becomes one file per mark, in the same commit.
-      if (has('status.json')) {
-        files.push({ path: 'status.json', remove: true });
-        for (const [mid, f] of Object.entries(all)) if (f.old && mid !== id) mark(mid, f);
+      const write = (mid, f) => files.push({ path: `status/${mid}.json`, data: Buffer.from(`${JSON.stringify({ state: f.state || '', ...(f.type ? { type: f.type } : {}), by: f.by, at: f.at })}\n`) });
+      // Older marks move into status/ in the same commit.
+      if (has('status.json')) files.push({ path: 'status.json', remove: true });
+      for (const [mid, f] of Object.entries(all)) {
+        if (!f.old) continue;
+        if (f.old !== 'status.json' && has(f.old)) files.push({ path: f.old, remove: true });
+        if (mid !== id) write(mid, f);
       }
-      if (fixed) {
-        const f = { by: this.who().name || '', at: Date.now() };
-        mark(id, f);
-        all[id] = f;
-      } else {
-        if (has(`fixed/${id}.json`)) files.push({ path: `fixed/${id}.json`, remove: true });
+      const was = all[id] || { state: '', type: '' };
+      const next = { state: change.state !== undefined ? change.state : was.state || '', type: change.type !== undefined ? change.type : was.type || '', by: this.who().name || '', at: Date.now() };
+      // Back to open, with the type it was sent with: nothing left to keep.
+      if (!next.state && (!next.type || next.type === (m.type || 'problem'))) {
+        if (has(`status/${id}.json`)) files.push({ path: `status/${id}.json`, remove: true });
         delete all[id];
+      } else {
+        write(id, next);
+        all[id] = next;
       }
-      if (files.length) await uploadFolder({ ...where, folder: '', files, message: `${fixed ? 'Fixed' : 'Not fixed'}: ${id}` });
+      if (files.length) await uploadFolder({ ...where, folder: '', files, message: `${next.state ? STATE_NAMES[next.state] : 'Open'}${next.type ? ` (${next.type})` : ''}: ${id}` });
       for (const f of Object.values(all)) delete f.old;
       this.marksRev++;
       this.keepMarks(all);
@@ -326,6 +343,15 @@ class Troubleshoot {
       this.marking.delete(id);
       this.changed();
     }
+  }
+  // The type chosen before sending (problem or suggestion), kept in meta.json and sent with it.
+  setType(id, type) {
+    const m = ID.test(String(id)) ? this.meta(id) : null;
+    if (!m || m.remote || !TYPES.includes(type)) return false;
+    m.type = type;
+    this.saveMeta(m);
+    this.changed();
+    return true;
   }
 
   // ---- written reports: a note and pictures, no recording ----
@@ -406,7 +432,7 @@ class Troubleshoot {
     let events = [];
     try { events = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(this.folder(id), 'events.json.gz')))).events; } catch (_) { /* none kept */ }
     if (m.remote && m.seen === false) { m.seen = true; this.saveMeta(m); this.countUnseen(); this.changed(); }
-    return { ...m, events, fixed: this.fixedOf(id) };
+    return { ...m, events, ...this.standing(m) };
   }
   video(id) {
     if (!ID.test(String(id))) return null;
@@ -485,4 +511,4 @@ class Troubleshoot {
   }
 }
 
-module.exports = { Troubleshoot, MAX_MS };
+module.exports = { Troubleshoot, MAX_MS, STATES, TYPES };

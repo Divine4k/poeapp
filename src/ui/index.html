@@ -304,13 +304,22 @@
       <div id="tr-detail" hidden>
         <div class="tr-head">
           <h2 class="tr-title" id="tr-title"></h2>
-          <span class="row"><button type="button" id="tr-fixbtn" hidden>Mark as fixed</button><button type="button" class="link" id="tr-delete">Delete</button></span>
+          <span class="row tr-standing">
+            <label class="tr-pick" id="tr-state-box" hidden><span>Status</span><select id="tr-state" aria-label="Status, for everyone"></select></label>
+            <label class="tr-pick" id="tr-type-box" hidden><span>Type</span><select id="tr-type" aria-label="Problem or suggestion, for everyone"><option value="problem">Problem</option><option value="suggestion">Suggestion</option></select></label>
+            <button type="button" class="link" id="tr-delete">Delete</button>
+          </span>
         </div>
         <p class="map-meta" id="tr-facts"></p>
         <p class="tr-fixed" id="tr-fixed" hidden></p>
         <video id="tr-video" controls preload="metadata"></video>
         <p class="warn" id="tr-novideo" hidden></p>
-        <label class="tr-note-label" for="tr-note"><b>What went wrong?</b> <small id="tr-note-hint">What you did, what the app did, and what you expected instead. Times from the video help.</small></label>
+        <div class="tr-kind" id="tr-kind" role="group" aria-label="This is a">
+          <span class="dim">This is a</span>
+          <button type="button" data-kind="problem" aria-pressed="true">Problem</button>
+          <button type="button" data-kind="suggestion" aria-pressed="false">Suggestion</button>
+        </div>
+        <label class="tr-note-label" for="tr-note"><b id="tr-note-title">What went wrong?</b> <small id="tr-note-hint">What you did, what the app did, and what you expected instead. Times from the video help.</small></label>
         <textarea id="tr-note" rows="4" maxlength="5000" placeholder="At 0:42 I entered my hideout, but the map timer kept running…"></textarea>
         <div class="tr-pics" id="tr-pics" hidden>
           <div class="tr-picgrid" id="tr-picgrid"></div>

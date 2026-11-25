@@ -2025,11 +2025,18 @@ const actions = {
     const n = await trouble.syncRemote();
     if (!a.quiet) say(trouble.remoteError ? `Could not look for new recordings: ${trouble.remoteError}` : n ? `${n} new recording${n === 1 ? '' : 's'}.` : 'Nothing new.', !!trouble.remoteError);
   },
-  troubleFixed: async (a) => {
+  // Where a sent recording or report stands (Planned, In progress, Fixed…) and whether it is a
+  // problem or a suggestion: shared with everyone through the reports repository.
+  troubleStatus: async (a) => {
     if (!trouble || !canTrouble()) return;
-    const error = await trouble.setFixed(String(a.id || ''), !!a.fixed);
-    say(error ? `Not marked: ${error}` : a.fixed ? 'Marked as fixed, for everyone.' : 'Marked as not fixed.', !!error);
+    const change = {};
+    if (a.state !== undefined) change.state = String(a.state || '');
+    if (a.kind !== undefined) change.type = String(a.kind || '');
+    const error = await trouble.setStatus(String(a.id || ''), change);
+    say(error ? `Not changed: ${error}` : 'Changed, for everyone.', !!error);
   },
+  // Problem or suggestion, chosen before sending.
+  troubleType: (a) => { if (trouble) trouble.setType(String(a.id || ''), String(a.kind || '')); },
   troubleImageRemove: (a) => { if (trouble) trouble.removeImage(String(a.id || ''), String(a.name || '')); },
   troubleRemove: (a) => { if (trouble && trouble.remove(a.id)) { troubleRev++; say('Recording deleted.'); } },
   troubleSend: async (a) => {

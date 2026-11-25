@@ -1361,3 +1361,25 @@ button.tk-del:hover { color: var(--blood); text-decoration: underline; }
 .tr-events .tr-sub li[data-t] { border-top: 0; display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; padding: 1px 10px; cursor: pointer; color: var(--ash); }
 .tr-events .tr-sub li[data-t]:hover { color: var(--bone); background: none; }
 #tr-every[aria-pressed=true] { border-color: var(--portal); }
+
+/* Troubleshooting: problem or suggestion, and where it stands */
+.tr-standing { display: flex; align-items: center; gap: 12px; }
+.tr-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ash); }
+.tr-pick[hidden] { display: none; }
+.tr-pick select { padding: 5px 8px; }
+.tr-kind { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
+.tr-kind[hidden] { display: none; }
+.tr-kind button { padding: 4px 12px; border-radius: 999px; font-size: 13px; }
+.tr-kind button[aria-pressed=true] { border-color: var(--portal); background: color-mix(in srgb, var(--portal) 16%, transparent); color: var(--bone); }
+.tr-item-top .tag + .tag { margin-left: 4px; }
+.tag.sug { color: var(--portal); border-color: color-mix(in srgb, var(--portal) 55%, transparent); }
+.tag.st-fixed { color: var(--moss); border-color: color-mix(in srgb, var(--moss) 55%, transparent); }
+.tag.st-in-progress { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.tag.st-planned { color: var(--bone); }
+.tag.st-wontfix { color: var(--ash); }
+.tr-fixed.st-in-progress { color: var(--gold); }
+.tr-fixed.st-planned { color: var(--bone); }
+.tr-fixed.st-wontfix { color: var(--ash); }
+.tr-item-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tr-item-tags { display: flex; gap: 4px; margin-top: 6px; }
+.tr-item-tags .tag { margin-left: 0; }

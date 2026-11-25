@@ -210,6 +210,7 @@ function readme(meta, events) {
     return [
       `# Report ${meta.id}`, '', '## Note', '', meta.note ? meta.note : '(no note)', '',
       '## Facts', '',
+      `- Type: ${meta.type === 'suggestion' ? 'suggestion' : 'problem'}`,
       `- By: ${meta.by || 'not logged in'}${meta.role ? ` (${meta.role})` : ''}`,
       `- App version: ${meta.version || 'unknown'}`,
       `- Written: ${new Date(meta.startedAt).toISOString()}`,
@@ -230,6 +231,7 @@ function readme(meta, events) {
     '',
     '## Facts',
     '',
+    `- Type: ${meta.type === 'suggestion' ? 'suggestion' : 'problem'}`,
     `- By: ${meta.by || 'not logged in'}${meta.role ? ` (${meta.role})` : ''}`,
     `- App version: ${meta.version || 'unknown'}`,
     `- Started: ${new Date(meta.startedAt).toISOString()}, length ${clockOf(Math.max(0, meta.endedAt - meta.startedAt))}`,

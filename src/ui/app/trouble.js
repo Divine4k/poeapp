@@ -13,6 +13,9 @@ const trKinds = { input: true, game: true, app: true };
 let noteTimer = null;
 
 const trClock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+// Where one stands; Fixed reads Done for a suggestion.
+const TR_STATES = ['', 'planned', 'in progress', 'fixed', 'wontfix'];
+const trStateName = (st, type) => ({ planned: 'Planned', 'in progress': 'In progress', fixed: type === 'suggestion' ? 'Done' : 'Fixed', wontfix: "Won't do" }[st] || 'Open');
 const trSize = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const trWhen = (ts) => new Date(ts).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -52,15 +55,16 @@ async function trLoadList() {
   trList = await api.troubleList();
   setHtml($('tr-list'), trList.length ? trList.map((r) => {
     const first = (r.note || '').trim().split('\n')[0];
-    // Fixed wins over everything; then new (someone else's, not opened yet); then sent.
-    const tag = r.fixed ? '<span class="tag good">Fixed</span>' : r.remote ? (r.seen ? '' : '<span class="tag warn">New</span>') : r.sent ? '<span class="tag">Sent</span>' : '';
+    // A suggestion says so; then where it stands, or else new (someone else's, not opened) or sent.
+    const kind = r.type === 'suggestion' ? '<span class="tag sug">Suggestion</span>' : '';
+    const tag = kind + (r.state ? `<span class="tag st-${r.state.replace(' ', '-')}">${esc(trStateName(r.state, r.type))}</span>` : r.remote ? (r.seen ? '' : '<span class="tag warn">New</span>') : r.sent ? '<span class="tag">Sent</span>' : '');
     const what = r.kind === 'note' ? `report${r.images ? `, ${r.images} picture${r.images === 1 ? '' : 's'}` : ''}` : `${trClock(r.endedAt - r.startedAt)}${r.videoBytes ? `, ${trSize(r.videoBytes)}` : ', no video'}`;
-    return `<li><button type="button" class="tr-item${r.id === trSel ? ' on' : ''}${r.remote && !r.seen ? ' new' : ''}${r.fixed ? ' fixed' : ''}" data-rec="${esc(r.id)}">
-      <span class="tr-item-top"><b>${esc(trWhen(r.startedAt))}</b><span class="dim">${r.remote ? `${esc(r.by || 'someone')} · ` : ''}${esc(what)}</span>${tag}</span>
-      <span class="tr-item-note${first ? '' : ' dim'}">${esc(first || 'No note yet')}</span></button></li>`;
+    return `<li><button type="button" class="tr-item${r.id === trSel ? ' on' : ''}${r.remote && !r.seen ? ' new' : ''}${r.state === 'fixed' || r.state === 'wontfix' ? ' fixed' : ''}" data-rec="${esc(r.id)}">
+      <span class="tr-item-top"><b>${esc(trWhen(r.startedAt))}</b><span class="dim tr-item-what">${r.remote ? `${esc(r.by || 'someone')} · ` : ''}${esc(what)}</span></span>
+      <span class="tr-item-note${first ? '' : ' dim'}">${esc(first || 'No note yet')}</span>${tag ? `<span class="tr-item-tags">${tag}</span>` : ''}</button></li>`;
   }).join('') : '<li class="empty">Nothing yet. Press Record and show the problem in game, or write a report.</li>');
   if (trSel && !trList.some((r) => r.id === trSel)) trOpen(null);
-  else if (trSel && trDetail) { const m = trList.find((r) => r.id === trSel); trDetail.sent = m.sent; trDetail.fixed = m.fixed; trSendLine(); }
+  else if (trSel && trDetail) { const m = trList.find((r) => r.id === trSel); Object.assign(trDetail, { sent: m.sent, state: m.state, type: m.type, statusBy: m.statusBy, statusAt: m.statusAt }); trSendLine(); }
 }
 
 async function trOpen(id) {
@@ -216,15 +220,27 @@ $('tr-video').addEventListener('loadedmetadata', () => trStrip());
 
 function trSendLine() {
   if (!trDetail || !state.trouble) return;
-  // Fixed or not: shared with everyone, for what is on GitHub.
-  const f = trDetail.fixed;
-  $('tr-fixed').hidden = !f;
-  $('tr-fixed').textContent = f ? `Fixed${f.by ? ` (marked by ${f.by}${f.at ? `, ${trWhen(f.at)}` : ''})` : ''}.` : '';
-  $('tr-fixbtn').hidden = !(trDetail.remote || trDetail.sent);
-  // While GitHub takes the change the button waits; a second click would only queue up.
+  // Where it stands and what it is: shared with everyone, for what is on GitHub. Before sending
+  // only the type can be chosen (the buttons above the note).
+  const onGithub = !!(trDetail.remote || trDetail.sent);
   const busy = (state.trouble.marking || []).includes(trSel);
-  $('tr-fixbtn').disabled = busy;
-  $('tr-fixbtn').textContent = busy ? 'Marking…' : f ? 'Not fixed after all' : 'Mark as fixed';
+  const type = trDetail.type || 'problem';
+  $('tr-state-box').hidden = !onGithub;
+  $('tr-type-box').hidden = !onGithub;
+  $('tr-kind').hidden = onGithub;
+  for (const b of $('tr-kind').querySelectorAll('[data-kind]')) b.setAttribute('aria-pressed', String(b.dataset.kind === type));
+  setHtml($('tr-state'), TR_STATES.map((st) => `<option value="${st}"${st === (trDetail.state || '') ? ' selected' : ''}>${esc(st ? trStateName(st, type) : 'Open')}</option>`).join(''));
+  $('tr-state').value = trDetail.state || '';
+  $('tr-type').value = type;
+  $('tr-state').disabled = busy; $('tr-type').disabled = busy;
+  $('tr-fixed').hidden = !trDetail.state && !busy;
+  $('tr-fixed').className = `tr-fixed st-${(trDetail.state || '').replace(' ', '-')}`;
+  $('tr-fixed').textContent = busy ? 'Saving…' : trDetail.state ? `${trStateName(trDetail.state, type)}${trDetail.statusBy && trDetail.statusAt ? ` (set by ${trDetail.statusBy}, ${trWhen(trDetail.statusAt)})` : ''}.` : '';
+  const sug = type === 'suggestion';
+  $('tr-note-title').textContent = sug ? 'What is the idea?' : 'What went wrong?';
+  $('tr-note-hint').textContent = sug ? 'What it should do, and why it would help. Pictures or a video help.'
+    : trDetail.kind === 'note' ? 'What you did, what the app did, and what you expected instead. Screenshots help.'
+      : 'What you did, what the app did, and what you expected instead. Times from the video help.';
   // Someone else's recording: read only, already on GitHub.
   const remote = !!trDetail.remote;
   $('tr-sendbtn').hidden = remote;
@@ -309,9 +325,14 @@ $('tr-write').addEventListener('click', async () => {
   $('tr-note').focus();
 });
 $('tr-refresh').addEventListener('click', () => act({ type: 'troubleSync' }));
-$('tr-fixbtn').addEventListener('click', () => {
-  if (!trSel || !trDetail) return;
-  act({ type: 'troubleFixed', id: trSel, fixed: !trDetail.fixed });
+$('tr-state').addEventListener('change', (e) => { if (trSel) act({ type: 'troubleStatus', id: trSel, state: e.target.value }); });
+$('tr-type').addEventListener('change', (e) => { if (trSel) act({ type: 'troubleStatus', id: trSel, kind: e.target.value }); });
+$('tr-kind').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-kind]');
+  if (!b || !trDetail) return;
+  trDetail.type = b.dataset.kind;
+  trSendLine();
+  act({ type: 'troubleType', id: trSel, kind: b.dataset.kind });
 });
 
 $('tr-list').addEventListener('click', (e) => { const b = e.target.closest('[data-rec]'); if (b) trOpen(b.dataset.rec); });

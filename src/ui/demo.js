@@ -199,8 +199,8 @@
     },
     troubleList: async () => [
       { id: '20261124-201500-Divine4k', kind: 'note', images: 0, startedAt: now - 120000, endedAt: now - 120000, by: 'Divine4k', note: 'The Items page shows last league.', sent: null, events: 0, videoBytes: 0 },
-      { id: '20261124-170509-Divine4k', startedAt: now - 3600000, endedAt: now - 3600000 + 95000, by: 'Divine4k', note: 'Timer kept running after I went to the hideout.\nIt only stopped when I entered the next map.', sent: { at: now - 3000000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-170509-Divine4k' }, events: 412, videoBytes: 9123456, fixed: { by: 'Divine4k', at: now - 1000000 } },
-      { id: '20261124-190000-Marek', startedAt: now - 300000, endedAt: now - 300000 + 63000, by: 'Marek', note: 'Overlay covers my flasks after I resize the game.', sent: { at: now - 240000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-190000-Marek' }, events: 230, videoBytes: 6400000, remote: true, seen: false },
+      { id: '20261124-170509-Divine4k', startedAt: now - 3600000, endedAt: now - 3600000 + 95000, by: 'Divine4k', note: 'Timer kept running after I went to the hideout.\nIt only stopped when I entered the next map.', sent: { at: now - 3000000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-170509-Divine4k' }, events: 412, videoBytes: 9123456, state: 'fixed', statusBy: 'Divine4k', statusAt: now - 1000000 },
+      { id: '20261124-190000-Marek', startedAt: now - 300000, endedAt: now - 300000 + 63000, by: 'Marek', note: 'Overlay covers my flasks after I resize the game.', sent: { at: now - 240000, url: 'https://github.com/Divine4k/poeapp-reports/tree/main/recordings/20261124-190000-Marek' }, events: 230, videoBytes: 6400000, remote: true, seen: false, type: 'suggestion', state: 'in progress', statusBy: 'Divine4k', statusAt: now - 50000 },
       { id: '20261124-181200-Divine4k', startedAt: now - 600000, endedAt: now - 600000 + 41000, by: 'Divine4k', note: '', sent: null, events: 96, videoBytes: 0, videoProblem: 'The screen could not be recorded.' },
     ],
     troubleDetails: async (id) => {
