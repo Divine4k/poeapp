@@ -335,13 +335,13 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .runs-table .net { font-weight: 650; color: var(--bone); }
 .runs-table .net.gold { color: var(--gold); }
 /* the map being run: its left edge glows green and breathes slowly (still when animations are off
-   in Settings). The row is redrawn every second, so sizeBars sets --breathe-at to keep the pulse
-   running on from where it was instead of starting over. */
+   in Settings). It only fades, nothing moves, so it keeps going when Windows' own animations are
+   off (many players turn those off, and the pulse then never showed). The row is redrawn every
+   second, so sizeBars sets --breathe-at to keep the pulse running on instead of starting over. */
 .runs-table tr.live td:first-child { position: relative; }
 .runs-table tr.live td:first-child::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none; }
 .runs-table tr.live td:first-child::before { z-index: 1; width: 3px; background: var(--moss); filter: saturate(1.8) brightness(1.15); box-shadow: 0 0 10px var(--moss), 0 0 22px color-mix(in srgb, var(--moss) 60%, transparent); animation: live-breathe 2.4s ease-in-out var(--breathe-at, 0s) infinite; }
-@keyframes live-breathe { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .runs-table tr.live td:first-child::before { animation: none; } }
+@keyframes live-breathe { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 .runs-table .x { width: 26px; text-align: center; }
 .runs-table .x .link { font-size: 16px; line-height: 1; opacity: 0; }
 .runs-table tr.run:hover .x .link, .runs-table .x .link:focus-visible { opacity: 1; }
