@@ -15,7 +15,7 @@ const DEFAULT_CONFIG = {
   checkToast: true, // after the check key, say in game for a moment what was read
   // auto: checking an item searches the trade site straight away (two web requests).
   // overlay: show the search on top of the game, beside the inventory or stash.
-  priceSearch: { auto: true, overlay: true },
+  priceSearch: { auto: true, overlay: true, sockets: true },
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
   // autoCopy: the check hotkey presses Ctrl+Alt+C in the game for you (one copy per key press).

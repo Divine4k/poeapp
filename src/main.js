@@ -1286,7 +1286,19 @@ function coinIcons(listings) {
   }
   return out;
 }
-const checkPanelData = () => ({ ...tradeCheck, divine: prices.divine, auto: config.priceSearch.auto !== false, coins: coinIcons(tradeCheck && tradeCheck.listings) });
+const checkPanelData = () => ({ ...tradeCheck, divine: prices.divine, auto: config.priceSearch.auto !== false, sockets: config.priceSearch.sockets !== false, league: config.league, coins: coinIcons(tradeCheck && tradeCheck.listings) });
+// The item's page on the wiki or PoEDB, from the links at the bottom of the price check window.
+// Both are searches, which land on the page itself when the name is exact.
+function checkSiteUrl(site) {
+  const tc = tradeCheck;
+  if (!tc) return '';
+  const f = tc.filters || {};
+  const name = tc.kind === 'bulk' ? tc.title : (tc.kind === 'pick' && !tc.picked ? tc.base : (f.name || (f.type && f.type.value) || ''));
+  if (!name) return '';
+  if (site === 'wiki') return `https://www.poewiki.net/index.php?search=${encodeURIComponent(name)}`;
+  if (site === 'poedb') return `https://poedb.tw/us/search?q=${encodeURIComponent(name)}`;
+  return '';
+}
 function showCheckPanel() {
   if (!checkPanel || !overlay || config.priceSearch.overlay === false || layoutWin) return;
   if (!overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) return;
@@ -1883,6 +1895,9 @@ const actions = {
   // The cross on the window in game: the search stays on the Prices page.
   checkPanelClose: () => closeCheckPanel(),
   checkPickUnique: (a) => pickChoice(String(a.name || '')),
+  checkSite: (a) => { const url = checkSiteUrl(String(a.site || '')); if (url) shell.openExternal(url); },
+  // the socket button on the price check window: shown or hidden on every item picture there
+  checkSockets: () => { applyConfig({ priceSearch: { sockets: config.priceSearch.sockets === false } }); push(); },
   tradeOpen: () => { if (tradeCheck && /^https:\/\/www\.pathofexile\.com\//.test(tradeCheck.url)) shell.openExternal(tradeCheck.url); },
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),

@@ -182,14 +182,29 @@
     const inDiv = divine > 0 && c >= divine;
     return `<b>${num(inDiv ? c / divine : c)}</b>${coin(inDiv ? 'divine' : 'chaos')}`;
   }
+  // Top right: the socket button (where there are sockets to show) and the cross.
+  const SOCKET_ICON = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="5" cy="10" r="3.6"/><circle cx="15" cy="10" r="3.6"/><path d="M8.6 10h2.8"/></svg>';
+  function headTools(sockets) {
+    const on = !data || data.sockets !== false;
+    const sk = sockets ? `<button type="button" class="pc-tool${on ? ' on' : ''}" data-sockets title="${on ? 'Hide' : 'Show'} the sockets on item pictures" aria-pressed="${on}">${SOCKET_ICON}</button>` : '';
+    return `<div class="pc-tools">${sk}<button type="button" class="pc-x" data-close aria-label="Close" title="Close (Escape)">×</button></div>`;
+  }
+  // The bottom line: where to read more about the item, which league, and what a divine is worth.
+  function footHtml(d) {
+    const divine = d.divine > 0 ? `<span class="pc-rate" title="Divine Orb on poe.ninja">1 ${coin('divine')} = <b>${num(d.divine)}</b> ${coin('chaos')}</span>` : '';
+    return `<div class="pc-foot"><span class="pc-sites"><button type="button" data-site="wiki" title="Its page on the Path of Exile wiki">Wiki</button><button type="button" data-site="poedb" title="Its page on PoEDB">PoEDB</button></span>
+      <span class="pc-league">${d.league ? `<span title="The league prices and listings are for">${esc(d.league)}</span>` : ''}${divine}</span></div>`;
+  }
+
   // Currency and other things sold in bulk: laid out like any other item, with the bulk
   // exchange's offers as its listings.
   function bulkView(d) {
     return `<div class="pc-head">${art(d.icon, '', 1, 1, 'cur')}
         <div class="pc-meta"><h1>${esc(d.title)}</h1><p class="pc-about">${esc([d.about, d.qty > 1 ? `stack of ${d.qty.toLocaleString()}` : ''].filter(Boolean).join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
-        <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
+        ${headTools(false)}</div>
       ${d.want ? `<div class="pc-go"><button type="button" class="primary" data-search ${d.state === 'searching' ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search the bulk exchange'}</button>
-        ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>${listHtml(d)}` : '<div class="pc-gap"></div>'}`;
+        ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>${listHtml(d)}` : '<div class="pc-gap"></div>'}
+      ${footHtml(d)}`;
   }
 
   // An unidentified unique: the uniques its base can be, dearest first. A click searches for it.
@@ -199,8 +214,9 @@
     return `<div class="pc-head">
         <div class="pc-meta"><h1>Unidentified ${esc(d.base)}</h1><p class="pc-about">${d.choices.length} uniques come on this base</p>
           <p class="pc-say">Which one is it? Pick it to see its price and what is listed.</p></div>
-        <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
-      <div class="pc-listings pick"><div class="pc-lh"><span>Dearest first</span><span>poe.ninja</span></div><ul class="pc-list pick">${rowsHtml}</ul></div>`;
+        ${headTools(false)}</div>
+      <div class="pc-listings pick"><div class="pc-lh"><span>Dearest first</span><span>poe.ninja</span></div><ul class="pc-list pick">${rowsHtml}</ul></div>
+      ${footHtml(d)}`;
   }
 
   function draw() {
@@ -221,14 +237,15 @@
     const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
     panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
         <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${d.picked ? 'Unidentified · <button type="button" class="pc-link" data-pick="">Not this one?</button> · ' : ''}${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
-        <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
+        ${headTools(true)}</div>
       ${tabs}
       <div class="pc-body"><div class="pc-chips">${chips}</div>
         ${stats ? `<ul class="pc-rows">${stats}</ul>` : ''}
         ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}</div>
       <div class="pc-go"><button type="button" class="primary" data-search ${d.state === 'searching' ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search'}</button>
         ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
-      ${listHtml(d)}`;
+      ${listHtml(d)}
+      ${footHtml(d)}`;
     sendSize(fullHeight());
   }
   // The window is only told its height when it changed: each change moves a see-through window,
@@ -320,6 +337,16 @@
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
+    if (e.target.closest('[data-sockets]')) {
+      // shown or hidden at once here; the app keeps the choice for next time
+      const on = panel.classList.toggle('no-sk') === false;
+      const b = e.target.closest('[data-sockets]');
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); b.title = `${on ? 'Hide' : 'Show'} the sockets on item pictures`;
+      api.action({ type: 'checkSockets' });
+      return;
+    }
+    const site = e.target.closest('[data-site]');
+    if (site) { api.action({ type: 'checkSite', site: site.dataset.site }); return; }
     const pick = e.target.closest('[data-pick]');
     if (pick) { api.action({ type: 'checkPickUnique', name: pick.dataset.pick }); return; }
     const tab = e.target.closest('[data-mode]');
@@ -368,6 +395,7 @@
     if (again && d && d.state !== 'searching') { again = false; data = d; api.action({ type: 'tradeSearch', edits: edits() }); }
     const key = d && d.filters ? `${d.at}:${d.filtersRev}:${d.rev}:${Math.round(d.divine || 0)}` : '';
     data = d;
+    panel.classList.toggle('no-sk', !!d && d.sockets === false);
     if (key !== drawnFor || !key) { drawnFor = key; if (typing) stopTyping(true); draw(); }
   });
 })();
