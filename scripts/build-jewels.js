@@ -170,7 +170,8 @@ for (const m of Object.values(mods)) {
 
 const data = {
   built: new Date().toISOString().slice(0, 10),
-  tree: { version: tree.tree, nodes },
+  // jewelSlots: the socket ids in the order the game's character data numbers them (an item's x).
+  tree: { version: tree.tree, nodes, jewelSlots: tree.jewelSlots },
   timeless: {
     nodes: legionNodes, additions: legionAdds,
     index: nodeIndex, size: num(/nodeIDList\["size"\] = (\d+)/), notables: num(/nodeIDList\["sizeNotable"\] = (\d+)/),

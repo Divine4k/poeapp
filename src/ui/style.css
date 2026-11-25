@@ -1199,3 +1199,58 @@ progress::-webkit-progress-value { background: var(--moss); border-radius: 3px; 
 .jw-tip small { display: block; color: var(--faint); }
 .jw-tip ul { margin: 4px 0; }
 @media (max-width: 1150px) { .jw-view { grid-template-columns: 1fr; } .jw-treebox { position: static; max-width: 520px; } }
+
+/* Jewels page: the build, goals, guide and verdict */
+.jw-build-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 10px 14px; text-align: left; border-radius: var(--r-md); border-style: dashed; background: transparent; }
+.jw-build-cta b { color: var(--bone); font-weight: 620; }
+.jw-build-cta small, .jw-build p small { color: var(--ash); font-weight: 500; font-size: 12px; }
+.jw-build { display: flex; flex-direction: column; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.jw-build.on { padding: 10px 12px; border: 0; border-radius: var(--r-md); background: color-mix(in srgb, var(--moss) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--moss) 28%, transparent); }
+.jw-build-head { display: flex; align-items: center; justify-content: space-between; }
+.jw-build-head b { font-size: 12.5px; color: var(--soft); }
+.jw-build-head .link { font-size: 12px; }
+.jw-build p { margin: 0; font-weight: 600; }
+.jw-build p small { display: block; }
+.jw-build > .link { align-self: flex-start; padding: 0; color: var(--gold); font-size: 12.5px; }
+.jw-side textarea { width: 100%; resize: vertical; font: 12px/1.4 var(--body); color: var(--bone); background: var(--well); border: 1px solid var(--line2); border-radius: var(--r-sm); padding: 7px 10px; }
+.jw-side textarea:focus { outline: none; border-color: color-mix(in srgb, var(--gold) 60%, transparent); }
+.jw-build .small { align-self: flex-start; }
+.jw-chars { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
+.jw-chars button { display: flex; flex-direction: column; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--r-sm); background: transparent; text-align: left; }
+.jw-chars button:hover { background: color-mix(in srgb, var(--bone) 6%, transparent); }
+.jw-chars small { color: var(--faint); font-size: 11.5px; font-weight: 500; }
+.jw-goals { display: flex; flex-direction: column; gap: 4px; }
+.jw-goals > small { font-size: 11px; color: var(--faint); }
+.jw-goals .chips button { height: 26px; padding: 0 10px; font-size: 12px; }
+.jw-goals .chips button.sug:not(.yes) { color: color-mix(in srgb, var(--gold) 75%, var(--bone)); }
+.jw-guide, .jw-more { font-size: 12.5px; color: var(--soft); }
+.jw-guide summary, .jw-more summary { cursor: pointer; color: var(--portal); font-weight: 560; }
+.jw-more summary small { color: var(--faint); font-weight: 500; }
+.jw-basics { margin: 8px 0; padding-left: 16px; list-style: disc; }
+.jw-basics li { margin-bottom: 4px; }
+.jw-guide dl { margin: 0; }
+.jw-guide dt { margin-top: 8px; font-weight: 620; color: var(--bone); }
+.jw-guide dd { margin: 2px 0 0; }
+.jw-guide dd ul li { margin-top: 4px; }
+.jw-guide dd small { display: block; color: var(--ash); }
+.jw-ov .own { stroke: var(--moss); stroke-width: 150; stroke-linecap: round; }
+.jw-ov .pick.mine { fill: color-mix(in srgb, var(--moss) 55%, transparent); stroke: var(--moss); }
+.jw-ov .pick.near { stroke: var(--moss); }
+.jw-ov .pick.on { fill: var(--gold); stroke: var(--gold); }
+.jw-dist { display: block; color: var(--moss); font-size: 11.5px; }
+.jw-yours { color: var(--moss) !important; }
+.jw-score { color: var(--gold); font-weight: 640; }
+.jw-steps { margin: 4px 0 12px; padding-left: 20px; color: var(--soft); }
+.jw-steps li { margin-bottom: 6px; }
+.jw-vpad { padding-bottom: 6px; }
+.jw-verdict { padding: 10px 14px; border-radius: var(--r-md); background: color-mix(in srgb, var(--bone) 4%, transparent); box-shadow: inset 3px 0 0 var(--ash); }
+.jw-verdict b { display: block; font-size: 14px; font-weight: 650; }
+.jw-verdict p { margin: 3px 0 0; font-size: 13px; color: var(--soft); }
+.jw-verdict .jw-busy { margin: 0; }
+.jw-verdict.great { background: color-mix(in srgb, var(--gold) 10%, transparent); box-shadow: inset 3px 0 0 var(--gold); }
+.jw-verdict.great b { color: var(--gold); }
+.jw-verdict.good { background: color-mix(in srgb, var(--moss) 8%, transparent); box-shadow: inset 3px 0 0 var(--moss); }
+.jw-verdict.good b { color: var(--moss); }
+.jw-verdict.ok { box-shadow: inset 3px 0 0 var(--portal); }
+.jw-verdict.poor { background: color-mix(in srgb, var(--blood) 7%, transparent); box-shadow: inset 3px 0 0 var(--blood); }
+.jw-verdict.poor b { color: var(--blood); }

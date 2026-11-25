@@ -67,13 +67,43 @@ function area(data, center, half) {
   return { nodes, links };
 }
 
+// How many passives a build still has to take to reach each socket (0 = it has it).
+// taken: Set of node ids. Lines are walked both ways; class starts count as reached by their
+// neighbours.
+function distances(data, taken) {
+  if (!data.adj) {
+    data.adj = new Map();
+    for (const [a, b] of data.links) {
+      if (!data.adj.has(a)) data.adj.set(a, []);
+      if (!data.adj.has(b)) data.adj.set(b, []);
+      data.adj.get(a).push(b); data.adj.get(b).push(a);
+    }
+  }
+  const dist = new Map();
+  const queue = [];
+  for (const id of taken) if (data.byId.has(id)) { dist.set(id, 0); queue.push(id); }
+  for (let i = 0; i < queue.length; i++) {
+    const at = queue[i];
+    for (const next of data.adj.get(at) || []) {
+      if (dist.has(next)) continue;
+      const n = data.byId.get(next);
+      if (!n || n.kind === 'mastery') continue;
+      dist.set(next, dist.get(at) + 1);
+      queue.push(next);
+    }
+  }
+  const out = {};
+  for (const s of data.sockets) out[s.id] = dist.has(s.id) ? dist.get(s.id) : null;
+  return out;
+}
+
 // The whole tree, small, for picking a socket: every node as a dot and every line.
 function overview(data) {
   if (data.overview) return data.overview;
-  const nodes = data.raw.tree.nodes.filter((n) => n.kind !== 'mastery').map((n) => [n.x, n.y, n.kind === 'keystone' ? 3 : n.kind === 'notable' ? 2 : n.kind === 'socket' ? 4 : 1]);
+  const nodes = data.raw.tree.nodes.filter((n) => n.kind !== 'mastery').map((n) => [n.x, n.y, n.kind === 'keystone' ? 3 : n.kind === 'notable' ? 2 : n.kind === 'socket' ? 4 : 1, n.id]);
   const links = data.links.map(([a, b]) => { const p = data.byId.get(a), q = data.byId.get(b); return [p.x, p.y, q.x, q.y]; });
   data.overview = { nodes, links, sockets: data.sockets };
   return data.overview;
 }
 
-module.exports = { load, inRadius, area, overview, RADIUS, RINGS, dist2 };
+module.exports = { load, inRadius, area, overview, distances, RADIUS, RINGS, dist2 };

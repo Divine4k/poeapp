@@ -1709,7 +1709,13 @@ async function jewelAction(a) {
     case 'info': return svc.info();
     case 'timeless': return svc.timeless({ jewel: String(a.jewel), seed: Number(a.seed), conqueror: String(a.conqueror || ''), socket: Number(a.socket) });
     case 'searchable': return svc.searchable(String(a.jewel));
-    case 'search': return svc.search({ jewel: String(a.jewel), want: (a.want || []).slice(0, 12), sockets: (a.sockets || []).map(Number), smalls: !!a.smalls, limit: a.limit });
+    case 'search': return svc.search({ jewel: String(a.jewel), want: (a.want || []).slice(0, 200), sockets: (a.sockets || []).map(Number), smalls: !!a.smalls, limit: a.limit, onlyNodes: a.onlyNodes ? a.onlyNodes.map(Number) : null });
+    case 'rank': return svc.rank({ jewel: String(a.jewel), want: (a.want || []).slice(0, 200), socket: Number(a.socket), seed: Number(a.seed), smalls: !!a.smalls, onlyNodes: a.onlyNodes ? a.onlyNodes.map(Number) : null });
+    case 'goals': return svc.goals(String(a.jewel));
+    case 'verdict': return svc.verdict({ jewel: String(a.jewel), seed: Number(a.seed), conqueror: String(a.conqueror || ''), socket: Number(a.socket), want: (a.want || []).slice(0, 200), goals: (a.goals || []).map(String).slice(0, 12), nodes: (a.nodes || []).map(Number), smalls: !!a.smalls });
+    case 'build': return svc.buildFromText(String(a.text || ''));
+    case 'characters': return svc.characters(String(a.account || ''));
+    case 'character': return svc.character(String(a.account || ''), String(a.name || ''));
     case 'radius': return svc.radius({ jewel: String(a.jewel), socket: Number(a.socket), ring: String(a.ring || ''), keystone: Number(a.keystone), taken: (a.taken || []).map(Number) });
     case 'cluster': return svc.cluster(String(a.base), String(a.skill));
     // A timeless jewel copied in game (Ctrl+C on it, then the Paste button).

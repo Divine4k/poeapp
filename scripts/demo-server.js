@@ -26,7 +26,13 @@ async function answer(a) {
     case 'search': return svc.search(a);
     case 'radius': return svc.radius(a);
     case 'cluster': return svc.cluster(a.base, a.skill);
-    case 'paste': return null;
+    case 'rank': return svc.rank(a);
+    case 'goals': return svc.goals(a.jewel);
+    case 'verdict': return svc.verdict(a);
+    case 'build': return svc.buildFromText(a.text);
+    case 'characters': return svc.characters(a.account);
+    case 'character': return svc.character(a.account, a.name);
+    case 'paste': return { error: 'Paste only works in the app.' };
     default: throw new Error('Only in the app.');
   }
 }

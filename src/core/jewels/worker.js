@@ -22,6 +22,7 @@ parentPort.on('message', async ({ id, op, args }) => {
     let result;
     if (op === 'describe') result = T.describe(data, table, args);
     else if (op === 'search') result = T.search(data, table, args);
+    else if (op === 'rank') result = T.rank(data, table, args);
     else if (op === 'prepare') result = true;
     else throw new Error(`Unknown job ${op}`);
     parentPort.postMessage({ id, result });

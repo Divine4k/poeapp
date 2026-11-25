@@ -269,17 +269,24 @@ function searchable(data, key) {
   const jewel = jewelByKey(key);
   const t = data.timeless;
   const seen = new Map();
-  const note = (tpl, from) => { if (!seen.has(tpl)) seen.set(tpl, new Set()); seen.get(tpl).add(from); };
+  const max = new Map(); // the most one passive can give of a line, to weigh lines against each other
+  const note = (l, from) => {
+    if (!seen.has(l.tpl)) seen.set(l.tpl, new Set());
+    seen.get(l.tpl).add(from);
+    const s = l.slots[0];
+    const v = !s ? 1 : s.stat ? Math.abs(scaleOf(s.stat)(s.stat.max)) : Math.abs(s.fixed !== undefined ? s.fixed : s.hi || 1);
+    max.set(l.tpl, Math.max(max.get(l.tpl) || 0, v || 1));
+  };
   const mine = (e) => e && e.id.startsWith(`${jewel.faction}_`) && !e.ks;
-  for (const e of t.nodes) if (mine(e)) for (const l of compileEntry(e)) note(l.tpl, /small|devotion_node|attribute/.test(e.id) ? 'small' : 'notable');
-  for (const e of t.additions) if (mine(e)) for (const l of compileEntry(e)) note(l.tpl, /small|attribute/.test(e.id) ? 'small' : 'notable');
+  for (const e of t.nodes) if (mine(e)) for (const l of compileEntry(e)) note(l, /small|devotion_node|attribute/.test(e.id) ? 'small' : 'notable');
+  for (const e of t.additions) if (mine(e)) for (const l of compileEntry(e)) note(l, /small|attribute/.test(e.id) ? 'small' : 'notable');
   if (jewel.type !== 1) {
     const fake = { attr: false };
     const r = smallRule(data, jewel, fake);
-    for (const [, , lines] of (r && r.add) || []) for (const l of compilePlain(lines)) note(l.tpl, 'small');
+    for (const [, , lines] of (r && r.add) || []) for (const l of compilePlain(lines)) note(l, 'small');
   }
   // Lines with no number (most keystone-like effects) cannot be added up but can still be wanted.
-  return [...seen].map(([tpl, from]) => ({ tpl, from: [...from] })).sort((a, b) => a.tpl.replace(/^[^A-Za-z]+/, '').localeCompare(b.tpl.replace(/^[^A-Za-z]+/, '')));
+  return [...seen].map(([tpl, from]) => ({ tpl, from: [...from], max: max.get(tpl) })).sort((a, b) => a.tpl.replace(/^[^A-Za-z]+/, '').localeCompare(b.tpl.replace(/^[^A-Za-z]+/, '')));
 }
 
 // What each wanted line adds up to for one change.
@@ -331,16 +338,70 @@ function addVanity(data, table, node, s, wantIdx, acc) {
   }
 }
 
+// The same line can be wanted twice (two goals both take "Burning Damage"): it is counted once,
+// with the weights added and the higher minimum.
+function mergeWant(want) {
+  const by = new Map();
+  for (const w of want || []) {
+    const cur = by.get(w.tpl);
+    const weight = w.weight == null ? 1 : Number(w.weight) || 0;
+    if (!cur) by.set(w.tpl, { tpl: w.tpl, weight, min: Number(w.min) || 0 });
+    else { cur.weight += weight; cur.min = Math.max(cur.min, Number(w.min) || 0); }
+  }
+  return [...by.values()];
+}
+
+// Calls fn(tableSeed, totals) for every seed of a jewel in one socket, with what the wanted lines
+// add up to there. onlyNodes: count only these passives (a build's own); smalls: count small
+// passives too.
+function eachSeed(data, table, jewel, want, socket, { smalls, onlyNodes }, fn) {
+  const wantIdx = new Map(want.map((w, k) => [w.tpl, k]));
+  const center = data.byId.get(socket);
+  if (!center) return;
+  let nodes = inRadius(data, center, RADIUS.large).filter((n) => n.kind !== 'keystone');
+  if (onlyNodes) { const only = onlyNodes instanceof Set ? onlyNodes : new Set(onlyNodes); nodes = nodes.filter((n) => only.has(n.id)); }
+  const notables = nodes.filter((n) => n.kind === 'notable');
+  const small = nodes.filter((n) => n.kind === 'small');
+  const first = jewel.min / step(jewel), count = seedCount(jewel);
+  // Small passives under the other jewels do not depend on the seed: add them once.
+  const fixed = new Float64Array(want.length);
+  if (smalls && jewel.type !== 1) for (const n of small) addWanted(change(data, jewel, null, table, n, first).parts, wantIdx, fixed);
+  const varying = jewel.type === 1 && smalls ? notables.concat(small) : notables;
+  // For the jewels other than Glorious Vanity a notable can only become a few things: work out
+  // what each id adds once.
+  const memo = new Map();
+  for (let s = 0; s < count; s++) {
+    const tableSeed = first + s;
+    const acc = Float64Array.from(fixed);
+    for (const n of varying) {
+      if (jewel.type === 1) { addVanity(data, table, n, s, wantIdx, acc); continue; }
+      const idx = data.timeless.index[n.id];
+      if (!idx) continue;
+      const b = table[idx[0] * count + s];
+      let add = memo.get(`${n.id}:${b}`);
+      if (!add) {
+        add = new Float64Array(want.length);
+        addWanted(change(data, jewel, null, table, n, tableSeed).parts, wantIdx, add);
+        memo.set(`${n.id}:${b}`, add);
+      }
+      for (let k = 0; k < acc.length; k++) acc[k] += add[k];
+    }
+    fn(tableSeed, acc);
+  }
+}
+
+const round2 = (v) => Math.round(v * 100) / 100;
+const scoreOf = (want, acc) => { let ok = true, score = 0; for (let k = 0; k < acc.length; k++) { if (acc[k] < want[k].min) ok = false; score += acc[k] * want[k].weight; } return { ok, score }; };
+const totalsOf = (want, acc) => { const out = {}; want.forEach((w, k) => { if (acc[k]) out[w.tpl] = round2(acc[k]); }); return out; };
+
 // Finds the seeds whose passives add up to the most of what is wanted.
 // want: [{ tpl, min?, weight? }]. sockets: socket ids (all when empty). smalls: count small
-// passives too (otherwise only notables). Returns the best `limit` as
-// [{ seed, socket, score, totals: [n per wanted line] }].
+// passives too (otherwise only notables). onlyNodes: count only these passives (a build's own).
+// Returns the best `limit` as [{ seed, socket, score, totals: { line: amount } }].
 function search(data, table, { jewel: key, want, sockets, smalls = false, limit = 50, onlyNodes = null }) {
   const jewel = jewelByKey(key);
-  if (!want || !want.length) return [];
-  const wantIdx = new Map(want.map((w, k) => [w.tpl, k]));
-  const weights = want.map((w) => (w.weight == null ? 1 : Number(w.weight)));
-  const mins = want.map((w) => Number(w.min) || 0);
+  const lines = mergeWant(want);
+  if (!lines.length) return [];
   const ids = sockets && sockets.length ? sockets : data.sockets.map((s) => s.id);
   const best = [];
   const keep = (row) => {
@@ -349,43 +410,34 @@ function search(data, table, { jewel: key, want, sockets, smalls = false, limit 
     best[best.length - 1] = row;
     best.sort((a, b) => b.score - a.score);
   };
-  const first = jewel.min / step(jewel), count = seedCount(jewel);
+  const only = onlyNodes ? new Set(onlyNodes) : null;
   for (const socket of ids) {
-    const center = data.byId.get(socket);
-    if (!center) continue;
-    let nodes = inRadius(data, center, RADIUS.large).filter((n) => n.kind !== 'keystone');
-    if (onlyNodes) nodes = nodes.filter((n) => onlyNodes.includes(n.id));
-    const notables = nodes.filter((n) => n.kind === 'notable');
-    const small = nodes.filter((n) => n.kind === 'small');
-    // Small passives under the other jewels do not depend on the seed: add them once.
-    const fixed = new Float64Array(want.length);
-    if (smalls && jewel.type !== 1) for (const n of small) addWanted(change(data, jewel, null, table, n, first).parts, wantIdx, fixed);
-    const varying = jewel.type === 1 && smalls ? notables.concat(small) : notables;
-    // For the jewels other than Glorious Vanity a notable can only become a few things: work
-    // out what each id adds once.
-    const memo = new Map();
-    for (let s = 0; s < count; s++) {
-      const tableSeed = first + s;
-      const acc = Float64Array.from(fixed);
-      for (const n of varying) {
-        if (jewel.type === 1) { addVanity(data, table, n, s, wantIdx, acc); continue; }
-        const idx = data.timeless.index[n.id];
-        if (!idx) continue;
-        const b = table[idx[0] * count + s];
-        let add = memo.get(`${n.id}:${b}`);
-        if (!add) {
-          add = new Float64Array(want.length);
-          addWanted(change(data, jewel, null, table, n, tableSeed).parts, wantIdx, add);
-          memo.set(`${n.id}:${b}`, add);
-        }
-        for (let k = 0; k < acc.length; k++) acc[k] += add[k];
-      }
-      let ok = true, score = 0;
-      for (let k = 0; k < acc.length; k++) { if (acc[k] < mins[k]) ok = false; score += acc[k] * weights[k]; }
-      if (ok && score > 0) keep({ seed: tableSeed * step(jewel), socket, score: Math.round(score * 100) / 100, totals: Array.from(acc, (v) => Math.round(v * 100) / 100) });
-    }
+    eachSeed(data, table, jewel, lines, socket, { smalls, onlyNodes: only }, (tableSeed, acc) => {
+      const { ok, score } = scoreOf(lines, acc);
+      if (ok && score > 0) keep({ seed: tableSeed * step(jewel), socket, score: round2(score), totals: totalsOf(lines, acc) });
+    });
   }
   return best.sort((a, b) => b.score - a.score || a.seed - b.seed);
+}
+
+// How one seed does against every other seed of the jewel in the same socket, for the verdict:
+// { score, totals, better (seeds that score higher), count, best: { seed, score } }.
+function rank(data, table, { jewel: key, want, socket, seed, smalls = false, onlyNodes = null }) {
+  const jewel = jewelByKey(key);
+  const lines = mergeWant(want);
+  if (!lines.length) return null;
+  const mine = seed / step(jewel);
+  const scores = [];
+  let own = null, best = null;
+  eachSeed(data, table, jewel, lines, socket, { smalls, onlyNodes }, (tableSeed, acc) => {
+    const { score } = scoreOf(lines, acc);
+    scores.push(score);
+    if (tableSeed === mine) own = { score: round2(score), totals: totalsOf(lines, acc) };
+    if (!best || score > best.score) best = { seed: tableSeed * step(jewel), score: round2(score) };
+  });
+  if (!own) return null;
+  const better = scores.filter((v) => round2(v) > own.score).length;
+  return { ...own, better, count: scores.length, best };
 }
 
 // Adds up what the chosen passives give: [{ tpl, vals, count }], biggest first by count.
@@ -410,4 +462,4 @@ function tradeQuery(key, seed, conqueror) {
   return { query: { status: { option: 'online' }, name: jewel.name, type: 'Timeless Jewel', stats: [{ type: 'count', value: { min: 1 }, filters }] }, sort: { price: 'asc' } };
 }
 
-module.exports = { JEWELS, jewelByKey, readJewelText, describe, search, searchable, totals, tradeQuery, lineText, compileLine, checkSeed };
+module.exports = { JEWELS, jewelByKey, readJewelText, describe, search, rank, searchable, totals, tradeQuery, lineText, compileLine, checkSeed };

@@ -8,19 +8,22 @@ const jw = {
   info: null, loading: false, kind: 'timeless',
   // timeless
   mode: 'look', jewel: 'vanity', seed: null, conqueror: null, socket: null,
-  result: null, taken: new Set(), busy: '', error: '', progress: null, price: null,
+  result: null, taken: new Set(), busy: '', error: '', progress: null, price: null, verdict: null,
   want: [], searchable: [], scope: 'all', smalls: false, found: null, statFilter: '',
+  goals: [], goalList: [], guideOpen: false,
+  // the player's build (Path of Building code or a character), kept in this window
+  build: null, bf: { open: false, text: '', account: '', chars: null, busy: '', error: '' },
   // radius jewels
   rj: { jewel: 'thread', ring: 'large', socket: null, keystone: null, result: null, taken: new Set(), error: '' },
   // cluster jewels
   cl: { base: 'Large Cluster Jewel', skill: null, filter: '', result: null },
 };
 
-// The last choices are kept in this window (like the sidebar width), not in the settings.
-const JW_KEEP = ['kind', 'mode', 'jewel', 'seed', 'conqueror', 'socket', 'scope', 'smalls'];
+// The last choices (and the build) are kept in this window, like the sidebar width, not in the settings.
+const JW_KEEP = ['kind', 'mode', 'jewel', 'seed', 'conqueror', 'socket', 'scope', 'smalls', 'goals', 'build', 'want'];
 function jwSave() {
   const keep = Object.fromEntries(JW_KEEP.map((k) => [k, jw[k]]));
-  keep.want = jw.want;
+  keep.account = jw.bf.account;
   keep.rj = { jewel: jw.rj.jewel, ring: jw.rj.ring, socket: jw.rj.socket, keystone: jw.rj.keystone };
   keep.cl = { base: jw.cl.base, skill: jw.cl.skill };
   try { localStorage.setItem('jewels', JSON.stringify(keep)); } catch (_) { /* not kept */ }
@@ -29,7 +32,9 @@ try {
   const kept = JSON.parse(localStorage.getItem('jewels') || 'null');
   if (kept) {
     for (const k of JW_KEEP) if (kept[k] !== undefined) jw[k] = kept[k];
-    if (Array.isArray(kept.want)) jw.want = kept.want;
+    if (!Array.isArray(jw.want)) jw.want = [];
+    if (!Array.isArray(jw.goals)) jw.goals = [];
+    jw.bf.account = kept.account || '';
     Object.assign(jw.rj, kept.rj || {});
     Object.assign(jw.cl, kept.cl || {});
   }
@@ -40,6 +45,18 @@ const jwSocket = (id) => jw.info.sockets.find((s) => s.id === id);
 // A stat line from its template and numbers: "+#% to Fire Resistance" + [12].
 const fill = (tpl, vals) => { let k = 0; return tpl.replace(/#/g, () => { const v = vals[k++]; return v == null ? '?' : String(v); }); };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const cleanErr = (e) => String(e && e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+// What is searched for and judged: the chosen goals' lines and any single stats added by hand.
+const jwGoal = (key) => jw.goalList.find((g) => g.key === key);
+const effWant = () => [...jw.goals.flatMap((k) => (jwGoal(k) ? jwGoal(k).want : [])), ...jw.want];
+const goalNames = () => jw.goals.map((k) => (jwGoal(k) || {}).name).filter(Boolean);
+// How far a socket is from the build's tree, in words.
+function socketNote(id) {
+  if (!jw.build || !jw.build.distances) return '';
+  const d = jw.build.distances[id];
+  return d == null ? '' : d === 0 ? 'on your tree' : `${plural(d, 'point', 'points')} away`;
+}
+const nearSockets = () => (jw.build ? jw.info.sockets.filter((s) => { const d = jw.build.distances[s.id]; return d != null && d <= 3; }).map((s) => s.id) : []);
 
 // Adds up stat lines across passives: [{ tpl, vals, count }].
 function jwTotals(nodes) {
@@ -58,10 +75,11 @@ async function jewelsShown() {
   if (!jw.info && !jw.loading) {
     jw.loading = true;
     setHtml($('jw-main'), '<p class="empty">Loading the passive tree…</p>');
-    try { jw.info = await api.jewels({ op: 'info' }); } catch (e) { jw.loading = false; setHtml($('jw-main'), `<p class="empty">${esc(e.message)}</p>`); return; }
+    try { jw.info = await api.jewels({ op: 'info' }); } catch (e) { jw.loading = false; setHtml($('jw-main'), `<p class="empty">${esc(cleanErr(e))}</p>`); return; }
     jw.loading = false;
     if (!jwSocket(jw.socket)) jw.socket = null;
     if (!jw.info.timeless.some((j) => j.key === jw.jewel)) jw.jewel = 'vanity';
+    await jwLoadLists();
     if (jw.kind === 'timeless' && jw.seed && jw.socket) jwLook();
     if (jw.kind === 'radius') jwRadius();
     if (jw.kind === 'cluster' && jw.cl.skill) jwCluster();
@@ -92,16 +110,19 @@ function overviewSvg(pick, selected, reach) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const [x, y] of ov.nodes) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
   const pad = 400;
+  const mine = new Set(jw.build ? jw.build.nodes : []);
   const lines = ov.links.map(([a, b, c, d]) => `M${a} ${b}L${c} ${d}`).join('');
-  const dots = ov.nodes.filter((n) => n[2] === 1).map(([x, y]) => `M${x} ${y}h0`).join('');
-  const big = ov.nodes.filter((n) => n[2] === 2 || n[2] === 3).map(([x, y, k]) => `<circle cx="${x}" cy="${y}" r="${k === 3 ? 170 : 100}" class="${k === 3 ? 'ks' : 'nt'}"/>`).join('');
+  const dots = ov.nodes.filter((n) => n[2] === 1 && !mine.has(n[3])).map(([x, y]) => `M${x} ${y}h0`).join('');
+  const own = ov.nodes.filter((n) => mine.has(n[3])).map(([x, y]) => `M${x} ${y}h0`).join('');
+  const big = ov.nodes.filter((n) => (n[2] === 2 || n[2] === 3) && !mine.has(n[3])).map(([x, y, k]) => `<circle cx="${x}" cy="${y}" r="${k === 3 ? 170 : 100}" class="${k === 3 ? 'ks' : 'nt'}"/>`).join('');
+  const sockClass = (id) => { const d = jw.build && jw.build.distances ? jw.build.distances[id] : null; return d === 0 ? ' mine' : d != null && d <= 3 ? ' near' : ''; };
   const targets = pick === 'keystone'
     ? jw.info.keystones.map((k) => `<circle cx="${k.x}" cy="${k.y}" r="300" class="pick${k.id === selected ? ' on' : ''}" data-pick="${k.id}"><title>${esc(k.name)}</title></circle>`).join('')
-    : jw.info.sockets.map((s) => `<circle cx="${s.x}" cy="${s.y}" r="280" class="pick${s.id === selected ? ' on' : ''}" data-pick="${s.id}"><title>${esc(s.label)}</title></circle>`).join('');
+    : jw.info.sockets.map((s) => `<circle cx="${s.x}" cy="${s.y}" r="280" class="pick${sockClass(s.id)}${s.id === selected ? ' on' : ''}" data-pick="${s.id}"><title>${esc(s.label)}${socketNote(s.id) ? ` (${esc(socketNote(s.id))})` : ''}</title></circle>`).join('');
   const at = pick === 'keystone' ? jw.info.keystones.find((k) => k.id === selected) : jwSocket(selected);
   const ring = at && reach ? `<circle cx="${at.x}" cy="${at.y}" r="${reach}" class="reach"/>` : '';
   return `<svg class="jw-ov" viewBox="${minX - pad} ${minY - pad} ${maxX - minX + 2 * pad} ${maxY - minY + 2 * pad}" role="img" aria-label="The passive tree. Click a ${pick === 'keystone' ? 'keystone' : 'jewel socket'} to choose it.">
-    <path d="${lines}" class="ln"/><path d="${dots}" class="dot"/>${big}${ring}${targets}</svg>`;
+    <path d="${lines}" class="ln"/><path d="${dots}" class="dot"/>${big}${own ? `<path d="${own}" class="own"/>` : ''}${ring}${targets}</svg>`;
 }
 
 // The tree around a point. marks(node) gives extra classes; tips are shown on hover.
@@ -126,11 +147,71 @@ function jwRenderSide() {
   return setHtml($('jw-side'), clusterSide());
 }
 
+// The build: import it once, and the page knows which passives count and which sockets are near.
+function buildCard() {
+  const b = jw.build, f = jw.bf;
+  if (b && !f.open) {
+    const who = [b.name, b.className, b.level ? `level ${b.level}` : '', b.skill].filter(Boolean).join(' · ');
+    const jewels = (b.jewels || []).map((j, i) => {
+      const def = jw.info.timeless.find((x) => x.key === j.jewel);
+      return `<button type="button" class="link" data-own-jewel="${i}">Show your ${esc(def ? def.name : 'jewel')} ${j.seed}</button>`;
+    }).join('');
+    return `<div class="jw-build on">
+      <div class="jw-build-head"><b>Your build</b><span><button type="button" class="link" data-jw="build-open">Change</button><button type="button" class="link" data-jw="build-forget">Forget</button></span></div>
+      <p>${esc(who || 'Imported build')}<small>${plural(b.nodes.length, 'passive', 'passives')}, ${plural(b.sockets.length, 'jewel socket', 'jewel sockets')}. Only the passives you take are counted.</small></p>
+      ${jewels}</div>`;
+  }
+  if (!f.open) {
+    return `<button type="button" class="jw-build-cta" data-jw="build-open"><b>Use my build</b><small>Then the app counts only the passives you take, finds the sockets near your tree and judges each seed for you.</small></button>`;
+  }
+  const chars = f.chars ? `<ul class="jw-chars">${f.chars.length ? f.chars.map((c) => `<li><button type="button" data-char="${esc(c.name)}"><b>${esc(c.name)}</b><small>${esc(c.class)} · level ${c.level} · ${esc(c.league)}</small></button></li>`).join('') : '<li class="dim">No characters.</li>'}</ul>` : '';
+  return `<div class="jw-build">
+    <div class="jw-build-head"><b>Your build</b>${b || f.open ? '<button type="button" class="link" data-jw="build-close">Close</button>' : ''}</div>
+    <label class="jw-label" for="jw-pob">Path of Building code or link</label>
+    <textarea id="jw-pob" rows="2" placeholder="In Path of Building: Import/Export Build, Generate, Copy. Or a pobb.in link." spellcheck="false">${esc(f.text)}</textarea>
+    <button type="button" class="small" data-jw="build-pob"${f.busy ? ' disabled' : ''}>Use this build</button>
+    <label class="jw-label" for="jw-account">Or your pathofexile.com account <small>characters must be public</small></label>
+    <div class="jw-row"><input id="jw-account" placeholder="Name#1234" value="${esc(f.account)}" autocomplete="off"><button type="button" class="small" data-jw="build-chars"${f.busy ? ' disabled' : ''}>Find</button></div>
+    ${chars}
+    ${f.busy ? `<p class="jw-busy"><span class="spin" aria-hidden="true"></span>${esc(f.busy)}</p>` : ''}${f.error ? `<p class="jw-err">${esc(f.error)}</p>` : ''}
+  </div>`;
+}
+
+// What the player wants from the jewel, in plain choices. The build's own picks are starred.
+function goalChips() {
+  if (!jw.goalList.length) return '';
+  const suggested = new Set(jw.build && jw.build.interests ? [...jw.build.interests.top, ...jw.build.interests.more] : []);
+  const groups = [['defence', 'Defence'], ['offence', 'Offence'], ['support', 'Other']];
+  return groups.map(([g, title]) => {
+    const list = jw.goalList.filter((x) => x.group === g);
+    if (!list.length) return '';
+    return `<div class="jw-goals"><small>${title}</small><div class="chips">${list.map((x) => `<button type="button" class="${jw.goals.includes(x.key) ? 'yes' : ''}${suggested.has(x.key) ? ' sug' : ''}" data-goal="${x.key}" title="${esc(x.want.length)} kinds of stats">${suggested.has(x.key) ? '★ ' : ''}${esc(x.name)}</button>`).join('')}</div></div>`;
+  }).join('');
+}
+
+function jewelGuide(j) {
+  const g = j.guide || {};
+  return `<details class="jw-guide" id="jw-guide"${jw.guideOpen ? ' open' : ''}>
+    <summary>How ${esc(j.name)} works</summary>
+    <ul class="jw-basics">${jw.info.basics.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+    <dl>
+      <dt>Small passives</dt><dd>${esc(g.smalls || '')}</dd>
+      <dt>Notables</dt><dd>${esc(g.notables || '')}</dd>
+      <dt>Good for</dt><dd>${esc(g.goodFor || '')}</dd>
+      <dt>Keystones</dt><dd>A keystone in the circle becomes the conqueror's keystone:
+        <ul>${j.conquerors.map((c) => `<li><b>${esc(c.name)}: ${esc(c.keystone)}</b><small>${esc((c.lines || []).join(' · '))}</small></li>`).join('')}</ul></dd>
+    </dl>
+  </details>`;
+}
+
 function timelessSide() {
   const j = jwJewel();
   const jewels = jw.info.timeless.map((x) => `<button type="button" class="jw-pick${x.key === jw.jewel ? ' on' : ''}" data-jewel="${x.key}"><b>${esc(x.name)}</b><small>${x.min.toLocaleString()} – ${x.max.toLocaleString()}</small></button>`).join('');
-  const conq = j.conquerors.map((c) => `<button type="button" class="${c.name === jw.conqueror ? 'yes' : ''}" data-conqueror="${esc(c.name)}" title="Keystone: ${esc(c.keystone)}">${esc(c.name)}<small>${esc(c.keystone)}</small></button>`).join('');
-  const sockets = `<option value="">Choose a socket…</option>${jw.info.sockets.map((s) => `<option value="${s.id}"${s.id === jw.socket ? ' selected' : ''}>${esc(s.label)}</option>`).join('')}`;
+  const conq = j.conquerors.map((c) => `<button type="button" class="${c.name === jw.conqueror ? 'yes' : ''}" data-conqueror="${esc(c.name)}" title="${esc(c.keystone)}: ${esc((c.lines || []).join(' · '))}">${esc(c.name)}<small>${esc(c.keystone)}</small></button>`).join('');
+  // With a build, its sockets come first, nearest first.
+  const sockets = jw.info.sockets.slice();
+  if (jw.build) sockets.sort((a, b) => (jw.build.distances[a.id] ?? 99) - (jw.build.distances[b.id] ?? 99));
+  const socketOpts = `<option value="">Choose a socket…</option>${sockets.map((s) => `<option value="${s.id}"${s.id === jw.socket ? ' selected' : ''}>${esc(s.label)}${socketNote(s.id) ? ` — ${esc(socketNote(s.id))}` : ''}</option>`).join('')}`;
   const look = `
     <label class="jw-label" for="jw-seed">Number on the jewel</label>
     <div class="jw-seed">
@@ -141,34 +222,43 @@ function timelessSide() {
     <p class="jw-help">${j.step > 1 ? `Steps of ${j.step}. ` : ''}The number in "${esc(sampleLine(j))}".</p>
     <span class="jw-label">Conqueror <small>only changes the keystone</small></span>
     <div class="chips jw-conq">${conq}</div>`;
+  const scope = jw.build
+    ? `<option value="near"${jw.scope === 'near' ? ' selected' : ''}>Sockets near my tree</option><option value="all"${jw.scope === 'all' ? ' selected' : ''}>Every socket</option><option value="one"${jw.scope === 'one' ? ' selected' : ''}>Only the socket below</option>`
+    : `<option value="all"${jw.scope !== 'one' ? ' selected' : ''}>Every socket</option><option value="one"${jw.scope === 'one' ? ' selected' : ''}>Only the socket below</option>`;
   const find = `
-    <label class="jw-label" for="jw-stat">Stats you want</label>
+    <details class="jw-more"${jw.want.length ? ' open' : ''}><summary>A specific stat <small>optional</small></summary>
     <div class="jw-statpick">
       <input id="jw-stat" placeholder="Type a stat, like life or block" autocomplete="off" value="${esc(jw.statFilter)}">
       <ul class="jw-stats" id="jw-stats">${statOptions()}</ul>
     </div>
-    <ul class="jw-want">${jw.want.length ? jw.want.map((w, i) => `<li>
+    <ul class="jw-want">${jw.want.map((w, i) => `<li>
         <span class="jw-wname">${esc(w.tpl.replace(/#/g, 'X'))}</span>
         <label>At least <input type="number" min="0" step="any" value="${w.min || ''}" data-want-min="${i}" aria-label="At least"></label>
         <label>Weight <input type="number" min="0" step="any" value="${w.weight == null ? 1 : w.weight}" data-want-weight="${i}" aria-label="Weight"></label>
-        <button type="button" class="link" data-want-drop="${i}" aria-label="Remove">×</button></li>`).join('') : '<li class="dim">Nothing yet. Add the stats you want; weights say which matter more.</li>'}</ul>
+        <button type="button" class="link" data-want-drop="${i}" aria-label="Remove">×</button></li>`).join('')}</ul>
+    </details>
     <div class="jw-row">
-      <select id="jw-scope" aria-label="Where to look"><option value="all"${jw.scope === 'all' ? ' selected' : ''}>Every socket</option><option value="one"${jw.scope === 'one' ? ' selected' : ''}>Only the socket below</option></select>
-      <label class="jw-check"><input type="checkbox" id="jw-smalls"${jw.smalls ? ' checked' : ''}> Count small passives</label>
+      <select id="jw-scope" aria-label="Where to look">${scope}</select>
+      ${jw.build ? '' : `<label class="jw-check"><input type="checkbox" id="jw-smalls"${jw.smalls ? ' checked' : ''}> Count small passives</label>`}
     </div>
-    <button type="button" class="primary jw-go" data-jw="search"${jw.want.length && !jw.busy ? '' : ' disabled'}>Find seeds</button>`;
+    <button type="button" class="primary jw-go" data-jw="search"${effWant().length && !jw.busy ? '' : ' disabled'}>Find the best seeds</button>`;
   return `
+    ${buildCard()}
     <button type="button" class="jw-paste" data-jw="paste" title="Hover the jewel in game and press Ctrl+C first">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/></svg>
       <span><b>Paste a copied jewel</b><small>Ctrl+C on it in game, then click here</small></span></button>
     <div class="jw-seg small" role="tablist" aria-label="What to do">
-      <button type="button" role="tab" data-mode="look" aria-selected="${jw.mode === 'look'}">Look up a seed</button>
-      <button type="button" role="tab" data-mode="find" aria-selected="${jw.mode === 'find'}">Find a seed</button>
+      <button type="button" role="tab" data-mode="look" aria-selected="${jw.mode === 'look'}">I have a jewel</button>
+      <button type="button" role="tab" data-mode="find" aria-selected="${jw.mode === 'find'}">Help me find one</button>
     </div>
     <div class="jw-jewels">${jewels}</div>
+    <p class="jw-help">${esc((j.guide || {}).short || '')}</p>
+    ${jewelGuide(j)}
+    <span class="jw-label">What do you want from it? <small>${jw.build ? '★ = what your build takes most' : 'pick one or more'}</small></span>
+    ${goalChips()}
     ${jw.mode === 'look' ? look : find}
     <label class="jw-label" for="jw-socket">Socket <small>or click one on the tree</small></label>
-    <select id="jw-socket">${sockets}</select>
+    <select id="jw-socket">${socketOpts}</select>
     ${overviewSvg('socket', jw.socket, 1800)}`;
 }
 
@@ -237,18 +327,39 @@ const busyLine = () => (jw.busy ? `<p class="jw-busy"><span class="spin" aria-hi
 const errLine = (e) => (e ? `<p class="jw-err">${esc(e)}</p>` : '');
 
 function findMain() {
-  const head = `<div class="p-head"><h2>Seeds${jw.found ? ` <small>${jw.found.length ? `best ${jw.found.length}` : 'none found'}</small>` : ''}</h2></div>`;
+  const head = `<div class="p-head"><h2>Best seeds${jw.found ? ` <small>${jw.found.length ? `${jw.found.length} found${goalNames().length ? ` for ${esc(goalNames().join(', ').toLowerCase())}` : ''}` : 'none found'}</small>` : ''}</h2></div>`;
   if (!jw.found) {
-    return `${head}<div class="jw-pad">${busyLine()}${errLine(jw.error)}${jw.busy ? '' : `<p class="empty">Pick the stats you want on the left, then Find seeds. Every seed of ${esc(jwJewel().name)} is checked${jw.scope === 'all' ? ' in every socket' : ''}; the ones that give the most come first.</p>`}</div>`;
+    const how = jw.build
+      ? 'Only the passives your build takes are counted, in the sockets near your tree.'
+      : 'Tip: use your build (top left) so only the passives you take are counted.';
+    return `${head}<div class="jw-pad">${busyLine()}${errLine(jw.error)}${jw.busy ? '' : `<ol class="jw-steps"><li>Pick a jewel. Not sure which? Open "How it works" under the jewels.</li><li>Pick what you want from it${jw.build ? ' (your build\'s picks are starred)' : ''}.</li><li>Press Find the best seeds. Every number the jewel can have is checked.</li></ol><p class="jw-help">${esc(how)}</p>`}</div>`;
   }
-  const rows = jw.found.map((r) => `<tr>
+  const want = effWant();
+  const weight = new Map();
+  for (const w of want) weight.set(w.tpl, (weight.get(w.tpl) || 0) + (w.weight == null ? 1 : Number(w.weight)));
+  const rows = jw.found.map((r) => {
+    const top = Object.entries(r.totals).sort((a, b) => b[1] * (weight.get(b[0]) || 1) - a[1] * (weight.get(a[0]) || 1)).slice(0, 4);
+    return `<tr>
       <td class="num"><b>${r.seed}</b></td>
-      <td>${esc((jwSocket(r.socket) || {}).label || r.socket)}</td>
-      <td>${r.totals.map((t, i) => `<span class="jw-got">${esc(fill(jw.want[i] ? jw.want[i].tpl : '#', [t]))}</span>`).join('')}</td>
-      <td class="num"><button type="button" class="small" data-show-seed="${r.seed}" data-show-socket="${r.socket}">Show</button></td></tr>`).join('');
+      <td>${esc((jwSocket(r.socket) || {}).label || r.socket)}${socketNote(r.socket) ? `<small class="jw-dist">${esc(socketNote(r.socket))}</small>` : ''}</td>
+      <td>${top.map(([tpl, v]) => `<span class="jw-got">${esc(fill(tpl, [v]))}</span>`).join('')}</td>
+      <td class="num">${jw.goals.length ? `<span class="jw-score" title="About how many passives' worth of what you want">≈ ${r.score}</span>` : r.score}</td>
+      <td class="num"><button type="button" class="small" data-show-seed="${r.seed}" data-show-socket="${r.socket}">Show</button></td></tr>`;
+  }).join('');
   return `${head}<div class="jw-pad">${busyLine()}${errLine(jw.error)}
-    ${jw.found.length ? `<div class="table-wrap"><table class="jw-table"><thead><tr><th class="num">Seed</th><th>Socket</th><th>Adds up to</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
-      : '<p class="empty">No seed gives all of that. Lower an "at least" or remove a stat.</p>'}</div>`;
+    ${jw.found.length ? `<p class="jw-help">The score is about how many passives' worth of what you want a seed gives. Show opens one with its verdict and price.</p>
+      <div class="table-wrap"><table class="jw-table"><thead><tr><th class="num">Seed</th><th>Socket</th><th>Gives</th><th class="num">Score</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : '<p class="empty">No seed gives all of that. Lower an "at least" or pick another goal.</p>'}</div>`;
+}
+
+function verdictBox() {
+  const v = jw.verdict;
+  if (!jw.result) return '';
+  if (!effWant().length && !(v && v.notes.length)) {
+    return `<div class="jw-verdict none"><b>Is this seed good for me?</b><p>Pick what you want from it on the left${jw.build ? '' : ', or use your build'} and the app tells you.</p></div>`;
+  }
+  if (!v) return '<div class="jw-verdict none"><p class="jw-busy"><span class="spin" aria-hidden="true"></span>Comparing with every other seed…</p></div>';
+  return `<div class="jw-verdict ${v.level}"><b>${esc(v.title)}</b>${v.notes.map((n) => `<p>${esc(n)}</p>`).join('')}</div>`;
 }
 
 function timelessMain() {
@@ -263,18 +374,20 @@ function timelessMain() {
   const smalls = r.nodes.filter((n) => n.kind === 'small');
   const taken = r.nodes.filter((n) => jw.taken.has(n.id));
   const totals = jwTotals(taken);
+  const mine = new Set(jw.build ? jw.build.nodes : []);
   const lines = (n) => n.parts.length ? n.parts.map((p) => `<li>${esc(fill(p.tpl, p.vals))}</li>`).join('') : '<li class="dim">No stats</li>';
   const notableRows = changed.map((n) => `<li class="jw-node${jw.taken.has(n.id) ? ' taken' : ''} m-${n.mode}" data-node="${n.id}">
       <button type="button" class="jw-tick" data-take="${n.id}" aria-pressed="${jw.taken.has(n.id)}" aria-label="Taken"></button>
-      <div><b>${esc(n.name)}</b>${n.name !== n.was ? `<small>was ${esc(n.was)}</small>` : ''}${n.kind === 'keystone' ? '<small>keystone</small>' : ''}<ul>${lines(n)}</ul></div></li>`).join('');
+      <div><b>${esc(n.name)}</b>${n.name !== n.was ? `<small>was ${esc(n.was)}</small>` : ''}${n.kind === 'keystone' ? '<small>keystone</small>' : ''}${mine.has(n.id) ? '<small class="jw-yours">yours</small>' : ''}<ul>${lines(n)}</ul></div></li>`).join('');
   const smallSum = jwTotals(smalls);
   const price = jw.price;
   const priceHtml = price && price.loading ? '<span class="dim">Asking the trade site…</span>'
     : price && price.error ? `<span class="neg">${esc(price.error)}</span>`
     : price ? `<span>${price.total ? `${plural(price.total, 'listed', 'listed')}${price.cheapest != null ? `, from <b>${esc(fmtValue(price.cheapest))}</b>` : ''}` : 'None listed right now'}</span>${price.url ? '<button type="button" class="link" data-jw="trade">Open on trade</button>' : ''}` : '';
-  return `<div class="p-head"><h2>${esc(j.name)} ${r.seed} <small>${esc(r.conqueror || '')} · ${esc((jwSocket(r.socket) || {}).label || '')}</small></h2>
+  return `<div class="p-head"><h2>${esc(j.name)} ${r.seed} <small>${esc(r.conqueror || '')} · ${esc((jwSocket(r.socket) || {}).label || '')}${socketNote(r.socket) ? ` · ${esc(socketNote(r.socket))}` : ''}</small></h2>
       <div class="jw-actions">${back}${priceHtml}${price && !price.loading ? '' : `<button type="button" class="small" data-jw="price"${price && price.loading ? ' disabled' : ''}>Price on trade</button>`}</div></div>
     ${busyLine()}${errLine(jw.error)}
+    <div class="jw-pad jw-vpad">${verdictBox()}</div>
     <div class="jw-view">
       <div class="jw-treebox">${treeSvg(r.area, r.center, r.radius, 0, (n) => {
         const hit = r.nodes.find((x) => x.id === n.id);
@@ -284,7 +397,7 @@ function timelessMain() {
         <p class="jw-legend"><span class="lg rep"></span>changed <span class="lg add"></span>stat added <span class="lg tk"></span>taken · click passives you take</p></div>
       <div class="jw-lists">
         <h3>What you get <small>${plural(taken.length, 'passive', 'passives')} taken</small>
-          <span class="jw-quick"><button type="button" class="link" data-jw="take-notables">Notables</button><button type="button" class="link" data-jw="take-all">All</button><button type="button" class="link" data-jw="take-none">None</button></span></h3>
+          <span class="jw-quick">${jw.build ? '<button type="button" class="link" data-jw="take-mine">Mine</button>' : ''}<button type="button" class="link" data-jw="take-notables">Notables</button><button type="button" class="link" data-jw="take-all">All</button><button type="button" class="link" data-jw="take-none">None</button></span></h3>
         <ul class="jw-sum">${totals.length ? totals.map((t) => `<li>${esc(fill(t.tpl, t.vals))}${t.count > 1 ? `<small>×${t.count}</small>` : ''}</li>`).join('') : '<li class="dim">Click the passives you take, on the tree or below.</li>'}</ul>
         <h3>Notables and keystone <small>${changed.length} in reach</small></h3>
         <ul class="jw-nodes">${notableRows}</ul>
@@ -351,10 +464,17 @@ function jwCheck() {
   return '';
 }
 
+// The taken passives when a seed is shown: the build's own, otherwise every notable.
+function defaultTaken(r) {
+  if (jw.build) { const mine = new Set(jw.build.nodes); return new Set(r.nodes.filter((n) => mine.has(n.id)).map((n) => n.id)); }
+  return new Set(r.nodes.filter((n) => n.kind === 'notable').map((n) => n.id));
+}
+
 let lookToken = 0;
 async function jwLook() {
   const why = jwCheck();
   jw.price = null;
+  jw.verdict = null;
   if (why === null) { jw.result = null; jw.error = ''; jwRender(); return; }
   if (why) { jw.result = null; jw.error = why; jwRender(); return; }
   if (!jw.conqueror || !jwJewel().conquerors.some((c) => c.name === jw.conqueror)) jw.conqueror = jwJewel().conquerors[0].name;
@@ -369,15 +489,26 @@ async function jwLook() {
     jw.result = r;
     jwJewel().downloaded = true;
     // Passives marked as taken stay taken while you flip through seeds in the same socket.
-    if (!sameSpot) jw.taken = new Set(r.nodes.filter((n) => n.kind === 'notable').map((n) => n.id));
+    if (!sameSpot) jw.taken = defaultTaken(r);
   } catch (e) {
     if (token !== lookToken) return;
     jw.result = null;
-    jw.error = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+    jw.error = cleanErr(e);
   }
   jw.busy = '';
   jwSave();
   jwRender();
+  if (jw.result) jwVerdict(token);
+}
+
+async function jwVerdict(token = lookToken) {
+  if (!jw.result || (!effWant().length && !jw.build)) { jw.verdict = null; jwRenderMain(); return; }
+  try {
+    const v = await api.jewels({ op: 'verdict', jewel: jw.jewel, seed: jw.result.seed, conqueror: jw.conqueror, socket: jw.result.socket, want: effWant(), goals: goalNames(), nodes: jw.build ? jw.build.nodes : [], smalls: jw.smalls });
+    if (token !== lookToken) return;
+    jw.verdict = v;
+  } catch (e) { if (token === lookToken) jw.verdict = { level: 'none', title: 'No verdict', notes: [cleanErr(e)] }; }
+  jwRenderMain();
 }
 
 async function jwSearch() {
@@ -386,20 +517,28 @@ async function jwSearch() {
   jw.error = '';
   jw.busy = jwJewel().downloaded ? 'Checking every seed…' : `Getting the ${jwJewel().name} data once…`;
   jwRender();
+  const sockets = jw.scope === 'one' && jw.socket ? [jw.socket] : jw.scope === 'near' && jw.build ? nearSockets() : [];
   try {
-    jw.found = await api.jewels({ op: 'search', jewel: jw.jewel, want: jw.want, sockets: jw.scope === 'one' && jw.socket ? [jw.socket] : [], smalls: jw.smalls });
+    jw.found = await api.jewels({ op: 'search', jewel: jw.jewel, want: effWant(), sockets, smalls: jw.build ? true : jw.smalls, onlyNodes: jw.build ? jw.build.nodes : null });
     jwJewel().downloaded = true;
-  } catch (e) { jw.error = e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, ''); }
+  } catch (e) { jw.error = cleanErr(e); }
   jw.busy = '';
   jwRender();
 }
 
-async function jwLoadSearchable() {
-  jw.searchable = [];
-  jw.searchable = await api.jewels({ op: 'searchable', jewel: jw.jewel });
-  // Stats that this jewel cannot give are dropped from the wanted list.
-  const ok = new Set(jw.searchable.map((s) => s.tpl));
+// The stat lines and goals of the chosen jewel. Goals it cannot give are dropped; with a build
+// and nothing chosen yet, the build's own goals are picked.
+async function jwLoadLists() {
+  const key = jw.jewel;
+  const [lines, goals] = await Promise.all([api.jewels({ op: 'searchable', jewel: key }), api.jewels({ op: 'goals', jewel: key })]);
+  if (key !== jw.jewel) return;
+  jw.searchable = lines;
+  jw.goalList = goals;
+  const ok = new Set(lines.map((s) => s.tpl));
   jw.want = jw.want.filter((w) => ok.has(w.tpl));
+  jw.goals = jw.goals.filter((k) => goals.some((g) => g.key === k));
+  if (!jw.goals.length && jw.build && jw.build.interests) jw.goals = jw.build.interests.top.filter((k) => goals.some((g) => g.key === k));
+  jwSave();
   jwRenderSide();
 }
 
@@ -407,13 +546,13 @@ async function jwPrice() {
   if (!jw.result) return;
   jw.price = { loading: true };
   jwRenderMain();
-  try { jw.price = await api.jewels({ op: 'price', jewel: jw.result.jewel, seed: jw.result.seed }); } catch (e) { jw.price = { error: e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }; }
+  try { jw.price = await api.jewels({ op: 'price', jewel: jw.result.jewel, seed: jw.result.seed }); } catch (e) { jw.price = { error: cleanErr(e) }; }
   jwRenderMain();
 }
 
 async function jwPaste() {
   let got = null;
-  try { got = await api.jewels({ op: 'paste' }); } catch (e) { got = { error: e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }; }
+  try { got = await api.jewels({ op: 'paste' }); } catch (e) { got = { error: cleanErr(e) }; }
   if (!got || got.error) {
     jw.error = (got && got.error) || 'No timeless jewel was copied. Hover it in game, press Ctrl+C, then Paste.';
     jw.result = null;
@@ -421,9 +560,38 @@ async function jwPaste() {
     jwRender();
     return;
   }
-  Object.assign(jw, { jewel: got.jewel, seed: got.seed, conqueror: got.conqueror, mode: 'look', error: '' });
-  if (!jw.socket) { jw.error = ''; jwRender(); $('jw-socket').focus(); }
+  showJewel(got);
+}
+
+// Shows a jewel (pasted, or the one in the imported build): its own socket when known, otherwise
+// the build's nearest socket.
+async function showJewel(j) {
+  const changed = j.jewel !== jw.jewel;
+  Object.assign(jw, { jewel: j.jewel, seed: j.seed, conqueror: j.conqueror, mode: 'look', error: '' });
+  if (j.socket) jw.socket = j.socket;
+  else if (!jw.socket && jw.build) jw.socket = jw.build.sockets[0] || null;
+  if (changed) await jwLoadLists();
+  if (!jw.socket) { jwRender(); $('jw-socket').focus(); return; }
   jwLook();
+}
+
+// ---- the build ----
+async function useBuild(get) {
+  jw.bf.busy = 'Reading the build…';
+  jw.bf.error = '';
+  jwRenderSide();
+  try {
+    const b = await get();
+    jw.build = b;
+    jw.bf = { ...jw.bf, open: false, busy: '', error: '', chars: null, text: '' };
+    jw.goals = b.interests.top.filter((k) => jw.goalList.some((g) => g.key === k));
+    if (jw.scope === 'all') jw.scope = 'near';
+    if (!jw.socket || jw.build.distances[jw.socket] == null) jw.socket = (b.jewels[0] && b.jewels[0].socket) || b.sockets[0] || jw.socket;
+    jwSave();
+    if (b.jewels.length) { showJewel(b.jewels[0]); return; }
+    if (jw.result) { jw.taken = defaultTaken(jw.result); jwVerdict(); }
+  } catch (e) { jw.bf.busy = ''; jw.bf.error = cleanErr(e); }
+  jwRender();
 }
 
 let radiusToken = 0;
@@ -465,7 +633,7 @@ jwView.addEventListener('click', (e) => {
   const mode = t.closest('[data-mode]');
   if (mode) {
     jw.mode = mode.dataset.mode; jw.error = ''; jwSave();
-    if (jw.mode === 'find') { jw.result = null; jwLoadSearchable(); } else jwLook();
+    if (jw.mode === 'find') jw.result = null; else jwLook();
     jwRender();
     return;
   }
@@ -473,12 +641,26 @@ jwView.addEventListener('click', (e) => {
   if (jewel) {
     if (jewel.dataset.jewel === jw.jewel) return;
     jw.jewel = jewel.dataset.jewel; jw.seed = null; jw.conqueror = jwJewel().conquerors[0].name; jw.result = null; jw.found = null; jw.price = null; jw.error = '';
+    jw.goals = jw.goals.slice(); // kept where the new jewel has them (jwLoadLists drops the rest)
     jwSave();
-    if (jw.mode === 'find') jwLoadSearchable();
+    jwLoadLists();
     jwRender();
     $('jw-seed') && $('jw-seed').focus();
     return;
   }
+  const goal = t.closest('[data-goal]');
+  if (goal) {
+    const k = goal.dataset.goal;
+    jw.goals = jw.goals.includes(k) ? jw.goals.filter((x) => x !== k) : [...jw.goals, k];
+    jwSave();
+    jwRenderSide();
+    if (jw.result) { jw.verdict = null; jwRenderMain(); jwVerdict(); }
+    return;
+  }
+  const own = t.closest('[data-own-jewel]');
+  if (own && jw.build) { showJewel(jw.build.jewels[Number(own.dataset.ownJewel)]); return; }
+  const ch = t.closest('[data-char]');
+  if (ch) { const name = ch.dataset.char; useBuild(() => api.jewels({ op: 'character', account: jw.bf.account, name })); return; }
   const conq = t.closest('[data-conqueror]');
   if (conq) { jw.conqueror = conq.dataset.conqueror; jwLook(); return; }
   const stepB = t.closest('[data-seedstep]');
@@ -514,9 +696,9 @@ jwView.addEventListener('click', (e) => {
     return;
   }
   const add = t.closest('[data-want-add]');
-  if (add) { jw.want.push({ tpl: add.dataset.wantAdd, min: 0, weight: 1 }); jw.statFilter = ''; jwSave(); jwRenderSide(); $('jw-stat').focus(); return; }
+  if (add) { jw.want.push({ tpl: add.dataset.wantAdd, min: 0, weight: 1 }); jw.statFilter = ''; jwSave(); jwRenderSide(); $('jw-stat').focus(); if (jw.result) jwVerdict(); return; }
   const drop = t.closest('[data-want-drop]');
-  if (drop) { jw.want.splice(Number(drop.dataset.wantDrop), 1); jwSave(); jwRenderSide(); return; }
+  if (drop) { jw.want.splice(Number(drop.dataset.wantDrop), 1); jwSave(); jwRenderSide(); if (jw.result) jwVerdict(); return; }
   const show = t.closest('[data-show-seed]');
   if (show) { jw.seed = Number(show.dataset.showSeed); jw.socket = Number(show.dataset.showSocket); jwLook(); return; }
   const rj = t.closest('[data-rjewel]');
@@ -531,11 +713,24 @@ jwView.addEventListener('click', (e) => {
   if (!b) return;
   const what = b.dataset.jw;
   if (what === 'paste') jwPaste();
+  else if (what === 'build-open') { jw.bf.open = true; jw.bf.error = ''; jwRenderSide(); $('jw-pob').focus(); }
+  else if (what === 'build-close') { jw.bf.open = false; jwRenderSide(); }
+  else if (what === 'build-forget') {
+    jw.build = null; jw.goals = []; if (jw.scope === 'near') jw.scope = 'all';
+    if (jw.result) jw.taken = defaultTaken(jw.result);
+    jwSave(); jwRender(); if (jw.result) jwVerdict();
+  } else if (what === 'build-pob') { const text = jw.bf.text; if (text.trim()) useBuild(() => api.jewels({ op: 'build', text })); }
+  else if (what === 'build-chars') {
+    jw.bf.busy = 'Looking up the characters…'; jw.bf.error = ''; jw.bf.chars = null; jwRenderSide();
+    api.jewels({ op: 'characters', account: jw.bf.account }).then((list) => { jw.bf.chars = list; }, (e) => { jw.bf.error = cleanErr(e); })
+      .finally(() => { jw.bf.busy = ''; jwSave(); jwRenderSide(); });
+  }
   else if (what === 'search') jwSearch();
   else if (what === 'price') jwPrice();
   else if (what === 'trade' && jw.price && jw.price.url) api.jewels({ op: 'open', url: jw.price.url });
   else if (what === 'back') { jw.result = null; jw.price = null; jwRender(); }
   else if (what.startsWith('take-') && jw.result) {
+    if (what === 'take-mine') { jw.taken = defaultTaken(jw.result); jwRenderMain(); return; }
     const pickOf = { 'take-notables': (n) => n.kind === 'notable', 'take-all': (n) => n.kind !== 'keystone', 'take-none': () => false }[what];
     jw.taken = new Set(jw.result.nodes.filter(pickOf).map((n) => n.id));
     jwRenderMain();
@@ -561,6 +756,10 @@ jwView.addEventListener('input', (e) => {
   if (t.id === 'jw-seed') {
     clearTimeout(seedTimer);
     seedTimer = setTimeout(() => { jw.seed = t.value === '' ? null : Number(t.value); jwLook(); }, 350);
+  } else if (t.id === 'jw-pob') {
+    jw.bf.text = t.value;
+  } else if (t.id === 'jw-account') {
+    jw.bf.account = t.value;
   } else if (t.id === 'jw-stat') {
     jw.statFilter = t.value;
     $('jw-stats').innerHTML = statOptions();
@@ -573,8 +772,13 @@ jwView.addEventListener('input', (e) => {
 });
 jwView.addEventListener('keydown', (e) => {
   if (e.target.id === 'jw-seed' && e.key === 'Enter') { clearTimeout(seedTimer); jw.seed = e.target.value === '' ? null : Number(e.target.value); jwLook(); }
+  if (e.target.id === 'jw-account' && e.key === 'Enter') jwClick('build-chars');
   if (e.target.id === 'jw-stat' && e.key === 'Enter') { const first = $('jw-stats').querySelector('[data-want-add]'); if (first) first.click(); }
 });
+
+function jwClick(what) { const b = jwView.querySelector(`[data-jw="${what}"]`); if (b) b.click(); }
+// The guide stays open or shut across redraws ('toggle' does not bubble, so it is caught on the way down).
+jwView.addEventListener('toggle', (e) => { if (e.target.id === 'jw-guide') jw.guideOpen = e.target.open; }, true);
 
 // Hovering a passive on the tree shows what it was and what it is now.
 jwView.addEventListener('mouseover', (e) => {
