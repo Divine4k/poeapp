@@ -68,6 +68,8 @@ class GameWatch extends EventEmitter {
 
   // Only true when the helper said so within the last moment. Unknown counts as "no".
   gameInFront(now = Date.now()) { return this.running && now - this.at < FRESH_MS && isGameName(this.name); }
+  // Only true on a fresh report that names another program. Unknown or out of date counts as "no".
+  otherInFront(now = Date.now()) { return this.running && now - this.at < FRESH_MS && !!this.name && !isGameName(this.name); }
   ownInFront(now = Date.now()) { return this.running && now - this.at < FRESH_MS && this.name.toLowerCase() === this.own.toLowerCase(); }
 
   // Waits until the game is in front, for at most ms. Resolves true or false.

@@ -87,7 +87,8 @@ window.Theme = (() => {
   }
   function load() { try { const raw = localStorage.getItem(KEY); return clean(raw && raw[0] === '{' ? JSON.parse(raw) : raw); } catch (_) { return clean(null); } }
   // Animations: off makes everything appear at once.
-  function motion(on) { document.documentElement.dataset.motion = on === false ? 'off' : 'on'; try { localStorage.setItem('motion', on === false ? 'off' : 'on'); } catch (_) { /* fine */ } }
+  let motionSet = null;
+  function motion(on) { const off = on === false; if (off === motionSet) return; motionSet = off; document.documentElement.dataset.motion = on === false ? 'off' : 'on'; try { localStorage.setItem('motion', on === false ? 'off' : 'on'); } catch (_) { /* fine */ } }
 
   apply(load());
   try { if (localStorage.getItem('motion') === 'off') motion(false); } catch (_) { /* fine */ }

@@ -470,7 +470,7 @@ function renderNow() {
   // The loot: picture, name, how many and what it is worth, most valuable first.
   const n = run ? run.items.length : 0;
   const readAt = trip ? ` · read ${clock(trip.at)}` : '';
-  $('loot-title').innerHTML = run && n ? `Loot this map <small>${n} ${n === 1 ? 'item' : 'items'} · <b>${esc(fmtValue(run.lootValue))}</b>${readAt}</small>` : `Loot this map${run ? ` <small>${trip ? `read ${clock(trip.at)}` : 'not read yet'}</small>` : ''}`;
+  setHtml($('loot-title'), run && n ? `Loot this map <small>${n} ${n === 1 ? 'item' : 'items'} · <b>${esc(fmtValue(run.lootValue))}</b>${readAt}</small>` : `Loot this map${run ? ` <small>${trip ? `read ${clock(trip.at)}` : 'not read yet'}</small>` : ''}`);
   const divine = state.summary.divine || 0;
   const html = !run || !n
     ? `<li class="empty">${run ? `Open your inventory in game (${esc(state.config.inventory.key)}) and the loot shows up here.` : 'Enter a map: its loot shows up here.'}</li>`

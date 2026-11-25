@@ -41,24 +41,24 @@ function costRow(c, attrs) {
 }
 function renderCosts() {
   const lo = state.config.loadout || [];
-  $('loadout').innerHTML = lo.length ? lo.map((c, i) => costRow(c, `data-loadout="${i}"`)).join('')
-    : '<li class="empty">Add what you put into each map (scarabs, the map, chisels) to see net profit.</li>';
+  setHtml($('loadout'), lo.length ? lo.map((c, i) => costRow(c, `data-loadout="${i}"`)).join('')
+    : '<li class="empty">Add what you put into each map (scarabs, the map, chisels) to see net profit.</li>');
   const run = currentRun();
-  $('run-costs').innerHTML = run && run.costs.length
+  setHtml($('run-costs'), run && run.costs.length
     ? run.costs.map((c) => costRow(c, `data-act="removeCost" data-run="${esc(run.id)}" data-cost="${esc(c.id)}"`)).join('')
-    : `<li class="empty">${run ? 'No costs on this map.' : 'No map is running.'}</li>`;
+    : `<li class="empty">${run ? 'No costs on this map.' : 'No map is running.'}</li>`);
 }
 
 function renderPriceCheck() {
   const pc = state.priceCheck;
-  if (!pc) { $('price-check').innerHTML = ''; return; }
-  if (pc.error) { $('price-check').innerHTML = `<p class="notice bad">${esc(pc.error)}</p>`; return; }
+  if (!pc) { setHtml($('price-check'), ''); return; }
+  if (pc.error) { setHtml($('price-check'), `<p class="notice bad">${esc(pc.error)}</p>`); return; }
   // Gear has no poe.ninja price; the trade search below answers for it.
-  if (!pc.found && state.tradeCheck) { $('price-check').innerHTML = ''; return; }
-  $('price-check').innerHTML = pc.found
+  if (!pc.found && state.tradeCheck) { setHtml($('price-check'), ''); return; }
+  setHtml($('price-check'), pc.found
     ? `<p class="notice">${esc(pc.name)} ×${pc.qty} is worth ${fmtValue(pc.total)} (${fmtValue(pc.each)} each).
           <button type="button" class="link" data-act="addLoot" data-name="${esc(pc.name)}" data-qty="${pc.qty}">Add to this map's loot</button></p>`
-    : `<p class="notice bad">No price found for ${esc(pc.name)}.</p>`;
+    : `<p class="notice bad">No price found for ${esc(pc.name)}.</p>`);
 }
 
 // ---- trade site search for the item last checked ---------------------------------------

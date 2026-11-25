@@ -74,8 +74,8 @@ function renderKnown() {
   const inCat = known.rows.filter((r) => !dbCat || r.category === dbCat);
   if (!tests[dbFilter] || (dbFilter !== 'all' && !inCat.some(tests[dbFilter]))) dbFilter = 'all';
   const labels = [['all', 'Every item'], ['read', 'Read by the app'], ['pics', 'With a picture from the game'], ['people', 'Named by people'], ['check', 'To check'], ['off', 'Not counted']];
-  $('db-filters').innerHTML = labels.map(([id, label]) => [id, label, inCat.filter(tests[id]).length]).filter(([id, , n]) => id === 'all' || n)
-    .map(([id, label, n]) => `<button type="button" role="tab" data-db-filter="${id}" aria-selected="${id === dbFilter}"${id === 'check' ? ' class="check"' : ''}>${label} <span>${n}</span></button>`).join('');
+  setHtml($('db-filters'), labels.map(([id, label]) => [id, label, inCat.filter(tests[id]).length]).filter(([id, , n]) => id === 'all' || n)
+    .map(([id, label, n]) => `<button type="button" role="tab" data-db-filter="${id}" aria-selected="${id === dbFilter}"${id === 'check' ? ' class="check"' : ''}>${label} <span>${n}</span></button>`).join(''));
   const cats = $('db-cats');
   const catHtml = `<button type="button" data-db-cat="" aria-pressed="${!dbCat}"><span class="noicon"></span><span class="cat-name">All categories</span><span class="n">${known.rows.length}</span></button>`
     + known.categories.map((c) => `<button type="button" data-db-cat="${esc(c.id)}" aria-pressed="${c.id === dbCat}">${c.icon ? `<img src="${esc(c.icon)}" alt="" loading="lazy">` : '<span class="noicon"></span>'}<span class="cat-name">${esc(c.label)}</span><span class="n">${c.count}</span></button>`).join('');

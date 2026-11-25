@@ -70,7 +70,13 @@ class Overlay {
   place() {
     if (!this.win || this.win.isDestroyed()) return;
     if (!this.wanted || this.height < 2) { if (this.win.isVisible()) this.win.hide(); return; }
-    this.win.setBounds(overlayBounds(this.display(), this.height, this.placement));
+    // Moving or resizing a see-through window costs Windows a redraw of the whole window, so
+    // it is only done when the place or size really changed.
+    const rect = overlayBounds(this.display(), this.height, this.placement);
+    // Compared with where the window really is, so it is put back if Windows moved it.
+    const now = this.win.getBounds();
+    const same = this.win.isVisible() && ['x', 'y', 'width', 'height'].every((k) => now[k] === rect[k]);
+    if (!same) this.win.setBounds(rect);
     if (!this.win.isVisible()) { this.win.showInactive(); this.win.setAlwaysOnTop(true, 'screen-saver'); }
   }
 

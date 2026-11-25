@@ -173,13 +173,16 @@ function loadConfig() {
   if (!saved.priceKeyMoved || !saved.hideoutKeyGiven || !saved.autoCopyOn) writeJson('config.json', config);
 }
 
+// At most one save per 1.5 s. A save already waiting is left to run: starting the wait again on
+// every change would put it off for as long as changes keep coming (timed inventory reading).
 function scheduleSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => { writeJson('session.json', session.toJSON()); writeJson('ledger.json', ledger.toJSON()); }, 1500);
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; writeJson('session.json', session.toJSON()); writeJson('ledger.json', ledger.toJSON()); }, 1500);
 }
 
 // ---- state to the window ---------------------------------------------------
-function buildState() {
+// full: with each map's line-by-line loot (the report and recordings want it; the window never reads it).
+function buildState(full) {
   status.inventory.art.known = index.art.length;
   status.inventory.awaitingArrival = ledger.pendingArrival && !!session.current;
   status.inventory.noBaseline = !ledger.baseline;
@@ -200,14 +203,20 @@ function buildState() {
     learned: [...new Set(learned.map((l) => l.name || '(ignored items)'))].sort(),
     itemsRev: `${itemsRev}:${learned.length}:${index.shared.length}:${index.art.length}`,
     displays: screen.getAllDisplays().map((d, i) => ({ id: d.id, label: `Screen ${i + 1} (${d.size.width}x${d.size.height})` })),
-    summary: withIcons(session.summary(prices)),
+    summary: withIcons(session.summary(prices), full === true),
     sessions: archive ? archive.list().map((x) => ({ ...x, strategyId: strategyOf(x) })) : [],
     trade: tradeState(),
   };
 }
 // Loot gets its item pictures: the current map's list and the session's best drops show them.
-function withIcons(summary) {
-  for (const r of summary.runs) for (const i of r.items) { const e = prices.get(i.name); i.icon = (e && e.icon) || null; }
+// The window shows each map's loot grouped by name (items); the line-by-line lists it never
+// reads are left out, which is about a third of what is sent on every update.
+function withIcons(summary, full) {
+  for (const r of summary.runs) {
+    for (const i of r.items) { const e = prices.get(i.name); i.icon = (e && e.icon) || null; }
+    r.lootCount = r.loot.length;
+    if (!full) { delete r.loot; delete r.seen; }
+  }
   return summary;
 }
 // Sessions saved before strategies existed, or whose strategy is gone, belong to the first one.
@@ -229,10 +238,21 @@ function closeSession() {
   }
 }
 const cleanUrl = (u) => { const v = String(u || '').trim(); return /^https?:\/\/\S+$/i.test(v) ? v : ''; };
+// Tells the window (and the overlay) that something changed. Calls that come close together
+// (a burst of log lines, an action that changes several things) become one update: the state is
+// built and sent once, PUSH_WAIT_MS after the first of them. See "Performance" in CLAUDE.md.
+const PUSH_WAIT_MS = 30;
+let pushTimer = null;
 function push() {
-  const s = (win && !win.isDestroyed()) || (trouble && trouble.recording) ? buildState() : null;
-  if (win && !win.isDestroyed()) win.webContents.send('state', s);
-  if (trouble && trouble.recording) trouble.state(s);
+  if (!pushTimer) pushTimer = setTimeout(pushNow, PUSH_WAIT_MS);
+}
+function pushNow() {
+  clearTimeout(pushTimer); pushTimer = null;
+  const open = win && !win.isDestroyed();
+  const recording = trouble && trouble.recording;
+  const s = open || recording ? buildState(!!recording) : null;
+  if (open) win.webContents.send('state', s);
+  if (recording) trouble.state(s);
   syncOverlay();
   if (checkPanel && checkPanel.visible && tradeCheck) checkPanel.update(checkPanelData());
 }
@@ -276,7 +296,12 @@ function startLog() {
   status.log = { ok: false, path: p, error: 'Waiting for the file' };
   if (config.trade.enabled && book.catchUp(readRecent(p))) saveTradesSoon();
   logTail = new LogTail(p);
-  logTail.on('status', (s) => { status.log = { ok: s.ok, path: p, error: s.ok ? null : `Cannot read the log (${s.error})` }; push(); });
+  // A file that cannot be read reports so on every look (several a second): only a change is news.
+  logTail.on('status', (s) => {
+    const error = s.ok ? null : `Cannot read the log (${s.error})`;
+    if (status.log.ok === s.ok && status.log.error === error && status.log.path === p) return;
+    status.log = { ok: s.ok, path: p, error }; push();
+  });
   logTail.on('raw', (line, ev) => {
     if (trouble) trouble.event('log', { line, ev: ev || undefined });
     // Shown in the game log check: what the game wrote. What the app did with it is added below.
@@ -615,9 +640,15 @@ function cursorCell(cur, rect) {
   return col >= 0 && col < COLS && row >= 0 && row < ROWS ? { row, col } : null;
 }
 
-async function readInventory() {
+// force: asked for by hand in the app's own window. Otherwise nothing is read while another
+// program is in front: the game's inventory cannot have changed, and a reading takes a picture of
+// the whole screen. Where the app cannot tell which program is in front (no helper, or its last
+// word is out of date), it reads as before.
+async function readInventory(force) {
   if (invBusy) return;
+  if (force !== true && watch.otherInFront()) return;
   invBusy = true;
+  const inv = status.inventory, was = `${inv.open}|${inv.error}|${inv.lastReadAt}`;
   try {
     const frame = await captureFrame(config.inventory.displayId);
     const rect = gridRect(frame.width, frame.height);
@@ -669,7 +700,8 @@ async function readInventory() {
     status.inventory.error = e.message || String(e);
   } finally {
     invBusy = false;
-    push();
+    // A look at a closed inventory changes nothing; the window is only told when something did.
+    if (`${inv.open}|${inv.error}|${inv.lastReadAt}` !== was) push();
   }
 }
 
@@ -686,6 +718,7 @@ let clickTimer = null;
 const KEY_ALIASES = { tab: 'Tab', space: 'Space', escape: 'Escape', esc: 'Escape', enter: 'Enter', backquote: 'Backquote', '`': 'Backquote' };
 // The helper is also what types chat lines: for trade offers, and for the /hideout and
 // /remaining keys, which work with trade offers switched off too.
+let keyReadTimer = null;
 const hookWanted = () => !!((trouble && trouble.recording) || config.inventory.onKey || config.inventory.onClick || config.inventory.autoCopy || config.trade.enabled || config.trade.hotkeys.hideout || config.trade.hotkeys.remaining);
 // What the helper is set up from. It is only started again when one of these changes.
 const hookSetup = () => JSON.stringify([hookWanted(), !!config.inventory.onKey, config.inventory.key, !!config.inventory.onClick, !!(trouble && trouble.recording)]);
@@ -707,7 +740,16 @@ function syncKeyHook() {
     const name = KEY_ALIASES[raw.toLowerCase()] || (raw.length === 1 ? raw.toUpperCase() : raw);
     const code = lib.UiohookKey[name];
     if (code === undefined) status.inventory.keyHook = 'badkey';
-    else lib.uIOhook.on('keydown', (e) => { if (e.keycode === code) setTimeout(readInventory, 200); });
+    else lib.uIOhook.on('keydown', (e) => {
+      if (e.keycode !== code) return;
+      // A held key gives one reading. Just back in the game, the helper may still name the
+      // program you came from: then one more try a moment later, so the key press is not lost.
+      clearTimeout(keyReadTimer);
+      keyReadTimer = setTimeout(() => {
+        if (watch.otherInFront()) keyReadTimer = setTimeout(readInventory, 400);
+        else readInventory();
+      }, 200);
+    });
   }
   // The price check window over the game goes with the game's own panels: Escape, or the
   // inventory key (the item was checked in the open inventory, so the key closes it). The key
@@ -996,7 +1038,7 @@ function setupTrouble() {
     snapshot: async () => {
       let inventory = null;
       try { inventory = await makeDiagnostic(true); } catch (e) { inventory = { problem: e.message || String(e) }; }
-      return { state: { ...buildState(), logTrace, logStats: logTail ? logTail.stats : null }, inventory };
+      return { state: { ...buildState(true), logTrace, logStats: logTail ? logTail.stats : null }, inventory };
     },
     who: () => ({ name: cloud && cloud.signedIn ? cloud.name : '', role: cloud ? cloud.role : '' }),
     version: require('../package.json').version, // the exact commit is filled in once the updater knows it
@@ -1859,7 +1901,7 @@ const actions = {
   removeLootName: (a) => session.removeLootName(a.runId, a.name),
   addCost: (a) => session.addCost(a.runId, a.cost),
   removeCost: (a) => session.removeCost(a.runId, a.costId),
-  readInventory: () => readInventory(),
+  readInventory: () => readInventory(true),
   learn: (a) => {
     const u = backlog.get(a.id);
     const name = String(a.name || '').trim();

@@ -6,9 +6,43 @@ function render() {
   if (!state) return;
   applyTheme();
   renderBoot();
-  renderTrade();
-  renderStatus(); renderToasts(); renderArrival(); renderAttention(); renderNow(); renderStrategies(); renderSession(); renderMapCheck(); renderCosts(); renderPriceCheck(); renderTradeCheck(); renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderTracker(); renderSettings(); renderRefresh();
+  renderTrade(); // the new-offer sound and dot work with the window minimized too
+  // A window that is not on screen draws nothing more; it catches up when it is back (start.js).
+  if (document.hidden) return;
+  renderStatus(); renderToasts();
+  // Only the page that is open is drawn (see "Performance" in CLAUDE.md). A page is drawn by
+  // drawPage when it is opened, so nothing is missed.
+  const open = openTab();
+  if (open !== 'trade') drawPage(open);
+  if (open !== 'mapping' && open !== 'items') renderItems(); // the dot on the Items entry
+  renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderTracker(); renderSettings(); renderRefresh();
+  clockStart();
 }
+const TABS = ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'trouble', 'tracker', 'settings'];
+const openTab = () => TABS.find((id) => !$(`tab-${id}`).hidden) || 'mapping';
+// What a page needs drawn from the state. Pages not listed draw themselves when shown (showTab).
+function drawPage(name) {
+  if (!state) return;
+  if (name === 'mapping') { renderArrival(); renderAttention(); renderNow(); renderStrategies(); renderSession(); } // renderNow draws the Items dot as well
+  else if (name === 'trade') renderTrade();
+  else if (name === 'mapcheck') renderMapCheck();
+  else if (name === 'costs') renderCosts();
+  else if (name === 'prices') { renderPriceCheck(); renderTradeCheck(); }
+  else if (name === 'items') renderItems();
+}
+
+// The map card's clock with its thousandths: every screen refresh, but only while a map runs
+// and the Mapping page is on screen. It stops by itself and is started again by render and showTab.
+let clockFrame = 0;
+function clockTick() {
+  clockFrame = 0;
+  if (!state || document.hidden || $('tab-mapping').hidden) return;
+  const run = currentRun();
+  if (!run || run.segmentStart === null) return;
+  drawClock(liveDuration(run));
+  clockFrame = requestAnimationFrame(clockTick);
+}
+function clockStart() { if (!clockFrame) clockFrame = requestAnimationFrame(clockTick); }
 
 // Refresh buttons turn while what they fetch is on its way, and cannot be pressed twice.
 function renderRefresh() {
@@ -114,7 +148,7 @@ function showTab(name) {
   if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
   for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
   if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
-  for (const id of ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'trouble', 'tracker', 'settings']) $(`tab-${id}`).hidden = id !== name;
+  for (const id of TABS) $(`tab-${id}`).hidden = id !== name;
   $('strat').hidden = name !== 'mapping'; // strategies sit in the top bar, for the Mapping page only
   if (name === 'inventory') renderInventory(true);
   if (name === 'items') { refreshKnown(); renderKnown(); }
@@ -123,4 +157,5 @@ function showTab(name) {
   if (name === 'trouble') troubleShown();
   if (name === 'tracker') trackerShown();
   if (name === 'settings') renderSettings();
+  drawPage(name); clockStart();
 }

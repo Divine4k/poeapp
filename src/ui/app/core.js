@@ -24,9 +24,13 @@ function fmtTime(ms) {
   const pad = (n) => String(n).padStart(2, '0');
   return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 }
-const clock = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+// One formatter kept for every call: making one per call was most of the cost of drawing long lists.
+const clockFmt = new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' });
+const clock = (ts) => { const d = new Date(ts); return isNaN(d) ? 'Invalid Date' : clockFmt.format(d); }; // a bad time shows as text, as before, and never stops the page
 const currentRun = () => state.summary.runs.find((r) => r.id === state.summary.currentId) || null;
 const liveDuration = (run) => run.durationMs + (run.segmentStart !== null ? Date.now() - receivedAt : 0);
 const act = (a) => api.action(a);
 // Redraws a box only when what it shows has changed, so nothing flickers under the mouse.
-const setHtml = (el, html) => { if (el.dataset.html !== html) { el.dataset.html = html; el.innerHTML = html; } };
+// What was last written is remembered beside the page, not in an attribute of the box (a second copy of all its HTML in the page).
+const htmlShown = new WeakMap();
+const setHtml = (el, html) => { if (htmlShown.get(el) !== html) { htmlShown.set(el, html); el.innerHTML = html; } };

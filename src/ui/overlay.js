@@ -7,6 +7,7 @@
   const stack = document.getElementById('stack');
   const MAX = 5;
   let drawn = '';
+  let sentHeight = -1;
   let open = null; // id of the offer shown as a full card
   let last = null;
 
@@ -23,7 +24,9 @@
       stack.innerHTML = shown.map((o) => (String(o.id) === open ? cardHtml(o, opt) : tileHtml(o, opt))).join('')
         + (more > 0 ? `<p class="ov-more">${more} more in the app</p>` : '');
     }
-    api.overlaySize(offers.length ? Math.ceil(stack.getBoundingClientRect().height) : 0);
+    // Measured and reported only when it changed: resizing a see-through window over the game is slow.
+    const h = offers.length ? Math.ceil(stack.getBoundingClientRect().height) : 0;
+    if (h !== sentHeight) { sentHeight = h; api.overlaySize(h); }
   }
 
   stack.addEventListener('click', (e) => {

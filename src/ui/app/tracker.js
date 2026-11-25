@@ -256,6 +256,7 @@ $('tk-delete').addEventListener('click', async () => {
   if (r.error) { $('tk-derror').textContent = r.error; $('tk-derror').hidden = false; return; }
   for (const c of tkItems) if (c.parent === it.number) c.parent = null;
   tkItems = tkItems.filter((i) => i !== it);
+  tkChanged();
   $('tk-dialog').close();
   tkDraw();
 });

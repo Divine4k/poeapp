@@ -115,7 +115,8 @@ const runsTotal = (sum, divine) => {
 let stratSel = null; // the strategy being looked at; the one being run is config.activeStrategy
 let sessionSel = 'current';
 const saved = new Map(); // id -> the full saved session
-const dayOf = (ts) => new Date(ts).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+const dayFmt = new Intl.DateTimeFormat([], { weekday: 'short', day: 'numeric', month: 'short' });
+const dayOf = (ts) => { const d = new Date(ts); return isNaN(d) ? 'Invalid Date' : dayFmt.format(d); };
 const mapsWord = (n) => `${n} ${n === 1 ? 'map' : 'maps'}`;
 
 function renderStrategies() {
@@ -149,11 +150,12 @@ function renderSession() {
   const chip = (id, title, t, divine) => `<button type="button" role="tab" data-session="${esc(id)}" aria-selected="${id === sessionSel}" title="${esc(`${mapsWord(t.maps)}, ${fmtValue(t.net, divine)} net`)}">${esc(title)}</button>`;
   $('btn-new-session').hidden = !running; // only the strategy being run has a session to close
   const strip = $('session-strip');
+  const stripWas = htmlShown.get(strip);
   const left = strip.scrollLeft;
   setHtml(strip, (running ? chip('current', 'This session', live.totals, live.divine) : '')
     + list.map((x) => chip(x.id, `${dayOf(x.startedAt)} ${clock(x.startedAt)}`, x.totals, x.divine)).join('')
     + (list.length || running ? '' : '<p class="strip-hint">Nothing has been run under this strategy yet. Press Run this one and your maps are counted here.</p>'));
-  strip.scrollLeft = left;
+  if (htmlShown.get(strip) !== stripWas) strip.scrollLeft = left;
 
   const empty = { maps: 0, deaths: 0, net: 0, netPerHour: 0, avgMapMs: 0 };
   let sum = live, head = '';
@@ -176,8 +178,7 @@ function renderSession() {
   // Only redrawn when something changed: redrawing under the mouse would stop the name of a
   // hovered slot from ever showing.
   const rows = runsHtml(sum, { open: expanded, readonly: sum !== live, redraw: renderSession, divine: sum.divine });
-  if (rows !== runsShown) { runsShown = rows; $('runs').innerHTML = rows; }
+  if (rows !== runsShown) { runsShown = rows; $('runs').innerHTML = rows; sizeBars($('runs')); }
   setHtml($('runs-total'), runsTotal(sum, sum.divine));
-  sizeBars($('runs'));
 }
 

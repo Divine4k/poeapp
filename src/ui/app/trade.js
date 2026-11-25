@@ -116,13 +116,15 @@ function renderTrade() {
   renderSales(t);
   const tot = t.totals, d = t.divine;
   const cell = (x, label) => `<div>${fmtValue(x.chaos, d)}<span>${label}: ${x.count} ${x.count === 1 ? 'trade' : 'trades'}${x.unpriced ? `, ${x.unpriced} without a known value` : ''}</span></div>`;
-  $('trade-totals').innerHTML = cell(tot.soldToday, 'Sold today') + cell(tot.boughtToday, 'Bought today') + cell(tot.soldAll, 'Sold in total') + cell(tot.boughtAll, 'Bought in total');
-  $('trade-history').innerHTML = t.history.length ? t.history.map((h) => `<tr>
+  // The totals and the history are only on the Trade page; they are drawn when it is open.
+  const pageOpen = !$('tab-trade').hidden;
+  if (pageOpen) setHtml($('trade-totals'), cell(tot.soldToday, 'Sold today') + cell(tot.boughtToday, 'Bought today') + cell(tot.soldAll, 'Sold in total') + cell(tot.boughtAll, 'Bought in total'));
+  if (pageOpen) setHtml($('trade-history'), t.history.length ? t.history.map((h) => `<tr>
       <td>${esc(dayOf(h.at))}, ${clock(h.at)}</td>
       <td><span class="kind ${h.dir === 'in' ? 'sold' : 'bought'}">${h.dir === 'in' ? 'Sold' : 'Bought'}</span></td>
       <td>${h.qty > 1 ? `${esc(h.qty)} × ` : ''}${esc(h.item)}</td>
       <td class="num">${h.price ? `${esc(h.price.amount)} ${esc(h.price.currency)}` : 'n/a'}</td>
       <td>${esc(h.player)}</td>
       <td><button type="button" class="link" data-act="tradeForget" data-id="${esc(h.id)}" aria-label="Remove this trade from the list">Remove</button></td></tr>`).join('')
-    : '<tr><td colspan="6" class="empty">Trades are listed here once the game reports "Trade accepted".</td></tr>';
+    : '<tr><td colspan="6" class="empty">Trades are listed here once the game reports "Trade accepted".</td></tr>');
 }

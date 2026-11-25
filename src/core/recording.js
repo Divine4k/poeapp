@@ -67,7 +67,7 @@ function stateBrief(s) {
     keyHook: st.inventory ? st.inventory.keyHook : null,
     inventory: st.inventory ? { open: !!st.inventory.open, recognised: st.inventory.recognised, error: st.inventory.error || null, awaitingArrival: !!st.inventory.awaitingArrival } : null,
     hotkeys: st.hotkeys || null,
-    map: cur ? { id: cur.id, name: cur.name, running: cur.segmentStart != null, deaths: cur.deaths, loot: (cur.loot || []).length, lootValue: Math.round(cur.lootValue || 0) } : null,
+    map: cur ? { id: cur.id, name: cur.name, running: cur.segmentStart != null, deaths: cur.deaths, loot: cur.lootCount != null ? cur.lootCount : (cur.loot || []).length, lootValue: Math.round(cur.lootValue || 0) } : null,
     maps: (sum.runs || []).length,
     notice: s.notice ? s.notice.text : null,
     unknown: (s.unknown || []).length,
