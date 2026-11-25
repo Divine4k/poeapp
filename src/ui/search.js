@@ -20,7 +20,11 @@
               <span class="ss-name">${esc(s.name)}</span>${s.name !== s.text ? `<span class="ss-text${s.long ? ' ss-long' : ''}">${esc(s.text)}</span>` : ''}</button>`).join('')}</div>`
           : '<p class="ss-empty">No searches saved yet. Add them in Map Companion: <b>Settings, Stash searches</b>.</p>');
     }
+    // Measured without the limit to the window's height: the window starts 10 pixels tall, and
+    // measured inside it the menu would ask for those 10 pixels and stay a thin line.
+    menu.style.maxHeight = 'none';
     const h = Math.ceil(menu.getBoundingClientRect().height);
+    menu.style.maxHeight = '';
     if (h !== sentHeight) { sentHeight = h; api.searchSize(h); }
   }
 
