@@ -171,7 +171,7 @@ function renderBars(sum) {
   const avg = done.length ? done.reduce((a, r) => a + r.net, 0) / done.length : 0;
   const best = done.length > 1 ? done.reduce((a, r) => (r.net > a.net ? r : a), done[0]) : null;
   const top = Math.max(1, ...runs.map((r) => r.net));
-  const many = runs.length > 12;
+  const many = runs.length > 8; // more than that: no names under the bars (they would run together)
   const bars = runs.map((r) => {
     const live = r.id === sum.currentId;
     const cls = live ? 'now' : r === best ? 'best' : r.net < 0 ? 'neg' : r.net >= avg ? 'up' : '';
