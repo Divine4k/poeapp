@@ -39,6 +39,8 @@ const { checkPanelBounds } = require('./core/checkPanel');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
 const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
+const { JewelService } = require('./jewels');
+const { readJewelText, tradeQuery: jewelTradeQuery } = require('./core/jewels/timeless');
 const { dustValue } = require('./core/dust');
 const { vendorRecipe, verdict, craftRoom, withCrafts, typicalPrice } = require('./core/worth');
 const { movedDefault } = require('./ui/keys');
@@ -1688,6 +1690,42 @@ function addTestOffer() {
   book.onLog({ type: 'whisper', dir: n % 4 === 0 ? 'out' : 'in', player: `TestExile${n}`, text: samples[(n - 1) % samples.length], test: true });
 }
 
+// ---- jewels page -----------------------------------------------------------------
+// The calculators live in src/jewels.js (timeless jewels in a worker). Here: the window's
+// requests, reading a copied jewel, and the trade site price of a timeless seed.
+let jewelService = null;
+const jewels = () => jewelService || (jewelService = new JewelService({
+  dir: dataFile('jewels'),
+  fetchImpl: webFetch,
+  onProgress: (p) => { if (win) win.webContents.send('jewel-progress', p); },
+  onEvent: (kind, detail) => { if (trouble) trouble.event('jewels', { kind, detail }); },
+}));
+
+async function jewelAction(a) {
+  a = a || {};
+  if (trouble) trouble.event('jewels', { op: a.op });
+  const svc = jewels();
+  switch (a.op) {
+    case 'info': return svc.info();
+    case 'timeless': return svc.timeless({ jewel: String(a.jewel), seed: Number(a.seed), conqueror: String(a.conqueror || ''), socket: Number(a.socket) });
+    case 'searchable': return svc.searchable(String(a.jewel));
+    case 'search': return svc.search({ jewel: String(a.jewel), want: (a.want || []).slice(0, 12), sockets: (a.sockets || []).map(Number), smalls: !!a.smalls, limit: a.limit });
+    case 'radius': return svc.radius({ jewel: String(a.jewel), socket: Number(a.socket), ring: String(a.ring || ''), keystone: Number(a.keystone), taken: (a.taken || []).map(Number) });
+    case 'cluster': return svc.cluster(String(a.base), String(a.skill));
+    // A timeless jewel copied in game (Ctrl+C on it, then the Paste button).
+    case 'paste': return readJewelText(clipboard.readText());
+    case 'price': {
+      // The cheapest listings of this seed, from the official trade site.
+      if (!config.league) throw new Error('Pick a league in Settings first.');
+      const r = await tradeClient.check(config.league, jewelTradeQuery(String(a.jewel), Number(a.seed), a.conqueror ? String(a.conqueror) : null), 5);
+      const listings = r.listings.map((l) => readListing(l, chaosOfPrice)).filter((l) => l.chaos != null);
+      return { total: r.total, url: r.queryId ? searchUrl(config.league, r.queryId) : '', cheapest: listings.length ? Math.min(...listings.map((l) => l.chaos)) : null, listings: listings.slice(0, 5).map((l) => ({ chaos: l.chaos, status: l.status })) };
+    }
+    case 'open': { const url = String(a.url || ''); if (/^https:\/\/www\.pathofexile\.com\/trade\//.test(url)) shell.openExternal(url); return true; }
+    default: throw new Error('Unknown request');
+  }
+}
+
 // ---- window --------------------------------------------------------------------
 function createWindow() {
   const primary = screen.getPrimaryDisplay();
@@ -2047,6 +2085,7 @@ function setupIpc() {
       })),
     };
   });
+  ipcMain.handle('jewels', (_e, a) => jewelAction(a));
   ipcMain.handle('items-list', () => itemDatabase());
   ipcMain.handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
   ipcMain.handle('price-categories', () => {
@@ -2182,6 +2221,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (jewelService) jewelService.stop();
   watch.stop();
   clearInterval(timedTimer);
   if (hook) { try { hook.uIOhook.stop(); } catch (_) { /* closing anyway */ } }

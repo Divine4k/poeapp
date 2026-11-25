@@ -1058,3 +1058,144 @@ progress::-webkit-progress-value { background: var(--moss); border-radius: 3px; 
 .tk-node:hover .tk-plus, .tk-node:focus-within .tk-plus, .tk-plus:focus-visible { opacity: 1; }
 .tk-plug { position: absolute; right: -7px; top: 50%; width: 14px; height: 14px; margin-top: -7px; border-radius: 50%; background: var(--slab); border: 2px solid color-mix(in srgb, var(--gold) 70%, transparent); cursor: crosshair; }
 .tk-plug:hover { background: var(--gold); }
+/* ---- Jewels page: choices on the left, the tree and what it gives on the right ---- */
+.view.jw { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 18px; overflow: hidden; position: relative; }
+.view.jw[hidden] { display: none; }
+.jw-top { display: flex; align-items: center; gap: 18px; }
+.jw-top .pagetitle { margin: 0; }
+.jw-seg { display: flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--well); box-shadow: inset 0 0 0 1px var(--line); }
+.jw-seg button { flex: 1; height: 30px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: var(--ash); font-weight: 600; font-size: 13.5px; white-space: nowrap; }
+.jw-seg button:hover { color: var(--bone); background: transparent; }
+.jw-seg button[aria-selected=true] { color: var(--bone); background: var(--raise); box-shadow: inset 0 0 0 1px var(--line2), 0 2px 6px rgba(0, 0, 0, 0.3); }
+.jw-seg.small button { height: 28px; font-size: 12.5px; padding: 0 8px; }
+.jw-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; }
+.jw-side { overflow-y: auto; padding: 14px 16px 16px; gap: 10px; }
+.jw-side > * { flex-shrink: 0; } /* the panel scrolls; its parts keep their size */
+.jw-main { overflow-y: auto; }
+.jw-pad { padding: 4px 18px 16px; }
+.jw-label { display: block; margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--soft); }
+.jw-label small, .jw-lists h3 small { font-weight: 500; color: var(--faint); margin-left: 6px; }
+.jw-help { margin: 0; font-size: 12px; color: var(--ash); }
+.jw-side select, .jw-side input:not([type=checkbox]) { width: 100%; }
+
+/* paste: the quickest way in, so it sits on top */
+.jw-paste { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; text-align: left; border-radius: var(--r-md); color: var(--gold); background: color-mix(in srgb, var(--gold) 8%, var(--slab)); border-color: color-mix(in srgb, var(--gold) 30%, transparent); }
+.jw-paste:hover { background: color-mix(in srgb, var(--gold) 13%, var(--slab)); border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+.jw-paste span { display: flex; flex-direction: column; }
+.jw-paste b { color: var(--bone); font-weight: 620; }
+.jw-paste small { color: var(--ash); font-weight: 500; font-size: 12px; }
+
+.jw-jewels { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.jw-jewels.one { grid-template-columns: 1fr; }
+.jw-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 10px; text-align: left; border-radius: var(--r-sm); background: transparent; }
+.jw-pick b { font-weight: 600; font-size: 13px; }
+.jw-pick small { color: var(--faint); font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.jw-pick.on { background: color-mix(in srgb, var(--gold) 11%, transparent); border-color: color-mix(in srgb, var(--gold) 50%, transparent); }
+.jw-pick.on b { color: var(--gold); }
+.jw-seed { display: flex; gap: 6px; }
+.jw-seed input { flex: 1; font-size: 18px; font-weight: 620; text-align: center; font-variant-numeric: tabular-nums; }
+.jw-seed button { width: 40px; font-size: 18px; padding: 0; }
+.jw-conq button { display: flex; flex-direction: column; align-items: flex-start; height: auto; padding: 6px 10px; line-height: 1.25; }
+.jw-conq small { font-size: 11px; color: var(--ash); font-weight: 500; }
+.jw-conq button.yes small { color: color-mix(in srgb, var(--gold) 70%, var(--ash)); }
+.jw-row { display: flex; gap: 10px; align-items: center; }
+.jw-row select { flex: 1; }
+.jw-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--soft); white-space: nowrap; cursor: pointer; }
+.jw-check input { accent-color: var(--gold); }
+.jw-go { width: 100%; height: 38px; }
+.jw-go:disabled { opacity: 0.5; cursor: default; filter: none; }
+
+/* picking stats to search for */
+.jw-statpick { position: relative; }
+.jw-stats { max-height: 220px; overflow-y: auto; margin-top: 4px; }
+.jw-stats:empty { display: none; }
+.jw-stats li.dim { padding: 6px 2px; font-size: 12.5px; }
+.jw-stats button { display: flex; flex-direction: column; width: 100%; padding: 5px 8px; border: 0; border-radius: var(--r-sm); background: transparent; text-align: left; font-weight: 500; font-size: 12.5px; }
+.jw-stats button:hover { background: color-mix(in srgb, var(--bone) 6%, transparent); }
+.jw-stats small { color: var(--faint); font-size: 11px; }
+.jw-want li { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.jw-want .jw-wname { grid-column: 1 / 3; font-weight: 560; }
+.jw-want .link { grid-column: 3; grid-row: 1; justify-self: end; }
+.jw-want li.dim { display: block; border: 0; }
+.jw-want label { display: flex; align-items: center; gap: 6px; color: var(--faint); font-size: 11.5px; white-space: nowrap; }
+.jw-want input { width: 64px; padding: 4px 6px; font-size: 12.5px; text-align: right; }
+.jw-want .link { font-size: 16px; }
+
+/* the whole tree, small: click a socket */
+.jw-ov { width: 100%; aspect-ratio: 1; margin-top: 4px; border-radius: var(--r-md); background: var(--well); }
+.jw-ov .ln { fill: none; stroke: color-mix(in srgb, var(--bone) 16%, transparent); stroke-width: 45; }
+.jw-ov .dot { stroke: color-mix(in srgb, var(--bone) 30%, transparent); stroke-width: 90; stroke-linecap: round; }
+.jw-ov .nt { fill: color-mix(in srgb, var(--bone) 30%, transparent); }
+.jw-ov .ks { fill: color-mix(in srgb, var(--bone) 42%, transparent); }
+.jw-ov .pick { fill: color-mix(in srgb, var(--portal) 40%, transparent); stroke: var(--portal); stroke-width: 40; cursor: pointer; }
+.jw-ov .pick:hover { fill: var(--portal); }
+.jw-ov .pick.on { fill: var(--gold); stroke: var(--gold); }
+.jw-ov .reach { fill: color-mix(in srgb, var(--gold) 10%, transparent); stroke: color-mix(in srgb, var(--gold) 60%, transparent); stroke-width: 40; }
+
+/* the tree around the socket */
+.jw-view { display: grid; grid-template-columns: minmax(300px, 1.1fr) minmax(280px, 1fr); gap: 18px; padding: 4px 18px 18px; align-items: start; }
+.jw-treebox { position: sticky; top: 0; }
+.jw-tree { width: 100%; aspect-ratio: 1; border-radius: var(--r-md); background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--bone) 3%, var(--well)), var(--well) 70%); }
+.jw-tree .ln { fill: none; stroke: color-mix(in srgb, var(--bone) 16%, transparent); stroke-width: 12; }
+.jw-tree .reach { fill: color-mix(in srgb, var(--gold) 4%, transparent); stroke: color-mix(in srgb, var(--gold) 45%, transparent); stroke-width: 8; stroke-dasharray: 40 30; }
+.jw-tree .reach.in { fill: var(--well); }
+.jw-tree .n { fill: var(--slab); stroke: color-mix(in srgb, var(--bone) 22%, transparent); stroke-width: 8; }
+.jw-tree .n.k-notable { stroke-width: 12; }
+.jw-tree .n.k-keystone { stroke-width: 14; }
+.jw-tree .n.k-socket { fill: var(--deep); stroke-dasharray: 16 12; }
+.jw-tree .n.k-mastery { fill: none; stroke: var(--line2); }
+.jw-tree .n.in { cursor: pointer; stroke: color-mix(in srgb, var(--bone) 45%, transparent); }
+.jw-tree .n.m-replace { stroke: var(--gold); }
+.jw-tree .n.m-add { stroke: var(--portal); }
+.jw-tree .n.m-reach { stroke: var(--portal); }
+.jw-tree .n.taken { fill: color-mix(in srgb, var(--gold) 70%, var(--slab)); }
+.jw-tree .n.m-add.taken, .jw-tree .n.m-reach.taken { fill: color-mix(in srgb, var(--portal) 70%, var(--slab)); }
+.jw-tree .n.in:hover { stroke: var(--bone); }
+.jw-tree .n.fixed { cursor: default; }
+.jw-tree .here { fill: none; stroke: var(--gold); stroke-width: 16; filter: drop-shadow(0 0 30px var(--gold)); }
+.jw-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 12px; color: var(--ash); }
+.jw-legend .lg { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ash); margin-left: 6px; }
+.jw-legend .lg.rep { border-color: var(--gold); }
+.jw-legend .lg.add, .jw-legend .lg.reach { border-color: var(--portal); }
+.jw-legend .lg.tk { border-color: var(--gold); background: var(--gold); }
+
+/* the lists beside the tree: sections split by lines, no boxes */
+.jw-lists h3 { display: flex; align-items: baseline; gap: 4px; margin: 4px 0 6px; font-size: 13px; font-weight: 620; color: var(--bone); }
+.jw-lists h3 + ul { margin-bottom: 16px; }
+.jw-quick { margin-left: auto; display: flex; gap: 2px; }
+.jw-quick .link { font-size: 12px; }
+.jw-sum li { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.jw-sum li small { color: var(--faint); font-variant-numeric: tabular-nums; }
+.jw-nodes > li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.jw-nodes b { font-weight: 620; font-size: 13px; }
+.jw-nodes small { margin-left: 8px; font-size: 11.5px; color: var(--faint); }
+.jw-nodes ul { margin-top: 2px; }
+.jw-nodes ul li { font-size: 12.5px; color: var(--soft); }
+.jw-node.m-replace b { color: var(--gold); }
+.jw-node.m-add ul li:last-child { color: var(--portal); }
+.jw-tick { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 1px; padding: 0; border-radius: 5px; background: var(--well); }
+.jw-tick[aria-pressed=true] { background: var(--gold); border-color: var(--gold); box-shadow: inset 0 0 0 3px var(--slab); }
+.jw-actions { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+.jw-busy { display: flex; align-items: center; gap: 8px; margin: 0 18px 8px; color: var(--gold); font-size: 13px; }
+.jw-busy .spin { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; }
+.jw-err { margin: 0 18px 8px; color: var(--blood); font-size: 13px; }
+.jw-pad .jw-err, .jw-pad .jw-busy { margin-left: 0; }
+
+.jw-table td { vertical-align: top; font-size: 13px; }
+.jw-table th { background: var(--slab); }
+.jw-got { display: inline-block; margin: 0 6px 3px 0; padding: 2px 8px; border-radius: 6px; background: color-mix(in srgb, var(--bone) 5%, transparent); font-size: 12px; }
+.jw-cl ul li { font-size: 12px; color: var(--ash); }
+.jw-cl tr.hit b { color: var(--gold); }
+.jw-bar { display: inline-block; width: 60px; height: 5px; margin-right: 8px; border-radius: 3px; background: var(--line2); vertical-align: middle; overflow: hidden; }
+.jw-bar i { display: block; height: 100%; width: var(--pct, 0%); background: var(--gold); }
+.jw-skills { display: flex; flex-direction: column; gap: 1px; }
+.jw-skills button { display: flex; flex-direction: column; width: 100%; padding: 6px 10px; border: 0; border-radius: var(--r-sm); background: transparent; text-align: left; font-weight: 520; font-size: 13px; }
+.jw-skills button:hover { background: color-mix(in srgb, var(--bone) 5%, transparent); }
+.jw-skills button.on { background: color-mix(in srgb, var(--gold) 11%, transparent); color: var(--gold); }
+.jw-skills small { color: var(--portal); font-size: 11.5px; }
+
+.jw-tip { position: absolute; z-index: 20; max-width: 300px; padding: 10px 12px; border-radius: var(--r-md); background: var(--raise); box-shadow: var(--panel-shadow), 0 10px 30px rgba(0, 0, 0, 0.5); font-size: 12.5px; pointer-events: none; }
+.jw-tip b { display: block; font-weight: 640; }
+.jw-tip small { display: block; color: var(--faint); }
+.jw-tip ul { margin: 4px 0; }
+@media (max-width: 1150px) { .jw-view { grid-template-columns: 1fr; } .jw-treebox { position: static; max-width: 520px; } }

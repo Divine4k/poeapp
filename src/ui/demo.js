@@ -145,6 +145,16 @@
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, sockets: true, league: 'Keepers', coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {}, checkKeys: () => {},
     // Settings changed in the preview are kept for as long as the page is open, as the app would keep them.
     getState: async () => state, onState: (cb) => { listener = cb; },
+    // The Jewels page needs the real tree and tables: scripts/demo-server.js answers these when
+    // it serves the page; opened as a plain file, the page says it needs the app.
+    jewels: async (a) => {
+      const res = await fetch('/__jewels', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(a) }).catch(() => null);
+      if (!res) throw new Error('The Jewels page needs the app (or scripts/demo-server.js) to work.');
+      const body = await res.json();
+      if (body.error) throw new Error(body.error);
+      return body.result;
+    },
+    onJewelProgress: () => {},
     setConfig: async (patch) => { merge(state.config, patch); listener(state); return true; },
     action: async (a) => {
       if (a && a.type === 'troubleToggle') {

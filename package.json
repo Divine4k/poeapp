@@ -1,13 +1,13 @@
 {
   "name": "poeapp",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "description": "Second-screen mapping companion for Path of Exile 1: map timer, loot value, map mod check, costs, prices, trade site search for gear, and trade offers with an in-game overlay.",
   "main": "src/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js",
-    "t": "node --test --test-reporter=dot test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js",
+    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js test/jewels.test.js",
+    "t": "node --test --test-reporter=dot test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js test/jewels.test.js",
     "test:core": "node --test test/core.test.js",
     "test:inventory": "node --test test/inventory.test.js test/backlog.test.js test/shared.test.js",
     "test:trade": "node --test test/trade.test.js test/tradeSearch.test.js test/checkMessage.test.js",
@@ -16,7 +16,8 @@
     "test:cloud": "node --test test/cloud.test.js",
     "test:trouble": "node --test test/recording.test.js test/tracker.test.js",
     "test:tracker": "node --test test/tracker.test.js",
-    "test:update": "node --test test/tar.test.js test/leftovers.test.js"
+    "test:update": "node --test test/tar.test.js test/leftovers.test.js",
+    "test:jewels": "node --test test/jewels.test.js"
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"
