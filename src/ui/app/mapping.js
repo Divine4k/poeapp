@@ -422,6 +422,7 @@ function renderNow() {
   // The map's picture behind the card (set through the style object: no inline style attributes).
   const pic = run && mapPicture(run.name), ph = $('mc-photo');
   $('mapcard').classList.toggle('has-photo', !!pic);
+  $('mapcard').classList.toggle('idle', !run);
   if (ph.dataset.pic !== (pic ? pic[0] : '')) {
     ph.dataset.pic = pic ? pic[0] : '';
     ph.style.setProperty('--photo', pic ? `url("${pic[0]}")` : 'none');
