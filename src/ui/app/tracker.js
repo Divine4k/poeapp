@@ -217,7 +217,8 @@ function tkOpenItem(number) {
   // The recordings connected to it, each opened on the Troubleshooting page.
   const recs = it.recordings || [];
   $('tk-recs').hidden = !recs.length;
-  setHtml($('tk-reclist'), recs.map((id) => `<li><button type="button" class="link" data-watch="${esc(id)}">${esc(id)}</button></li>`).join(''));
+  setHtml($('tk-reclist'), recs.map((id) => `<li class="tk-recrow" data-rec-row="${esc(id)}"><button type="button" class="tk-watch" data-watch="${esc(id)}">▶ Watch</button><span class="tk-recnote dim">${esc(id)}</span></li>`).join(''));
+  tkRecNotes(recs);
   $('tk-dtitle').textContent = `#${it.number}`;
   $('tk-dlink').href = it.url;
   const day = (ts) => new Date(ts).toLocaleDateString();
@@ -621,13 +622,85 @@ async function tkLink(number, parent) {
   tkDraw();
 }
 
-// A connected recording: the dialog closes and the Troubleshooting page opens on it.
-$('tk-reclist').addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-watch]');
-  if (!b) return;
+// Each connected recording's note in the list (read from this PC; ones not here yet are
+// fetched from GitHub first).
+async function tkRecNotes(ids, synced = false) {
+  let missing = false;
+  for (const id of ids) {
+    const d = await api.troubleDetails(id);
+    const row = $('tk-reclist').querySelector(`[data-rec-row="${CSS.escape(id)}"] .tk-recnote`);
+    if (!row) return;
+    if (!d) { missing = true; continue; }
+    const first = String(d.note || '').trim().split('\n')[0] || 'No note';
+    row.textContent = `${d.type === 'suggestion' ? 'Suggestion' : d.kind === 'note' ? 'Report' : 'Recording'} by ${d.by || 'someone'}: ${first}`;
+    row.classList.remove('dim');
+  }
+  if (missing && !synced) { await act({ type: 'troubleSync', quiet: true }); tkRecNotes(ids, true); }
+}
+
+// Watching one in the tracker: its video and note in a window of their own.
+let tkVUrl = null;
+let tkVId = null;
+async function tkWatch(id) {
+  tkVId = id;
+  const v = $('tk-vvideo');
+  v.pause(); v.removeAttribute('src'); v.load();
+  if (tkVUrl) { URL.revokeObjectURL(tkVUrl); tkVUrl = null; }
+  $('tk-vpics').hidden = true; setHtml($('tk-vpics'), '');
+  $('tk-viewer').showModal();
+  let d = await api.troubleDetails(id);
+  if (!d) { $('tk-vwait').hidden = false; $('tk-vwait').textContent = 'Fetching it from GitHub…'; await act({ type: 'troubleSync', quiet: true }); d = await api.troubleDetails(id); }
+  if (tkVId !== id) return;
+  if (!d) { $('tk-vwait').textContent = 'This one is not on GitHub any more, or was removed from your list.'; v.hidden = true; return; }
+  const note = d.kind === 'note';
+  $('tk-vtitle').textContent = `${d.type === 'suggestion' ? 'Suggestion' : note ? 'Report' : 'Recording'} by ${d.by || 'someone'}`;
+  $('tk-vfacts').textContent = [new Date(d.startedAt).toLocaleString(), note ? null : `${Math.round((d.endedAt - d.startedAt) / 1000)} s`].filter(Boolean).join(' · ');
+  $('tk-vnote').textContent = d.note || 'No note.';
+  $('tk-vnotehead').textContent = d.type === 'suggestion' ? 'The idea' : 'What went wrong';
+  v.hidden = note || !d.video;
+  $('tk-vwait').hidden = note || !d.video;
+  if (note) {
+    // A written report: its pictures instead of a video.
+    const cells = [];
+    for (const name of d.images || []) {
+      const bytes = await api.troubleImage(id, name);
+      if (!bytes || tkVId !== id) continue;
+      const ext = name.split('.').pop();
+      cells.push(`<figure class="tr-pic"><img src="${esc(URL.createObjectURL(new Blob([bytes], { type: ext === 'jpg' ? 'image/jpeg' : `image/${ext}` })))}" alt="${esc(name)}"></figure>`);
+    }
+    $('tk-vpics').hidden = !cells.length;
+    setHtml($('tk-vpics'), cells.join(''));
+    return;
+  }
+  if (!d.video) return;
+  $('tk-vwait').textContent = d.remote ? 'Fetching the video…' : 'Loading the video…';
+  const bytes = await api.troubleVideo(id);
+  if (tkVId !== id) return;
+  if (!bytes) { $('tk-vwait').textContent = 'The video could not be fetched.'; return; }
+  $('tk-vwait').hidden = true;
+  tkVUrl = URL.createObjectURL(new Blob([bytes], { type: String(d.video.mime || 'video/webm').split(';')[0] }));
+  v.src = tkVUrl;
+}
+// A video recorded in pieces does not know how long it is until it has been to the end once.
+$('tk-vvideo').addEventListener('loadedmetadata', () => {
+  const v = $('tk-vvideo');
+  if (v.duration !== Infinity) return;
+  const back = () => { v.removeEventListener('durationchange', back); v.currentTime = 0; };
+  v.addEventListener('durationchange', back);
+  v.currentTime = 1e101;
+});
+function tkVClose() { const v = $('tk-vvideo'); v.pause(); $('tk-viewer').close(); }
+$('tk-vclose').addEventListener('click', tkVClose);
+$('tk-viewer').addEventListener('close', () => $('tk-vvideo').pause());
+$('tk-vfull').addEventListener('click', async () => {
+  const id = tkVId;
+  tkVClose();
   $('tk-dialog').close();
   showTab('trouble');
   await trLoadList();
-  if (trList.some((r) => r.id === b.dataset.watch)) trOpen(b.dataset.watch);
-  else act({ type: 'troubleSync' }); // not on this PC yet: it is fetched, then it can be opened
+  if (trList.some((r) => r.id === id)) trOpen(id);
+});
+$('tk-reclist').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-watch]');
+  if (b) tkWatch(b.dataset.watch);
 });

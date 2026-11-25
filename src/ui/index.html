@@ -307,7 +307,8 @@
           <span class="row tr-standing">
             <label class="tr-pick" id="tr-state-box" hidden><span>Status</span><select id="tr-state" aria-label="Status, for everyone"></select></label>
             <label class="tr-pick" id="tr-type-box" hidden><span>Type</span><select id="tr-type" aria-label="Problem or suggestion, for everyone"><option value="problem">Problem</option><option value="suggestion">Suggestion</option></select></label>
-            <button type="button" id="tr-trackbtn" hidden>Add to tracker</button>
+            <button type="button" id="tr-planbtn" hidden title="A new box in the tracker for this, under the box you choose">Make into plan</button>
+            <button type="button" id="tr-trackbtn" hidden title="Connect this to a box that is already in the tracker">Attach to a box</button>
             <button type="button" class="link" id="tr-delete">Delete</button>
           </span>
         </div>
@@ -712,17 +713,27 @@
 
 <dialog id="tr-trackdlg" class="tr-trackdlg">
   <form method="dialog" id="tr-trackform" autocomplete="off">
-    <h2>Put it in the tracker</h2>
-    <div class="tr-trackhow" role="radiogroup" aria-label="How">
-      <label><input type="radio" name="how" value="attach" checked> Attach it to a box that is there</label>
-      <label><input type="radio" name="how" value="make"> Make a new box for it, under a box</label>
-    </div>
+    <h2 id="tr-trackhead">Make into plan</h2>
+    <p class="fine" id="tr-tracklead"></p>
+    <input type="hidden" name="how" value="make">
     <label class="tr-tracktitle" id="tr-tracktitle" hidden>Title of the new box <input name="title" maxlength="200"></label>
+    <label class="tr-tracktitle" id="tr-trackstatus" hidden>It starts as <select name="status"><option value="idea">Idea</option><option value="considering">Considering</option><option value="todo">To do</option><option value="doing">In progress</option></select></label>
+    <p class="tr-h tr-trackunder" id="tr-trackunder">Under which box?</p>
     <input id="tr-trackfind" placeholder="Find a box" aria-label="Find a box" spellcheck="false">
     <ul class="tr-trackboxes" id="tr-trackboxes" role="radiogroup" aria-label="Box"></ul>
     <p class="warn" id="tr-trackerr" hidden></p>
     <div class="row tr-trackfoot"><button type="button" id="tr-trackcancel">Cancel</button><button type="submit" class="primary" id="tr-trackok">Connect</button></div>
   </form>
+</dialog>
+
+<dialog id="tk-viewer" class="tk-viewer">
+  <div class="tk-vhead"><h2 id="tk-vtitle">Recording</h2><span class="row"><button type="button" class="link" id="tk-vfull">Open on the Troubleshooting page</button><button type="button" id="tk-vclose">Close</button></span></div>
+  <p class="map-meta" id="tk-vfacts"></p>
+  <video id="tk-vvideo" controls preload="metadata"></video>
+  <p class="dim" id="tk-vwait" hidden></p>
+  <div class="tr-picgrid" id="tk-vpics" hidden></div>
+  <h3 class="tr-h" id="tk-vnotehead">Note</h3>
+  <p class="tk-vnote" id="tk-vnote"></p>
 </dialog>
 
 <dialog id="tk-dialog">
@@ -737,8 +748,8 @@
     </div>
     <h3 class="tr-h">Steps <span class="dim" id="tk-dprog"></span></h3>
     <ul class="tk-steps" id="tk-steps"></ul>
-    <div class="tk-recs" id="tk-recs" hidden><h3 class="tr-h">Recordings and reports</h3><ul id="tk-reclist"></ul></div>
     <div class="row tk-stepadd"><input id="tk-stepnew" maxlength="300" placeholder="Add a step and press Enter" aria-label="New step"><button type="button" id="tk-stepbtn">Add step</button></div>
+    <div class="tk-recs" id="tk-recs" hidden><h3 class="tr-h">Recordings and reports</h3><ul id="tk-reclist"></ul></div>
     <p class="warn" id="tk-derror" hidden></p>
     <div class="dialog-actions">
       <span class="tk-dleft"><button type="button" class="link tk-del" id="tk-delete">Delete</button><span class="dim tk-dby" id="tk-dby"></span></span>

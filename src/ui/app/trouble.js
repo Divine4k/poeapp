@@ -238,7 +238,9 @@ function trSendLine() {
   $('tr-fixed').textContent = busy ? 'Saving…' : trDetail.state ? `${trStateName(trDetail.state, type)}${trDetail.statusBy && trDetail.statusAt ? ` (set by ${trDetail.statusBy}, ${trWhen(trDetail.statusAt)})` : ''}.` : '';
   // The tracker (admins): connect it to a box, or show the box it is in.
   const admin = !!state.trouble.admin;
-  $('tr-trackbtn').hidden = !(admin && onGithub && trDetail.sent && !trDetail.issue);
+  const canTrack = admin && onGithub && trDetail.sent && !trDetail.issue;
+  $('tr-trackbtn').hidden = !canTrack;
+  $('tr-planbtn').hidden = !canTrack;
   $('tr-tracked').hidden = !trDetail.issue;
   $('tr-tracklink').textContent = trDetail.issue ? `#${trDetail.issue}` : '';
   $('tr-untrack').hidden = !admin;
@@ -408,15 +410,23 @@ function trBoxesDraw() {
   }).join('') : '<li class="empty">No box by that name.</li>');
   $('tr-trackok').disabled = trBoxPick == null;
   $('tr-tracktitle').hidden = !make;
+  $('tr-trackstatus').hidden = !make;
 }
-$('tr-trackbtn').addEventListener('click', async () => {
+// Make into plan: a new box for it, under the box chosen. Attach: to a box that is there.
+async function trTrackOpen(make) {
   if (!trDetail) return;
   const f = $('tr-trackform');
+  f.elements.how.value = make ? 'make' : 'attach';
   f.elements.title.value = String(trDetail.note || '').trim().split('\n')[0].slice(0, 120);
-  // A suggestion usually becomes its own box; a problem usually belongs to one that is there.
-  f.elements.how.value = trDetail.type === 'suggestion' ? 'make' : 'attach';
+  f.elements.status.value = trDetail.type === 'suggestion' ? 'idea' : 'todo';
+  $('tr-trackhead').textContent = make ? 'Make into plan' : 'Attach to a box';
+  $('tr-tracklead').textContent = make
+    ? 'A new box in the tracker, with the note as its text and a link to this recording. Choose the box it goes under.'
+    : 'A link to this recording goes into the box you choose, and the box shows it.';
+  $('tr-trackunder').textContent = make ? 'Under which box?' : 'Which box?';
+  $('tr-trackok').textContent = make ? 'Make the box' : 'Attach';
   $('tr-trackfind').value = '';
-  trBoxPick = null;
+  trBoxPick = make ? 'root' : null;
   $('tr-trackerr').hidden = true;
   setHtml($('tr-trackboxes'), '<li class="empty">Loading the tracker…</li>');
   $('tr-trackok').disabled = true;
@@ -425,7 +435,9 @@ $('tr-trackbtn').addEventListener('click', async () => {
   if (r.error) { $('tr-trackerr').textContent = r.error; $('tr-trackerr').hidden = false; setHtml($('tr-trackboxes'), ''); return; }
   trBoxes = r.items || [];
   trBoxesDraw();
-});
+}
+$('tr-planbtn').addEventListener('click', () => trTrackOpen(true));
+$('tr-trackbtn').addEventListener('click', () => trTrackOpen(false));
 $('tr-trackform').addEventListener('change', (e) => {
   if (e.target.name === 'box') trBoxPick = e.target.value;
   trBoxesDraw();
@@ -438,7 +450,7 @@ $('tr-trackform').addEventListener('submit', (e) => {
   const f = e.currentTarget;
   const make = f.elements.how.value === 'make';
   act(make
-    ? { type: 'troubleTrack', id: trSel, make: true, title: f.elements.title.value, parent: trBoxPick === 'root' ? null : Number(trBoxPick) }
+    ? { type: 'troubleTrack', id: trSel, make: true, title: f.elements.title.value, status: f.elements.status.value, parent: trBoxPick === 'root' ? null : Number(trBoxPick) }
     : { type: 'troubleTrack', id: trSel, issue: Number(trBoxPick) });
   $('tr-trackdlg').close();
 });

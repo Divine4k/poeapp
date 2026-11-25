@@ -2106,7 +2106,7 @@ const actions = {
     let r;
     if (a.make) {
       const title = String(a.title || '').trim() || first || `Recording ${id}`;
-      r = await trackerAction({ type: 'add', title, body: `${String(d.note || '').trim()}\n\n${tracker.recordingLine(rec)}\n`, status: d.type === 'suggestion' ? 'idea' : 'todo', parent: a.parent == null ? null : Number(a.parent) });
+      r = await trackerAction({ type: 'add', title, body: `${String(d.note || '').trim()}\n\n${tracker.recordingLine(rec)}\n`, status: ['idea', 'considering', 'todo', 'doing'].includes(a.status) ? a.status : d.type === 'suggestion' ? 'idea' : 'todo', parent: a.parent == null ? null : Number(a.parent) });
     } else {
       r = await trackerAction({ type: 'record', number: Number(a.issue), rec });
     }
