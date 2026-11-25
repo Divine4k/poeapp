@@ -229,7 +229,8 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .map-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); gap: 14px; }
 .panel.cur { overflow-y: auto; }
 .hist { min-height: 0; display: flex; flex-direction: column; gap: 14px; }
-.panel.sess { flex: 1; min-height: 0; overflow: hidden; }
+/* a pixel of room inside the panel, so the rows never cover its outline at the sides */
+.panel.sess { flex: 1; min-height: 0; overflow: hidden; padding: 1px; }
 
 /* the inventory as last read: sockets, each showing its own square of the kept picture */
 .invgrid { --inv: none; display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin: 4px 18px 12px; padding: 8px; border-radius: var(--r-md); background: var(--well); box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line); }
@@ -318,7 +319,12 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .runs-table .track .avg { --at: 50%; position: absolute; left: var(--at); top: -4px; bottom: -4px; width: 1px; background: color-mix(in srgb, var(--bone) 32%, transparent); }
 .runs-table .end { color: var(--faint); font-size: 12.5px; }
 .runs-table .nm > span { display: inline-flex; align-items: center; white-space: nowrap; }
-.runs-table .tier { margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--faint); }
+.runs-table .tier { margin-right: 8px; padding: 1px 6px; border-radius: 6px; font-size: 11px; font-weight: 650; color: var(--soft); background: color-mix(in srgb, var(--bone) 8%, transparent); }
+@media (max-width: 1300px) { .runs-table th:first-child { width: 36%; } }
+/* the average map: its own little table at the bottom of the panel, lined up with the columns above */
+.runs-foot { flex: none; margin-top: auto; }
+.runs-foot td { border-bottom: 0; background: none; box-shadow: inset 0 1px 0 var(--line); color: var(--soft); font-weight: 600; }
+.runs-foot td:nth-child(2) { width: 70px; } .runs-foot td:nth-child(3) { width: 52px; } .runs-foot td:nth-child(4) { width: 84px; } .runs-foot td:nth-child(5) { width: 26px; }
 /* deaths: a small skull and how many, however many there were */
 .runs-table .deaths { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; padding: 1px 6px 1px 4px; border-radius: 6px; font-size: 11px; font-weight: 650; color: var(--blood); background: color-mix(in srgb, var(--blood) 12%, transparent); }
 .runs-table .deaths svg { width: 11px; height: 11px; fill: currentColor; }
@@ -328,8 +334,16 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .runs-table .vs .dim { padding: 0; color: var(--faint); }
 .runs-table .net { font-weight: 650; color: var(--bone); }
 .runs-table .net.gold { color: var(--gold); }
-.runs-table tr.live td { background: color-mix(in srgb, var(--gold) 6%, transparent); }
-.runs-table tr.live td:first-child { box-shadow: inset 2px 0 0 var(--gold); }
+/* the map being run: its left edge glows green and breathes slowly, and its striped bar moves,
+   like a progress bar at work (all still when animations are off in Settings) */
+.runs-table tr.live td:first-child { position: relative; }
+.runs-table tr.live td:first-child::before, .runs-table tr.live td:first-child::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; pointer-events: none; }
+.runs-table tr.live td:first-child::before { width: 3px; background: var(--moss); filter: saturate(1.8) brightness(1.15); box-shadow: 0 0 10px var(--moss); animation: live-breathe 2.4s ease-in-out infinite; }
+.runs-table tr.live td:first-child::after { width: 56px; background: linear-gradient(90deg, color-mix(in srgb, var(--moss) 45%, transparent), transparent); filter: saturate(1.8); animation: live-breathe 2.4s ease-in-out infinite; }
+@keyframes live-breathe { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.runs-table .track .fill.now { background-size: 11.31px 100%; animation: live-stripes 0.9s linear infinite; }
+@keyframes live-stripes { from { background-position: 0 0; } to { background-position: 11.31px 0; } }
+@media (prefers-reduced-motion: reduce) { .runs-table tr.live td:first-child::before, .runs-table tr.live td:first-child::after, .runs-table .track .fill.now { animation: none; } }
 .runs-table .x { width: 26px; text-align: center; }
 .runs-table .x .link { font-size: 16px; line-height: 1; opacity: 0; }
 .runs-table tr.run:hover .x .link, .runs-table .x .link:focus-visible { opacity: 1; }

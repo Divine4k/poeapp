@@ -79,9 +79,9 @@ function runsHtml(sum, { open, readonly, redraw, divine }) {
     const diff = r.net - avg;
     const tip = live || done.length < 2 ? '' : `${diff >= 0 ? '+' : '−'}${fmtValue(Math.abs(diff), divine)} against the session's average`;
     let html = `<tr class="run ${live ? 'live' : ''} ${open === r.id ? 'open' : ''}" data-expand="${esc(r.id)}">
-        <td class="nm"><span>${live ? '<i class="live-dot"></i>' : ''}<b>${esc(r.name)}</b>${tierOf(r.level) ? `<span class="tier" title="Area level ${r.level}">T${tierOf(r.level)}</span>` : ''}${best === r ? '<u>best</u>' : ''}${deathsHtml(r.deaths)}</span></td>
+        <td class="nm"${live ? ' title="The map you are in"' : ''}><span>${tierOf(r.level) ? `<span class="tier" title="Area level ${r.level}">T${tierOf(r.level)}</span>` : ''}<b>${esc(r.name)}</b>${best === r ? '<u>best</u>' : ''}${deathsHtml(r.deaths)}</span></td>
         <td class="mbar"${tip ? ` title="${esc(tip)}"` : ''}><span class="track">${avgAt !== null ? `<i class="avg" data-at="${avgAt}"></i>` : ''}<i class="fill ${cls}" data-w="${w}"></i></span></td>
-        <td class="num end">${live ? 'now' : r.endedAt ? clock(r.endedAt) : ''}</td>
+        <td class="num end"${!live && r.endedAt ? ` title="${esc(`${dayOf(r.endedAt)}, ${clock(r.endedAt)}`)}"` : ''}>${live ? 'now' : r.endedAt ? clock(r.endedAt) : ''}</td>
         <td class="num t">${fmtTime(live ? liveDuration(r) : r.durationMs)}</td>
         <td class="num net ${r.net < 0 ? 'neg' : live ? 'gold' : ''}">${r.net > 0 ? '+' : ''}${fmtValue(r.net, divine)}</td>
         <td class="x">${readonly ? '' : `<button type="button" class="link" data-act="deleteRun" data-run="${esc(r.id)}" data-confirm="${esc(`Delete ${r.name} from this session?`)}" title="Delete this map" aria-label="Delete ${esc(r.name)}">×</button>`}</td></tr>`;
