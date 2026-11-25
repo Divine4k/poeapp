@@ -227,15 +227,17 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-verdict.v-low { color: var(--ash); background: color-mix(in srgb, var(--bone) 6%, transparent); }
 /* the vendor recipe it fits: the same dashed note as the dust */
 .pc-vendor span { color: var(--ash); }
-/* room for a bench craft */
-.pc-craft { margin: 8px 4px 2px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ash); }
-.pc-craft p { margin: 0 0 4px; }
+/* possible bench crafts: ticked, searched as if already on the item */
+.pc-craft { margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ash); }
+.pc-craft p { margin: 0 4px 4px; }
 .pc-craft p b { color: var(--soft); font-weight: 650; }
-.pc-craft ul { margin: 0; padding: 0; list-style: none; }
-.pc-craft li { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; color: #b8c4ff; }
-.pc-craft li small { color: var(--faint); margin-left: 4px; }
-.pc-craft li .bad { color: var(--blood); }
+.pc-craft li { justify-content: space-between; }
+.pc-craft li .pc-tick { flex: 0 1 auto; }
+.pc-craft li.off .pc-tick span { opacity: 0.75; }
+.pc-craft li > small { color: var(--faint); white-space: nowrap; }
+.pc-craft li > small.bad { color: var(--blood); }
+.pc-craft .pc-lp { white-space: nowrap; }
 .pc-craft .pc-lp b { font-size: 13px; color: var(--bone); }
 .pc-craft em { font-style: normal; font-weight: 650; color: var(--ash); margin-right: 4px; }
 .pc-craft em.up { color: var(--moss); }
-.pc-craft .pc-lp small { margin: 0 4px 0 0; }
+.pc-craft .pc-lp small { margin: 0 4px 0 0; color: var(--faint); }

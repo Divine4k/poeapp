@@ -720,7 +720,7 @@ test('a listing unfolds to the item as the game shows it: name, base, properties
 });
 
 test('worth: vendor recipes, the verdict at a glance, and room for a bench craft', () => {
-  const { vendorRecipe, verdict, craftRoom } = require('../src/core/worth');
+  const { vendorRecipe, verdict, craftRoom, withCrafts } = require('../src/core/worth');
   assert.deepEqual(vendorRecipe({ sockets: 'R-G-B-B-R-G' }), { name: 'Orb of Fusing', count: 20, why: 'six linked sockets' });
   assert.deepEqual(vendorRecipe({ sockets: 'R-G B-B R-G' }).count, 7);
   assert.equal(vendorRecipe({ sockets: 'R-G-B' }).name, 'Chromatic Orb');
@@ -739,4 +739,13 @@ test('worth: vendor recipes, the verdict at a glance, and room for a bench craft
   assert.deepEqual([room.open, room.crafted, room.ideas], [{ prefix: 1, suffix: 0 }, true, []]); // a ring: no life craft offered
   assert.equal(parseItemText(CLOAK_FULL).corruptionImplicits, 1);
   assert.equal(craftRoom(parseItemText(BOOTS), null), null); // the short text: not known
+
+  // Boots with an open prefix and suffix and no life on them: life is searched as a new total line.
+  const boots = { rarity: 'Rare', slots: { prefix: 2, suffix: 2, crafted: false, known: true } };
+  const bf = { category: { label: 'Boots' }, stats: [{ key: 'pseudo:res', value: 80, min: 72, enabled: true }] };
+  const br = craftRoom(boots, bf, index);
+  assert.deepEqual(br.ideas.map((i) => [i.stat, i.add, i.priced, !!i.ids]), [['pseudo:life', 56, true, true], ['pseudo:res', 29, true, false]]);
+  const both = withCrafts(bf, br.ideas);
+  assert.deepEqual(both.stats.map((x) => [x.key, x.min, x.enabled]), [['pseudo:res', 101, true], ['pseudo:life', 56, true]]);
+  assert.deepEqual(bf.stats[0].min, 72); // the item's own choices are left as they were
 });

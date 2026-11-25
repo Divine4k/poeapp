@@ -30,19 +30,41 @@ function verdict({ price, vendor, divine }) {
 
 // What the crafting bench can still add to a rare: open prefixes and suffixes, and the usual
 // craft for each, for the kinds of gear that take them. Only known from the fuller item text.
-// filters: buildFilters' result (the craft is priced through its total life or resistance line).
+// filters: buildFilters' result. index: the trade stat list, for the total line to search a
+// craft on when the item has none of its own (no life on it yet, say).
 const LIFE_CRAFT = { Helmet: [56, 70], 'Body Armour': [56, 70], Gloves: [56, 70], Boots: [56, 70], Shield: [56, 70] };
 const RES_CRAFT = [29, 35]; // one resistance, the bench's usual best
-function craftRoom(item, filters) {
+const TOTALS = { 'pseudo:life': ['+# total maximum Life', 'total maximum Life'], 'pseudo:res': ['+#% total Elemental Resistance', 'total Elemental Resistance'] };
+function craftRoom(item, filters, index = null) {
   if (!item || item.rarity !== 'Rare' || !item.slots || !item.slots.known || item.corrupted) return null;
   const open = { prefix: Math.max(0, 3 - item.slots.prefix), suffix: Math.max(0, 3 - item.slots.suffix) };
   if (!open.prefix && !open.suffix) return null;
-  const has = (key) => !!(filters && filters.stats || []).find((s) => s.key === key);
   const kind = filters && filters.category ? filters.category.label : '';
+  const idea = (slot, stat, text, add) => {
+    const has = !!((filters && filters.stats) || []).find((x) => x.key === stat);
+    const ids = has ? null : (index && index.pseudo ? index.pseudo(TOTALS[stat][0]) : null);
+    return { slot, stat, text, add, ids, priced: has || !!ids };
+  };
   const ideas = [];
-  if (open.prefix && LIFE_CRAFT[kind]) ideas.push({ slot: 'prefix', stat: 'pseudo:life', text: `+${LIFE_CRAFT[kind][0]}–${LIFE_CRAFT[kind][1]} to maximum Life`, add: LIFE_CRAFT[kind][0], priced: has('pseudo:life') });
-  if (open.suffix) ideas.push({ slot: 'suffix', stat: 'pseudo:res', text: `+${RES_CRAFT[0]}–${RES_CRAFT[1]}% to a resistance`, add: RES_CRAFT[0], priced: has('pseudo:res') });
+  if (open.prefix && LIFE_CRAFT[kind]) ideas.push(idea('prefix', 'pseudo:life', `+${LIFE_CRAFT[kind][0]}–${LIFE_CRAFT[kind][1]} to maximum Life`, LIFE_CRAFT[kind][0]));
+  if (open.suffix) ideas.push(idea('suffix', 'pseudo:res', `+${RES_CRAFT[0]}–${RES_CRAFT[1]}% to a resistance`, RES_CRAFT[0]));
   return { open, crafted: !!item.slots.crafted, ideas };
 }
 
-module.exports = { vendorRecipe, verdict, craftRoom, WORTH_SELLING };
+// The search's choices as if the crafts were already on the item: the total line each one adds
+// to is raised by the craft's lowest roll (and ticked), or added when the item had none.
+function withCrafts(filters, ideas) {
+  let stats = filters.stats;
+  for (const i of ideas || []) {
+    const line = stats.find((x) => x.key === i.stat);
+    if (line) {
+      const from = line.min !== null && line.min !== undefined ? line.min : (line.value || 0);
+      stats = stats.map((x) => (x === line ? { ...x, enabled: true, min: from + i.add } : x));
+    } else if (i.ids) {
+      stats = [...stats, { key: i.stat, text: `+${i.add} ${TOTALS[i.stat][1]}`, kind: 'pseudo', ids: i.ids, value: null, min: i.add, max: null, enabled: true, inverted: false, negated: false, tiers: [] }];
+    }
+  }
+  return { ...filters, stats };
+}
+
+module.exports = { vendorRecipe, verdict, craftRoom, withCrafts, WORTH_SELLING };

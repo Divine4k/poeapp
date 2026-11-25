@@ -247,8 +247,10 @@
       ${footHtml(d)}`;
   }
 
-  // Room left for a crafting bench mod, and what the usual craft would add to the price. The
-  // app works that out by itself after each search (runCrafts in main.js).
+  // Possible bench crafts: room left for one, the usual craft for each open slot with what it
+  // adds to the price (worked out by itself after each search, ticked or not: runCrafts in
+  // main.js), and a tick that searches the item as if the craft were already on it.
+  let craftOn = [];  // the crafts ticked, by their total line
   function craftHtml(d) {
     const c = d.craft;
     if (!c) return '';
@@ -256,15 +258,18 @@
     const fresh = (i) => i.rev === d.filtersRev && d.state === 'done';
     const ideas = c.ideas.map((i) => {
       let right;
-      if (!i.priced) right = '<small title="The search has no total line for it to be added to">not priced</small>';
+      if (!i.priced) right = '<small title="The trade site has no total line to search it on">not priced</small>';
       else if (!fresh(i) || i.state === 'waiting' || i.state === 'running') right = `<small>${d.state === 'done' ? 'working it out…' : 'after the search'}</small>`;
-      else if (i.state === 'later') right = '<small title="The trade site asked for a pause. Search again in a minute.">later</small>';
+      else if (i.state === 'later') right = `<small title="${esc(i.why)}">later</small>`;
       else if (i.state === 'error') right = `<small class="bad" title="${esc(i.why)}">could not search</small>`;
       else if (i.chaos === null) right = '<small title="Too few items like it with the craft are listed">too few listed</small>';
-      else right = `<span class="pc-lp">${i.delta > 0 ? `<em class="up">+${esc(fmtValue(i.delta))}</em>` : '<em>adds ≈ 0</em>'}<small>→</small> ${priceHtml(i.chaos)}</span>`;
-      return `<li title="The usual craft for an open ${esc(i.slot)}, priced at its lowest roll"><span>${esc(i.text)} <small>${esc(i.slot)}</small></span>${right}</li>`;
+      else right = `<span class="pc-lp">${i.delta === null ? '' : i.delta > 0 ? `<em class="up">+${esc(fmtValue(i.delta))}</em>` : '<em>adds ≈ 0</em>'}<small>→</small> ${priceHtml(i.chaos)}</span>`;
+      const on = craftOn.includes(i.stat);
+      return `<li class="${on ? 'on' : 'off'}" title="The usual craft for an open ${esc(i.slot)}, priced at its lowest roll. Ticked: searched as if it were already on the item.">
+        <label class="pc-tick"><input type="checkbox" data-craft="${esc(i.stat)}" ${on ? 'checked' : ''} ${i.priced ? '' : 'disabled'}><span class="m-crafted">${esc(i.text)}</span><small>${esc(i.slot)}</small></label>${right}</li>`;
     }).join('');
-    return `<div class="pc-craft"><p><b>Bench craft</b> · ${esc(open)} open${c.crafted ? ' · already has a crafted mod' : ''}</p>${ideas ? `<ul>${ideas}</ul>` : ''}</div>`;
+    const note = c.crafted ? ' · it already has a crafted mod' : (c.ideas.length > 1 ? ' · one at a time' : '');
+    return `<div class="pc-craft"><p><b>Possible bench craft</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
   }
 
   function draw() {
@@ -272,7 +277,7 @@
     const kind = d && d.kind === 'bulk' ? 'bulk' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
     if (!kind) { panel.innerHTML = ''; sendSize(0); return; }
     // A new item: the window waits for its height before it shows, so it is always sent.
-    if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; }
+    if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; craftOn = []; }
     if (kind !== 'search') { panel.innerHTML = kind === 'bulk' ? bulkView(d) : pickView(d); sendSize(fullHeight()); return; }
     const key = `${d.at}:${d.filtersRev}`;
     if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
@@ -315,7 +320,7 @@
 
   // What is ticked and set, in the shape the app lays over its own copy of the choices.
   function edits() {
-    const e = { flags: {}, props: {}, stats: {} };
+    const e = { flags: {}, props: {}, stats: {}, crafts: craftOn.slice() };
     for (const r of rows) {
       if (r.tc === 'offline' || r.tc === 'type' || r.tc === 'category') e[r.tc] = r.enabled;
       else if (r.tc === 'flag') e.flags[r.key] = r.enabled;
@@ -431,6 +436,13 @@
     if (num) startTyping(num);
   });
   panel.addEventListener('change', (e) => {
+    const craft = e.target.closest('[data-craft]');
+    if (craft) {
+      // The bench adds one craft at a time: ticking one unticks the other.
+      craftOn = craft.checked ? [craft.dataset.craft] : craftOn.filter((k) => k !== craft.dataset.craft);
+      for (const box of panel.querySelectorAll('[data-craft]')) { box.checked = craftOn.includes(box.dataset.craft); const li = box.closest('li'); li.classList.toggle('on', box.checked); li.classList.toggle('off', !box.checked); }
+      return;
+    }
     const li = e.target.closest('[data-row]');
     if (!li || e.target.type !== 'checkbox') return;
     rows[Number(li.dataset.row)].enabled = e.target.checked;
