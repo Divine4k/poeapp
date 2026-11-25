@@ -280,8 +280,12 @@
   }
   function redrawCraft() {
     const box = panel.querySelector('.pc-craft');
-    if (box && data) box.outerHTML = craftHtml(data);
+    if (box && data) { shownCraft = craftHtml(data); box.outerHTML = shownCraft; }
   }
+  // What the window shows now, the bench crafts apart: while their prices come in one by one
+  // (several updates within seconds of a search) only their box is drawn again, so the stats
+  // above it stay as they are under the mouse and a quick run of clicks on them is not held up.
+  let shownMain = null, shownCraft = '';
   function craftHtml(d) {
     const c = d.craft;
     if (!c) return '';
@@ -309,15 +313,16 @@
     return `<div class="pc-craft"><p><b>Possibly good bench crafts</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
   }
 
-  function draw() {
+  // rowsMoved: the ticks were changed by something other than a click on them (a ready-made search).
+  function draw(rowsMoved) {
     const d = data;
     const kind = d && d.kind === 'bulk' ? 'bulk' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
-    if (!kind) { panel.innerHTML = ''; sendSize(0); return; }
+    if (!kind) { shownMain = null; panel.innerHTML = ''; sendSize(0); return; }
     // A new item: the window waits for its height before it shows, so it is always sent.
     if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; craftOn = []; craftPending = false; clearTimeout(craftTimer); }
-    if (kind !== 'search') { panel.innerHTML = kind === 'bulk' ? bulkView(d) : pickView(d); sendSize(fullHeight()); return; }
+    if (kind !== 'search') { shownMain = null; panel.innerHTML = kind === 'bulk' ? bulkView(d) : pickView(d); sendSize(fullHeight()); return; }
     const key = `${d.at}:${d.filtersRev}`;
-    if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
+    if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); rowsMoved = true; }
     const f = d.filters;
     const tabs = f.presets ? `<div class="pc-tabs" role="tablist">
         <button type="button" role="tab" class="pc-tab${mode === 'stats' ? ' on' : ''}" aria-selected="${mode === 'stats'}" data-mode="stats" title="Items with stats like this one">Stats</button>
@@ -326,17 +331,25 @@
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
     const busy = d.state === 'searching';
     const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
-    panel.innerHTML = `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
+    const craft = craftHtml(d);
+    const main = (chips, stats, c) => `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
         <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${d.picked ? 'Unidentified · <button type="button" class="pc-link" data-pick="">Not this one?</button> · ' : ''}${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
         ${headTools(true)}</div>
       ${tabs}
       <div class="pc-body"><div class="pc-chips">${chips}</div>
         ${stats ? `<ul class="pc-rows">${stats}</ul>` : ''}
-        ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}${craftHtml(d)}</div>
+        ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}${c}</div>
       <div class="pc-go"><button type="button" class="primary" data-search ${busy ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search'}</button>
         ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
       ${listHtml(d)}
       ${footHtml(d)}`;
+    // Compared without the stats: a click on one changes it in place (setOn, setNum), so what is
+    // on screen already matches `rows`.
+    const rest = main('', stats ? ' ' : '', '');
+    const box = !rowsMoved && rest === shownMain && craft && shownCraft ? panel.querySelector('.pc-craft') : null;
+    if (box) { if (craft !== shownCraft) box.outerHTML = craft; }
+    else panel.innerHTML = main(chips, stats, craft);
+    shownMain = rest; shownCraft = craft;
     sendSize(fullHeight());
   }
   // The window is only told its height when it changed: each change moves a see-through window,
@@ -377,7 +390,7 @@
     row.num = n;
     row.enabled = true; // setting a number means wanting it searched
     const li = panel.querySelector(`li[data-row="${rows.indexOf(row)}"]`);
-    if (!li) { draw(); return; }
+    if (!li) { draw(true); return; }
     const b = li.querySelector('.pc-num b');
     if (b) b.textContent = shown(row, row.num);
     const m = li.querySelector('.pc-match');
@@ -457,7 +470,7 @@
       mode = tab.dataset.mode;
       const set = data.filters.presets[mode] || {};
       for (const r of rows) if (r.pk in set) r.enabled = !!set[r.pk];
-      draw();
+      draw(true);
       // and searched straight away (the same search within a minute comes back at once)
       // (one still running: this one goes as soon as it is back)
       if (data.state !== 'searching') api.action({ type: 'tradeSearch', edits: edits() }); else again = true;
