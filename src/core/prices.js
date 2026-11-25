@@ -110,6 +110,12 @@ function parseItemOverview(json, category) {
     const pool = plain.length ? plain : list;
     const cheapest = pool.reduce((m, x) => (x.v < m.v ? x : m));
     const plainEntry = { name, chaos: cheapest.v, category, ...extra(cheapest.line) };
+    // Some uniques are listed per variant with very different prices (Mageblood by how many
+    // flasks it holds: 2 cheap, 4 dear). The plain price is the cheapest; `high` is the dearest
+    // variant that is commonly listed (5 or more), so a price can be shown as the range it is.
+    const common = pool.filter((x) => Number(x.line.listingCount) >= 5);
+    const high = common.length ? Math.max(...common.map((x) => x.v)) : cheapest.v;
+    if (high > cheapest.v * 1.15) plainEntry.high = high;
     out.push(plainEntry);
     if (list.length < 2) continue;
     const seen = new Set();
@@ -165,8 +171,8 @@ class PriceTable {
   // The uniques that come on a base type, dearest first: what an unidentified unique can be.
   uniquesOfBase(base) {
     const out = [];
-    for (const e of this.byNorm.values()) if (e.base === base && !e.variant && /^Unique/.test(e.category)) out.push({ name: e.name, chaos: e.chaos, icon: e.icon || null });
-    return out.sort((a, b) => b.chaos - a.chaos);
+    for (const e of this.byNorm.values()) if (e.base === base && !e.variant && /^Unique/.test(e.category)) out.push({ name: e.name, chaos: e.chaos, high: e.high || null, icon: e.icon || null });
+    return out.sort((a, b) => (b.high || b.chaos) - (a.high || a.chaos));
   }
   get divine() { return this.chaosOf('Divine Orb'); }
 

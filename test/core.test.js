@@ -60,6 +60,15 @@ test('prices: exchange and item overview parsing', () => {
   // an unidentified Leather Belt: the uniques it can be, dearest first (kept in the saved copy too)
   assert.deepEqual(PriceTable.fromJSON(JSON.parse(JSON.stringify(t))).uniquesOfBase('Leather Belt').map((e) => [e.name, e.chaos]), [['Headhunter', 8000], ['Wurm\'s Molt', 2]]);
   assert.deepEqual(t.uniquesOfBase('Golden Mask'), []);
+  // a unique listed per variant: the cheapest, and the dearest commonly listed variant as its top
+  const mb = parseItemOverview({ lines: [
+    { name: 'Mageblood', baseType: 'Heavy Belt', chaosValue: 15303, variant: '2 Flasks', listingCount: 68 },
+    { name: 'Mageblood', baseType: 'Heavy Belt', chaosValue: 43464, variant: '4 Flasks', listingCount: 240 },
+    { name: 'Mageblood', baseType: 'Heavy Belt', chaosValue: 386616, variant: '5 Flasks', listingCount: 1 },
+  ] }, 'UniqueAccessory');
+  assert.deepEqual([mb[0].name, mb[0].chaos, mb[0].high], ['Mageblood', 15303, 43464]);
+  const mt = new PriceTable(); mt.load(mb);
+  assert.deepEqual(mt.uniquesOfBase('Heavy Belt').map((e) => [e.name, e.chaos, e.high]), [['Mageblood', 15303, 43464]]);
 });
 
 const MAP_TEXT = `Item Class: Maps

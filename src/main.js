@@ -1222,11 +1222,11 @@ function pickChoice(name) {
   if (!tc || tc.kind !== 'pick') return;
   const ch = tc.choices.find((c) => c.name === name);
   Object.assign(tc, { state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, iconW: 0, iconH: 0 });
-  if (!ch) Object.assign(tc, { picked: '', filters: { ok: false, why: tc.why }, ninja: null, icon: null, dust: null });
+  if (!ch) Object.assign(tc, { picked: '', filters: { ok: false, why: tc.why }, ninja: null, ninjaHigh: null, icon: null, dust: null });
   else {
     let filters;
     try { statIndex = statIndex || StatIndex.load(); filters = buildFilters({ ...tc.item, name: ch.name, unidentified: false }, statIndex); } catch (e) { filters = { ok: false, why: `The list of trade stats could not be read: ${e.message || e}` }; }
-    Object.assign(tc, { picked: ch.name, filters, ninja: ch.chaos, icon: ch.icon, dust: ch.dust });
+    Object.assign(tc, { picked: ch.name, filters, ninja: ch.chaos, ninjaHigh: ch.high || null, icon: ch.icon, dust: ch.dust });
   }
   tc.filtersRev += 1; tc.rev = ++tradeRev;
   push();
@@ -1303,6 +1303,7 @@ function startTradeCheck(item, { always = false } = {}) {
   tradeCheck = { at: Date.now(), rev: ++tradeRev, filtersRev: 0, filters, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, inGame: false };
   const entry = prices.get(priceName(item));
   tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques
+  tradeCheck.ninjaHigh = entry && entry.high ? entry.high : null; // its dearest common variant, when they differ
   tradeCheck.icon = entry && entry.icon ? entry.icon : null; // a unique's picture; others get theirs from the search
   tradeCheck.dust = item.rarity === 'Unique' ? dustValue(item) : null; // what it gives at the Disenchanting bench
   tradeCheck.vendor = vendorFor(item);

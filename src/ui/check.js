@@ -117,7 +117,8 @@
     const bulk = d.kind === 'bulk';
     if (d.state === 'searching') return `<p class="pc-wait">Searching the ${bulk ? 'bulk exchange' : 'trade site'}…</p>${extrasHtml(d)}`;
     if (d.state === 'error') return `<p class="pc-bad">${esc(d.error)}</p>${extrasHtml(d)}`;
-    const ninja = d.ninja !== null && d.ninja !== undefined ? `poe.ninja <b>${fmtValue(d.ninja)}</b>` : '';
+    // poe.ninja's price; a unique listed per variant (Mageblood by its flasks) as the range it is
+    const ninja = d.ninja !== null && d.ninja !== undefined ? `<span${d.ninjaHigh ? ' title="poe.ninja prices it per variant: from the cheapest to the dearest one commonly listed"' : ''}>poe.ninja <b>${d.ninjaHigh ? rangeText(d.ninja, d.ninjaHigh) : fmtValue(d.ninja)}</b></span>` : '';
     const s = d.summary || {};
     // what the whole stack is worth, at the cheapest offer (or poe.ninja's price before a search)
     const each = s.typical !== null && s.typical !== undefined ? s.typical : (s.low !== null && s.low !== undefined ? s.low : d.ninja);
@@ -206,6 +207,20 @@
     if (a >= 1) return String(Math.round(x * 100) / 100);
     return String(Number(x.toPrecision(2)));
   }
+  // The same range with the currency's picture, for the list of uniques.
+  function rangeHtml(lo, hi) {
+    const divine = data ? data.divine : 0;
+    const inDiv = divine > 0 && hi >= divine;
+    const f = (v) => { const x = inDiv ? v / divine : v; return x >= 10 ? Math.round(x).toLocaleString() : num(x); };
+    return `<b>${f(lo)}–${f(hi)}</b>${coin(inDiv ? 'divine' : 'chaos')}`;
+  }
+  // "85–240 div": a range in one unit (divines once the top is worth one).
+  function rangeText(lo, hi) {
+    const divine = data ? data.divine : 0;
+    const f = (x) => (x >= 10 ? Math.round(x).toLocaleString() : num(x));
+    if (divine > 0 && hi >= divine) return `${f(lo / divine)}–${f(hi / divine)} div`;
+    return `${f(lo)}–${f(hi)}c`;
+  }
   // A price in chaos, or in divines once it is worth one or more, with the currency's picture.
   function valueHtml(c) {
     const divine = data ? data.divine : 0;
@@ -240,7 +255,7 @@
   // An unidentified unique: the uniques its base can be, dearest first. A click searches for it.
   function pickView(d) {
     const rowsHtml = d.choices.map((c) => `<li><button type="button" data-pick="${esc(c.name)}">${art(c.icon, '', 1, 1, 'sm')}
-        <span class="pc-pn">${esc(c.name)}${c.dust ? `<small>${c.dust.toLocaleString()} dust</small>` : ''}</span><span class="pc-lp">${valueHtml(c.chaos)}</span></button></li>`).join('');
+        <span class="pc-pn">${esc(c.name)}${c.dust ? `<small>${c.dust.toLocaleString()} dust</small>` : ''}</span><span class="pc-lp"${c.high ? ' title="Priced per variant on poe.ninja: from the cheapest to the dearest one commonly listed"' : ''}>${c.high ? rangeHtml(c.chaos, c.high) : valueHtml(c.chaos)}</span></button></li>`).join('');
     return `<div class="pc-head">
         <div class="pc-meta"><h1>Unidentified ${esc(d.base)}</h1><p class="pc-about">${d.choices.length} uniques come on this base</p>
           <p class="pc-say">Which one is it? Pick it to see its price and what is listed.</p></div>
