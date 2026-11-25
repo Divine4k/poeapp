@@ -37,7 +37,8 @@ const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
-const { TradeClient, readListing, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
+const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
+const { dustValue } = require('./core/dust');
 const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
@@ -1164,19 +1165,45 @@ function chaosOfPrice(amount, currency) {
 // poe.ninja prices (kind 'price'), and the uniques an unidentified one can be (kind 'pick').
 const checkBase = (extra) => ({ at: Date.now(), rev: ++tradeRev, filtersRev: 0, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, inGame: false, ninja: null, icon: null, ...extra });
 const CATEGORY_NAMES = Object.fromEntries(CATEGORY_LABELS.flatMap(([, list]) => list));
-function quickPrice(item) {
+// Currency and other things sold in bulk: poe.ninja's price, and what the bulk exchange offers.
+// always: search at once (the price check key); the key that also counts loot waits for the button.
+function bulkCheck(item, always) {
   const entry = prices.get(priceName(item));
   if (!entry) return;
+  // Bought with chaos; what is worth a divine or more, with divines. Chaos itself: its divine rate.
+  const want = entry.tradeId === 'chaos' ? '' : (entry.tradeId || '');
+  const have = prices.divine > 0 && entry.chaos >= prices.divine ? 'divine' : 'chaos';
   tradeCheck = checkBase({
-    kind: 'price', filters: { ok: false, why: '' }, icon: entry.icon || null, ninja: entry.chaos,
-    url: exchangeUrl(config.league, entry.name),
-    price: { name: entry.name, category: CATEGORY_NAMES[entry.category] || entry.category || '', each: entry.chaos, qty: item.stackSize || 1, change: entry.change ?? null, spark: entry.spark || null, listings: entry.listings ?? null },
+    kind: 'bulk', filters: { ok: false, why: '' }, title: entry.name, about: CATEGORY_NAMES[entry.category] || entry.category || '',
+    icon: entry.icon || null, ninja: entry.chaos, qty: item.stackSize || 1, want, have,
   });
   showCheckPanel();
+  if (want && always && (config.priceSearch || {}).auto !== false) runBulkSearch();
+}
+async function runBulkSearch() {
+  const tc = tradeCheck;
+  if (!tc || tc.kind !== 'bulk' || !tc.want || tc.state === 'searching') return;
+  tc.state = 'searching'; tc.error = ''; tc.rev = ++tradeRev;
+  push();
+  try {
+    const r = await tradeClient.exchange(config.league, tc.want, tc.have);
+    const offers = r.offers.map((o) => readOffer(o, chaosOfPrice)).filter(Boolean).sort((a, b) => a.price.amount - b.price.amount).slice(0, 10);
+    for (const o of offers) o.icon = tc.icon;
+    tc.listings = offers;
+    tc.total = r.total;
+    tc.url = r.queryId ? exchangeUrl(config.league, r.queryId) : '';
+    tc.summary = summarize(r.total, offers);
+    tc.state = 'done'; tc.searchedAt = Date.now();
+  } catch (e) {
+    tc.state = 'error'; tc.error = e.message || String(e);
+  }
+  tc.rev = ++tradeRev;
+  if (tradeCheck !== tc) return;
+  push();
 }
 function pickUnique(item) {
   const base = item.baseType;
-  const choices = prices.uniquesOfBase(base);
+  const choices = prices.uniquesOfBase(base).map((c) => ({ ...c, dust: dustValue({ ...item, name: c.name }) }));
   const why = choices.length ? `Unidentified ${base}: it can be ${choices.length === 1 ? choices[0].name : `any of ${choices.length} uniques`}. Pick which in the window over the game.` : `Unidentified ${base}: no unique on this base has a price on poe.ninja. Identify it first.`;
   tradeCheck = checkBase({ kind: 'pick', filters: { ok: false, why }, item, choices, picked: '', base, why });
   if (choices.length === 1) { pickChoice(choices[0].name); return; }
@@ -1188,11 +1215,11 @@ function pickChoice(name) {
   if (!tc || tc.kind !== 'pick') return;
   const ch = tc.choices.find((c) => c.name === name);
   Object.assign(tc, { state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, iconW: 0, iconH: 0 });
-  if (!ch) Object.assign(tc, { picked: '', filters: { ok: false, why: tc.why }, ninja: null, icon: null });
+  if (!ch) Object.assign(tc, { picked: '', filters: { ok: false, why: tc.why }, ninja: null, icon: null, dust: null });
   else {
     let filters;
     try { statIndex = statIndex || StatIndex.load(); filters = buildFilters({ ...tc.item, name: ch.name, unidentified: false }, statIndex); } catch (e) { filters = { ok: false, why: `The list of trade stats could not be read: ${e.message || e}` }; }
-    Object.assign(tc, { picked: ch.name, filters, ninja: ch.chaos, icon: ch.icon });
+    Object.assign(tc, { picked: ch.name, filters, ninja: ch.chaos, icon: ch.icon, dust: ch.dust });
   }
   tc.filtersRev += 1; tc.rev = ++tradeRev;
   push();
@@ -1201,7 +1228,7 @@ function pickChoice(name) {
 
 function startTradeCheck(item, { always = false } = {}) {
   tradeCheck = null;
-  if (!searchable(item)) { quickPrice(item); return; }
+  if (!searchable(item)) { bulkCheck(item, always); return; }
   if (item.rarity === 'Unique' && item.unidentified) { pickUnique(item); return; }
   let filters;
   try {
@@ -1214,6 +1241,7 @@ function startTradeCheck(item, { always = false } = {}) {
   const entry = prices.get(priceName(item));
   tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques
   tradeCheck.icon = entry && entry.icon ? entry.icon : null; // a unique's picture; others get theirs from the search
+  tradeCheck.dust = item.rarity === 'Unique' ? dustValue(item) : null; // what it gives at the Disenchanting bench
   if (filters.ok) showCheckPanel();
   // The price check key searches at once, with what is ticked from the start. The check key is
   // also pressed just to count loot, so there a unique (it has a poe.ninja price already) and
@@ -1845,6 +1873,7 @@ const actions = {
   tradeForget: (a) => { book.removeHistory(String(a.id || '')); saveTradesSoon(); },
   // The Search button: what was ticked and typed replaces the choices, then one search is sent.
   tradeSearch: async (a) => {
+    if (tradeCheck && tradeCheck.kind === 'bulk') { await runBulkSearch(); return; }
     if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching') return;
     tradeCheck.filters = applyEdits(tradeCheck.filters, a.edits);
     tradeCheck.filtersRev += 1; // the other window showing this item redraws its tick boxes

@@ -1,6 +1,6 @@
 {
   "name": "poeapp",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "description": "Second-screen mapping companion for Path of Exile 1: map timer, loot value, map mod check, costs, prices, trade site search for gear, and trade offers with an in-game overlay.",
   "main": "src/main.js",
   "private": true,

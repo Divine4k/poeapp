@@ -107,6 +107,27 @@ class TradeClient {
       this.busy = false;
     }
   }
+
+  // The bulk exchange (currency and other stackables): offers selling `want` for `have`, as the
+  // site sends them in one request. Returns { queryId, total, offers: [...] }.
+  async exchange(league, want, have) {
+    if (!league) throw new TradeError('Choose a league in Settings first.');
+    const body = { engine: 'new', query: { status: { option: 'online' }, have: [have], want: [want] }, sort: { have: 'asc' } };
+    const key = `exchange\n${league}\n${JSON.stringify(body)}`;
+    const hit = this.cache.get(key);
+    if (hit && this.now() - hit.at < CACHE_MS) return hit.value;
+    if (this.busy) throw new TradeError('A search is already running.');
+    this.busy = true;
+    try {
+      const found = await this.call('exchange', `${SITE}/api/trade/exchange/${encodeURIComponent(league)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const offers = Object.values(found.result || {}).filter((r) => r && r.listing && Array.isArray(r.listing.offers) && r.listing.offers.length === 1);
+      const value = { queryId: found.id || '', total: Number(found.total) || offers.length, offers };
+      this.cache.set(key, { at: this.now(), value });
+      return value;
+    } finally {
+      this.busy = false;
+    }
+  }
 }
 
 // A socket's colour as the site gives it, or worked out from its attribute when that is missing
@@ -162,6 +183,24 @@ function readListing(raw, chaosOf = () => null, compare = null) {
   };
 }
 
+// One bulk exchange offer -> a listing as the window shows it: the price of one, what the
+// seller has, who and when. null when it makes no sense (nothing offered).
+function readOffer(raw, chaosOf = () => null) {
+  const l = raw.listing || {}, acc = l.account || {};
+  const o = (l.offers || [])[0] || {}, pay = o.exchange || {}, get = o.item || {};
+  const payAmount = Number(pay.amount), getAmount = Number(get.amount);
+  if (!(payAmount > 0) || !(getAmount > 0)) return null;
+  const each = payAmount / getAmount;
+  const currency = String(pay.currency || '');
+  return {
+    id: raw.id, price: { amount: each, currency }, chaos: chaosOf(each, currency),
+    deal: { pay: payAmount, get: getAmount }, stock: Number(get.stock) || null,
+    seller: acc.lastCharacterName || acc.name || '',
+    status: acc.online ? (acc.online.status === 'afk' ? 'afk' : 'online') : 'offline',
+    listedAt: l.indexed ? Date.parse(l.indexed) || 0 : 0, icon: null, w: 1, h: 1, sockets: '',
+  };
+}
+
 // The trade site's short names for currencies -> the names prices are kept under.
 const CURRENCIES = {
   chaos: 'Chaos Orb', divine: 'Divine Orb', exalted: 'Exalted Orb', mirror: 'Mirror of Kalandra', alch: 'Orb of Alchemy',
@@ -171,15 +210,7 @@ const CURRENCIES = {
 };
 const currencyName = (id) => CURRENCIES[id] || '';
 
-// The trade site's bulk exchange for a currency, bought with chaos (chaos itself with divines),
-// or '' when the app does not know the site's name for it.
-function exchangeUrl(league, name) {
-  const id = Object.keys(CURRENCIES).find((k) => CURRENCIES[k] === name);
-  if (!id || !league) return '';
-  const q = { query: { status: { option: 'online' }, have: [id === 'chaos' ? 'divine' : 'chaos'], want: [id] } };
-  return `${SITE}/trade/exchange/${encodeURIComponent(league)}?q=${encodeURIComponent(JSON.stringify(q))}`;
-}
-
+const exchangeUrl = (league, queryId) => `${SITE}/trade/exchange/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 const searchUrl = (league, queryId) => `${SITE}/trade/search/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 
-module.exports = { TradeClient, TradeError, parseLimits, readListing, socketText, searchUrl, exchangeUrl, currencyName };
+module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, socketText, searchUrl, exchangeUrl, currencyName };

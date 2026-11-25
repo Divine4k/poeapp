@@ -677,3 +677,28 @@ test('listings: pictures, sockets, the number compared, bait prices', () => {
   assert.deepEqual(markBait([{ chaos: 1 }, { chaos: 10 }]).map((l) => !!l.bait), [false, false]); // too few to tell
   assert.deepEqual(markBait([{ chaos: 0.1 }, { chaos: 0.1 }, { chaos: 1 }, { chaos: 1 }, { chaos: 1 }]).map((l) => !!l.bait), [false, false, false, false, false]); // a cheap item
 });
+
+test('disenchanting: the dust a unique gives, by item level, quality, influences and corruptions', () => {
+  const { dustValue } = require('../src/core/dust');
+  const hh = parseItemText(HEADHUNTER);
+  assert.equal(dustValue(hh), Math.floor(891.16 * 2500)); // item level 85: counted as 84
+  assert.equal(dustValue({ ...hh, itemLevel: 46 }), Math.floor(891.16 * 250));
+  assert.equal(dustValue({ ...hh, quality: 20, influences: ['Shaper'], corruptionImplicits: 1 }), Math.floor(891.16 * 2500 * 2.4));
+  assert.equal(dustValue({ name: 'Not a unique' }), null);
+});
+
+test('bulk exchange: one request, offers read as the price of one, cheapest first', async () => {
+  const { TradeClient, readOffer, exchangeUrl } = require('../src/core/tradeApi');
+  const offer = (id, pay, get, stock, status) => ({ id, listing: { indexed: '2026-11-20T10:00:00Z', account: { name: `a${id}`, lastCharacterName: `c${id}`, online: status ? { status } : null }, offers: [{ exchange: { currency: 'chaos', amount: pay }, item: { currency: 'alch', amount: get, stock } }] } });
+  const site = fakeSite([{ headers: LIMIT(1), body: { id: 'X1', total: 37, result: { b: offer('b', 1, 3, 300, 'afk'), a: offer('a', 2, 10, 5000, 'online'), z: { id: 'z', listing: { offers: [] } } } } }]);
+  const client = new TradeClient({ fetchImpl: site.fetchImpl, now: () => 1e6 });
+  const r = await client.exchange('Keepers', 'alch', 'chaos');
+  assert.equal(site.calls[0].url, 'https://www.pathofexile.com/api/trade/exchange/Keepers');
+  assert.deepEqual(JSON.parse(site.calls[0].init.body), { engine: 'new', query: { status: { option: 'online' }, have: ['chaos'], want: ['alch'] }, sort: { have: 'asc' } });
+  assert.deepEqual([r.queryId, r.total, r.offers.length], ['X1', 37, 2]); // the one offering nothing is left out
+  await client.exchange('Keepers', 'alch', 'chaos'); // the same within a minute: not asked again
+  assert.equal(site.calls.length, 1);
+  const read = r.offers.map((o) => readOffer(o, (n, c) => (c === 'chaos' ? n : null)));
+  assert.deepEqual(read.map((o) => [o.seller, Math.round(o.price.amount * 100) / 100, o.chaos !== null, o.stock, o.status]), [['cb', 0.33, true, 300, 'afk'], ['ca', 0.2, true, 5000, 'online']]);
+  assert.equal(exchangeUrl('Keepers', 'X1'), 'https://www.pathofexile.com/trade/exchange/Keepers/X1');
+});

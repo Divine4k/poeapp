@@ -139,6 +139,8 @@ function readGear(item, text, sections) {
       item.modLines.push(line);
     }
   }
+  // Implicits a corruption added (the fuller item text names them): each adds to its dust.
+  item.corruptionImplicits = new Set(item.modLines.filter((l) => l.corruption).map((l) => l.group)).size;
   // A magic item's name is its base type between its affixes' names ("Chemist's Quicksilver
   // Flask of the Cheetah"). With those names known, the base type is what is left.
   if (item.rarity === 'Magic' && item.modLines.some((l) => l.group)) {

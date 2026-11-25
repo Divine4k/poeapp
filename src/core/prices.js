@@ -65,6 +65,7 @@ function parseExchange(json, category) {
     if (!name || !isFinite(v) || v <= 0) continue;
     out.push({
       name, chaos: v * factor, category, icon: icons.get(line.id) || SHARED_ICONS[category] || null,
+      tradeId: line.id, // poe.ninja uses the trade site's names: what the bulk exchange is searched with
       change: line.sparkline && isFinite(Number(line.sparkline.totalChange)) ? Number(line.sparkline.totalChange) : null,
       volume: isFinite(Number(line.volumePrimaryValue)) ? Number(line.volumePrimaryValue) * factor : null,
       spark: sparkOf(line.sparkline),

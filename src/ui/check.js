@@ -23,7 +23,7 @@
     if (!isFinite(c)) return '0c';
     const a = Math.abs(c);
     if (divine > 0 && a >= divine) return `${(c / divine).toFixed(a >= divine * 10 ? 1 : 2)} div`;
-    return `${a >= 100 ? Math.round(c) : Math.round(c * 10) / 10}c`;
+    return `${a >= 100 ? Math.round(c) : a < 1 ? num(c) : Math.round(c * 10) / 10}c`;
   }
   function ago(ts, withAgo) {
     if (!ts) return '';
@@ -107,23 +107,30 @@
   function priceHtml(c, c2) {
     const divine = data ? data.divine : 0;
     const inDiv = divine > 0 && c >= divine;
-    const f = (v) => { const x = inDiv ? v / divine : v; return x >= 100 ? Math.round(x).toLocaleString() : String(Math.round(x * (inDiv ? 100 : 10)) / (inDiv ? 100 : 10)); };
+    const f = (v) => { const x = inDiv ? v / divine : v; return x >= 100 ? Math.round(x).toLocaleString() : x < 1 ? num(x) : String(Math.round(x * (inDiv ? 100 : 10)) / (inDiv ? 100 : 10)); };
     const a = f(c), b = c2 != null ? f(c2) : a;
     return `<b>${a === b ? a : `${a}–${b}`}</b>${coin(inDiv ? 'divine' : 'chaos')}`;
   }
 
   // The answer, beside the picture: the cheapest and the typical price big, the rest in a line.
   function headlineHtml(d) {
-    if (d.state === 'searching') return '<p class="pc-wait">Searching the trade site…</p>';
-    if (d.state === 'error') return `<p class="pc-bad">${esc(d.error)}</p>`;
+    const bulk = d.kind === 'bulk';
+    if (d.state === 'searching') return `<p class="pc-wait">Searching the ${bulk ? 'bulk exchange' : 'trade site'}…</p>${dustHtml(d)}`;
+    if (d.state === 'error') return `<p class="pc-bad">${esc(d.error)}</p>${dustHtml(d)}`;
     const ninja = d.ninja !== null && d.ninja !== undefined ? `poe.ninja <b>${fmtValue(d.ninja)}</b>` : '';
-    if (d.state !== 'done') return `<p class="pc-say">Tick what matters, then press Search.</p>${ninja ? `<p class="pc-sub">${ninja}</p>` : ''}`;
-    if (!d.total) return `<p class="pc-say">Nothing like it is listed. Switch a stat off or lower a number.</p>${ninja ? `<p class="pc-sub">${ninja}</p>` : ''}`;
     const s = d.summary || {};
-    const sub = [`<b>${d.total.toLocaleString()}</b> listed`, ninja, d.searchedAt ? `searched ${ago(d.searchedAt, true)}` : ''].filter(Boolean).join('<i>·</i>');
-    if (s.low === null) return `<p class="pc-sub">${sub}</p>`;
-    return `<div class="pc-price">${priceHtml(s.low, s.median)}<small>${s.low === s.median ? 'cheapest' : 'cheapest – typical'}</small></div><p class="pc-sub">${sub}</p>`;
+    // what the whole stack is worth, at the cheapest offer (or poe.ninja's price before a search)
+    const each = s.low !== null && s.low !== undefined ? s.low : d.ninja;
+    const stack = d.qty > 1 && each ? `your ${d.qty.toLocaleString()} <b>${fmtValue(each * d.qty)}</b>` : '';
+    if (bulk && !d.want) return `<div class="pc-price">${d.title === 'Chaos Orb' && d.divine ? `<b>${num(d.divine)}</b>${coin('chaos')}<small>for one divine</small>` : priceHtml(d.ninja)}</div><p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>`;
+    if (d.state !== 'done') return `<p class="pc-say">${bulk ? 'Press Search to see what the bulk exchange offers.' : 'Tick what matters, then press Search.'}</p>${ninja || stack ? `<p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>` : ''}${dustHtml(d)}`;
+    if (!d.total) return `<p class="pc-say">${bulk ? 'Nobody offers it on the bulk exchange right now.' : 'Nothing like it is listed. Switch a stat off or lower a number.'}</p>${ninja ? `<p class="pc-sub">${ninja}</p>` : ''}${dustHtml(d)}`;
+    const sub = [`<b>${d.total.toLocaleString()}</b> ${bulk ? 'offers' : 'listed'}`, ninja, stack, d.searchedAt ? `searched ${ago(d.searchedAt, true)}` : ''].filter(Boolean).join('<i>·</i>');
+    if (s.low === null) return `<p class="pc-sub">${sub}</p>${dustHtml(d)}`;
+    return `<div class="pc-price">${priceHtml(s.low, s.median)}<small>${s.low === s.median ? 'cheapest' : 'cheapest – typical'}${bulk ? ' each' : ''}</small></div><p class="pc-sub">${sub}</p>${dustHtml(d)}`;
   }
+  // What a unique gives at the Disenchanting bench in Kingsmarch.
+  const dustHtml = (d) => (d.dust ? `<p class="pc-dust" title="Thaumaturgic Dust from the Disenchanting bench in Kingsmarch (item level, quality, influences and corruptions counted)">Disenchanting <i>→</i> <b>${d.dust.toLocaleString()}</b> × <img src="dust.png" alt="Thaumaturgic Dust"></p>` : '');
 
   // The listings, cheapest first: picture, price, seller, and the one number compared. The space
   // for them is there from the start (empty rows while searching), so the window keeps its size
@@ -138,7 +145,7 @@
     if (!d.listings.length) return wrap('<p class="pc-empty">Nothing listed.</p>');
     const first = d.listings.find((l) => !l.bait);
     const rowsHtml = d.listings.map((l) => {
-      const amount = l.price ? Math.round(l.price.amount * 100) / 100 : '';
+      const amount = l.price ? num(l.price.amount) : '';
       const price = l.price ? `<b>${amount}</b>${coin(l.price.currency)}` : '<span class="pc-cw">no price</span>';
       let vs = '';
       if (cmp && l.cmp !== null && l.cmp !== undefined) {
@@ -146,7 +153,7 @@
         vs = `<span class="pc-vs ${better ? 'up' : worse ? 'down' : ''}" title="${esc(cmp.label)}: ${l.cmp} (yours ${cmp.mine})">${l.cmp}</span>`;
       } else if (cmp) vs = '<span class="pc-vs">—</span>';
       return `<li class="${l.bait ? 'bait' : l === first ? 'first' : ''}">${art(l.icon, l.sockets, l.w, l.h, 'sm')}<span class="pc-lp">${price}</span>
-        <span class="pc-who"><b>${esc(l.seller)}</b><small>${l.bait ? '<em>price looks like bait</em> · ' : ''}<i class="st ${esc(l.status)}"></i>${STATUS_WORDS[l.status] || ''}${l.listedAt ? ` · ${ago(l.listedAt)}` : ''}</small></span>${vs}</li>`;
+        <span class="pc-who"><b>${esc(l.seller)}</b><small>${l.bait ? '<em>price looks like bait</em> · ' : ''}<i class="st ${esc(l.status)}"></i>${STATUS_WORDS[l.status] || ''}${l.stock ? ` · ${l.stock.toLocaleString()} in stock` : ''}${l.listedAt ? ` · ${ago(l.listedAt)}` : ''}</small></span>${vs}</li>`;
     }).join('');
     return wrap(`<ul class="pc-list${cmp ? ' cmp' : ''}">${rowsHtml}</ul>`);
   }
@@ -175,40 +182,20 @@
     const inDiv = divine > 0 && c >= divine;
     return `<b>${num(inDiv ? c / divine : c)}</b>${coin(inDiv ? 'divine' : 'chaos')}`;
   }
-  // The week's price as a small line, its end marked.
-  function sparkHtml(pts) {
-    if (!pts || pts.length < 2) return '';
-    const lo = Math.min(...pts), hi = Math.max(...pts), w = 120, h = 28;
-    const xy = pts.map((v, i) => [Math.round((i / (pts.length - 1)) * w * 10) / 10, Math.round((h - 3 - ((v - lo) / (hi - lo || 1)) * (h - 6)) * 10) / 10]);
-    const up = pts[pts.length - 1] >= pts[0];
-    const [ex, ey] = xy[xy.length - 1];
-    return `<svg class="pc-spark ${up ? 'up' : 'down'}" viewBox="-3 0 ${w + 6} ${h}" aria-hidden="true"><polyline points="${xy.map((p) => p.join(',')).join(' ')}"/><circle cx="${ex}" cy="${ey}" r="2.5"/></svg>`;
-  }
-
-  // Currency and anything else poe.ninja prices: what one is worth, what the stack is worth,
-  // how the price went this week.
-  function priceView(d) {
-    const p = d.price, divine = d.divine || 0;
-    const facts = [];
-    if (p.qty > 1) facts.push(`<div class="pc-fact"><span>Stack of ${p.qty.toLocaleString()}</span><span class="pc-lp">${valueHtml(p.each * p.qty)}</span></div>`);
-    if (divine > 0 && p.each > 0 && p.each < divine && p.name !== 'Divine Orb') facts.push(`<div class="pc-fact"><span>For one divine</span><span class="pc-lp"><b>${num(divine / p.each)}</b><small>of these</small></span></div>`);
-    if (p.name === 'Divine Orb' || p.name === 'Chaos Orb') facts.push(`<div class="pc-fact"><span>${p.name === 'Divine Orb' ? 'One divine' : 'One divine is'}</span><span class="pc-lp"><b>${num(divine)}</b>${coin('chaos')}</span></div>`);
-    if (p.listings !== null && p.listings !== undefined) facts.push(`<div class="pc-fact"><span>Listed on poe.ninja's count</span><span class="pc-lp"><b>${p.listings.toLocaleString()}</b></span></div>`);
-    const change = p.change !== null && p.change !== undefined ? `<span class="pc-chg ${p.change >= 0 ? 'up' : 'down'}">${p.change >= 0 ? '+' : ''}${Math.round(p.change * 10) / 10}%</span>` : '';
+  // Currency and other things sold in bulk: laid out like any other item, with the bulk
+  // exchange's offers as its listings.
+  function bulkView(d) {
     return `<div class="pc-head">${art(d.icon, '', 1, 1, 'cur')}
-        <div class="pc-meta"><h1>${esc(p.name)}</h1><p class="pc-about">${esc(p.category)}</p>
-          <div class="pc-price">${valueHtml(p.each)}<small>${p.name === 'Chaos Orb' ? '' : 'each'}</small></div>
-          <p class="pc-sub">poe.ninja</p></div>
+        <div class="pc-meta"><h1>${esc(d.title)}</h1><p class="pc-about">${esc([d.about, d.qty > 1 ? `stack of ${d.qty.toLocaleString()}` : ''].filter(Boolean).join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
         <button type="button" class="pc-x" data-close aria-label="Close">×</button></div>
-      ${change || p.spark ? `<div class="pc-week"><span>This week ${change}</span>${sparkHtml(p.spark)}</div>` : ''}
-      ${facts.length ? `<div class="pc-facts">${facts.join('')}</div>` : ''}
-      ${d.url ? '<div class="pc-go"><button type="button" class="pc-site wide" data-open>Bulk exchange on the trade site ↗</button></div>' : '<div class="pc-gap"></div>'}`;
+      ${d.want ? `<div class="pc-go"><button type="button" class="primary" data-search ${d.state === 'searching' ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search the bulk exchange'}</button>
+        ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>${listHtml(d)}` : '<div class="pc-gap"></div>'}`;
   }
 
   // An unidentified unique: the uniques its base can be, dearest first. A click searches for it.
   function pickView(d) {
     const rowsHtml = d.choices.map((c) => `<li><button type="button" data-pick="${esc(c.name)}">${art(c.icon, '', 1, 1, 'sm')}
-        <span class="pc-pn">${esc(c.name)}</span><span class="pc-lp">${valueHtml(c.chaos)}</span></button></li>`).join('');
+        <span class="pc-pn">${esc(c.name)}${c.dust ? `<small>${c.dust.toLocaleString()} dust</small>` : ''}</span><span class="pc-lp">${valueHtml(c.chaos)}</span></button></li>`).join('');
     return `<div class="pc-head">
         <div class="pc-meta"><h1>Unidentified ${esc(d.base)}</h1><p class="pc-about">${d.choices.length} uniques come on this base</p>
           <p class="pc-say">Which one is it? Pick it to see its price and what is listed.</p></div>
@@ -218,11 +205,11 @@
 
   function draw() {
     const d = data;
-    const kind = d && d.kind === 'price' && d.price ? 'price' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
+    const kind = d && d.kind === 'bulk' ? 'bulk' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
     if (!kind) { panel.innerHTML = ''; sendSize(0); return; }
     // A new item: the window waits for its height before it shows, so it is always sent.
     if (modeFor !== d.at) { modeFor = d.at; mode = 'stats'; sentHeight = -1; again = false; }
-    if (kind !== 'search') { panel.innerHTML = kind === 'price' ? priceView(d) : pickView(d); sendSize(fullHeight()); return; }
+    if (kind !== 'search') { panel.innerHTML = kind === 'bulk' ? bulkView(d) : pickView(d); sendSize(fullHeight()); return; }
     const key = `${d.at}:${d.filtersRev}`;
     if (key !== formFor) { formFor = key; rows = rowsFrom(d.filters); }
     const f = d.filters;

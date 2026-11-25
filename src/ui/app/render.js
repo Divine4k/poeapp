@@ -39,7 +39,7 @@ function setState(s) {
   }
   // Without its window in game, a trade search is shown on its page: the listings do not fit
   // in the short message.
-  if (!first && s.tradeCheck && s.tradeCheck.kind !== 'price' && s.tradeCheck.at !== hadTrade && !s.tradeCheck.inGame) showTab('prices');
+  if (!first && s.tradeCheck && s.tradeCheck.kind !== 'bulk' && s.tradeCheck.at !== hadTrade && !s.tradeCheck.inGame) showTab('prices');
   render();
 }
 
