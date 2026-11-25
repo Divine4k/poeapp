@@ -9,6 +9,8 @@
 //   open, label "idea"          -> Ideas
 //   open, neither               -> To do
 // Priority is a label too: "priority: high" or "priority: low" (none = normal).
+// How items hang together (the Tracker map's lines) is GitHub's own sub-issues: an item's parent
+// is the issue it is a sub-issue of. The map's box positions are not kept here (config.trackerLayout).
 // Plain Node: the caller hands in how to reach the web, so this is tested against a stand-in
 // for GitHub (test/tracker.test.js).
 
@@ -21,7 +23,7 @@ const PRIORITY_LABEL = { high: 'priority: high', low: 'priority: low' };
 const MANAGED = new Set([...Object.values(STATUS_LABEL), ...Object.values(PRIORITY_LABEL)]);
 const DONE_KEPT = 40; // closed items shown in Done; older ones stay on GitHub
 
-async function call(fetchImpl, token, method, route, body) {
+async function call(fetchImpl, token, method, route, body, { missingOk = false } = {}) {
   const res = await fetchImpl(`${API}${route}`, {
     method,
     cache: 'no-store',
@@ -30,6 +32,7 @@ async function call(fetchImpl, token, method, route, body) {
   });
   let data = null;
   try { data = await res.json(); } catch (_) { /* an answer without a body */ }
+  if (missingOk && res.status === 404) return null;
   if (!res.ok) throw new Error(explain(res.status, data, route.split('/').slice(2, 4).join('/')));
   return data;
 }
@@ -43,6 +46,7 @@ function explain(status, data, repo) {
   return `GitHub answered ${status}${msg}.`;
 }
 
+const numberIn = (url) => { const m = /\/issues\/(\d+)$/.exec(String(url || '')); return m ? Number(m[1]) : null; };
 const names = (issue) => (issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name)).filter(Boolean);
 
 function statusOf(issue) {
@@ -60,7 +64,9 @@ function priorityOf(issue) {
 // What the page needs of one issue.
 function toItem(issue) {
   return {
-    number: issue.number, title: issue.title || '', body: issue.body || '',
+    number: issue.number, id: issue.id, title: issue.title || '', body: issue.body || '',
+    // undefined: GitHub did not say (then the page keeps what it knew)
+    parent: 'parent_issue_url' in issue ? numberIn(issue.parent_issue_url) : undefined,
     status: statusOf(issue), priority: priorityOf(issue),
     dropped: issue.state === 'closed' && issue.state_reason === 'not_planned',
     labels: names(issue).filter((n) => !MANAGED.has(n)),
@@ -95,16 +101,46 @@ async function listItems({ fetchImpl, token, repo }) {
     return out.filter((i) => !i.pull_request); // GitHub lists pull requests among issues
   };
   const [open, closed] = await Promise.all([get('open', 5), get('closed', 1)]);
-  return [...open, ...closed.slice(0, DONE_KEPT)].map(toItem);
+  const raw = [...open, ...closed.slice(0, DONE_KEPT)];
+  const items = raw.map(toItem);
+  // Issues say who their parent is (parent_issue_url). Where GitHub leaves that out of the
+  // list, the parents' own sub-issue lists are asked instead.
+  if (!raw.some((i) => 'parent_issue_url' in i)) {
+    const byNumber = new Map(items.map((i) => [i.number, i]));
+    const parents = raw.filter((i) => i.sub_issues_summary && i.sub_issues_summary.total > 0).slice(0, 60);
+    await Promise.all(parents.map(async (p) => {
+      const subs = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${p.number}/sub_issues?per_page=100`, null, { missingOk: true });
+      for (const s of subs || []) { const it = byNumber.get(s.number); if (it) it.parent = p.number; }
+    }));
+  }
+  for (const i of items) if (i.parent === undefined) i.parent = null;
+  return items;
 }
 
-async function addItem({ fetchImpl, token, repo, title, body = '', status = 'idea', priority = 'normal' }) {
+// Makes item `number` part of `parent` (a sub-issue of it), or of nothing when parent is null.
+async function setParent({ fetchImpl, token, repo, number, parent }) {
+  checkRepo(repo);
+  const n = Number(number), p = parent == null ? null : Number(parent);
+  if (!Number.isInteger(n) || n < 1 || (p !== null && (!Number.isInteger(p) || p < 1))) throw new Error('Unknown item.');
+  if (n === p) throw new Error('An item cannot be part of itself.');
+  const issue = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`);
+  if (p === null) {
+    const was = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}/parent`, null, { missingOk: true });
+    if (was) await call(fetchImpl, token, 'DELETE', `/repos/${repo}/issues/${was.number}/sub_issue`, { sub_issue_id: issue.id });
+  } else {
+    await call(fetchImpl, token, 'POST', `/repos/${repo}/issues/${p}/sub_issues`, { sub_issue_id: issue.id, replace_parent: true });
+  }
+  return { ...toItem(issue), parent: p };
+}
+
+async function addItem({ fetchImpl, token, repo, title, body = '', status = 'idea', priority = 'normal', parent = null }) {
   checkRepo(repo);
   title = String(title || '').trim();
   if (!title) throw new Error('Give it a title first.');
   if (!STATUSES.includes(status)) status = 'idea';
   let issue = await call(fetchImpl, token, 'POST', `/repos/${repo}/issues`, { title, body: String(body || ''), labels: labelsFor([], status, priority) });
   if (status === 'done') issue = await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' });
+  if (parent != null) return setParent({ fetchImpl, token, repo, number: issue.number, parent });
   return toItem(issue);
 }
 
@@ -125,4 +161,4 @@ async function updateItem({ fetchImpl, token, repo, number, patch }) {
   return toItem(await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${n}`, body));
 }
 
-module.exports = { listItems, addItem, updateItem, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };
+module.exports = { listItems, addItem, updateItem, setParent, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };

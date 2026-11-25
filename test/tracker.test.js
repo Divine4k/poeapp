@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { parseSteps, joinSteps, progress } = require('../src/ui/steps');
-const { listItems, addItem, updateItem, statusOf, labelsFor } = require('../src/tracker');
+const { listItems, addItem, updateItem, setParent, statusOf, labelsFor } = require('../src/tracker');
 
 test('steps are lifted out of the text and put back after the notes', () => {
   const body = 'Read a stash tab.\r\n\r\n- [x] Find the grid\n- [ ] Read the items\n* [X] Bundle data\nMore notes';
@@ -28,37 +28,60 @@ test('where an item stands comes from its state and labels', () => {
 });
 
 // Just enough of GitHub's issues API.
-function fakeGithub(token = 'good') {
+// withParent: false acts like a GitHub that leaves parent_issue_url out of its answers.
+function fakeGithub(token = 'good', { withParent = true } = {}) {
   const issues = [];
+  const parentOf = new Map(); // number -> parent number
+  const url = (n) => `https://api.github.com/repos/Divine4k/poeapp/issues/${n}`;
+  const show = (i) => {
+    const kids = [...parentOf.values()].filter((p) => p === i.number).length;
+    const out = { ...i, sub_issues_summary: { total: kids, completed: 0 } };
+    if (withParent) out.parent_issue_url = parentOf.has(i.number) ? url(parentOf.get(i.number)) : null;
+    return out;
+  };
   const calls = [];
   const fetch = async (url, opt) => {
     const u = new URL(url);
     calls.push(`${opt.method} ${u.pathname}${u.search}`);
     const reply = (status, data) => ({ ok: status < 300, status, json: async () => data });
     if (opt.headers.Authorization !== `Bearer ${token}`) return reply(401, { message: 'Bad credentials' });
+    const body = opt.body ? JSON.parse(opt.body) : null;
+    const sub = /^\/repos\/Divine4k\/poeapp\/issues\/(\d+)\/(parent|sub_issues|sub_issue)$/.exec(u.pathname);
+    if (sub) {
+      const n = Number(sub[1]);
+      const byId = (id) => issues.find((x) => x.id === id);
+      if (sub[2] === 'parent') return parentOf.has(n) ? reply(200, show(issues.find((x) => x.number === parentOf.get(n)))) : reply(404, { message: 'Not Found' });
+      if (sub[2] === 'sub_issues' && opt.method === 'GET') return reply(200, issues.filter((x) => parentOf.get(x.number) === n).map(show));
+      const child = byId(body.sub_issue_id);
+      if (!child) return reply(422, { message: 'No such sub-issue' });
+      if (sub[2] === 'sub_issues') {
+        if (parentOf.has(child.number) && !body.replace_parent) return reply(422, { message: 'Already has a parent' });
+        parentOf.set(child.number, n);
+      } else parentOf.delete(child.number);
+      return reply(200, show(issues.find((x) => x.number === n)));
+    }
     const m = /^\/repos\/Divine4k\/poeapp\/issues(?:\/(\d+))?$/.exec(u.pathname);
     if (!m) return reply(404, { message: 'Not Found' });
-    const body = opt.body ? JSON.parse(opt.body) : null;
     const at = new Date(1700000000000 + calls.length * 1000).toISOString();
     if (!m[1] && opt.method === 'GET') {
       const state = u.searchParams.get('state');
-      return reply(200, issues.filter((i) => i.state === state));
+      return reply(200, issues.filter((i) => i.state === state).map(show));
     }
     if (!m[1] && opt.method === 'POST') {
-      const i = { number: issues.length + 1, title: body.title, body: body.body, state: 'open', state_reason: null, labels: body.labels.map((name) => ({ name })), user: { login: 'Divine4k' }, html_url: `https://github.com/Divine4k/poeapp/issues/${issues.length + 1}`, created_at: at, updated_at: at, closed_at: null };
+      const i = { number: issues.length + 1, id: 9000 + issues.length + 1, title: body.title, body: body.body, state: 'open', state_reason: null, labels: body.labels.map((name) => ({ name })), user: { login: 'Divine4k' }, html_url: `https://github.com/Divine4k/poeapp/issues/${issues.length + 1}`, created_at: at, updated_at: at, closed_at: null };
       issues.push(i);
-      return reply(201, i);
+      return reply(201, show(i));
     }
     const i = issues.find((x) => x.number === Number(m[1]));
     if (!i) return reply(404, { message: 'Not Found' });
-    if (opt.method === 'GET') return reply(200, i);
+    if (opt.method === 'GET') return reply(200, show(i));
     if (body.labels) i.labels = body.labels.map((name) => ({ name }));
     for (const k of ['title', 'body', 'state', 'state_reason']) if (body[k] !== undefined) i[k] = body[k];
     i.closed_at = i.state === 'closed' ? at : null;
     i.updated_at = at;
-    return reply(200, i);
+    return reply(200, show(i));
   };
-  return { fetch, issues, calls };
+  return { fetch, issues, calls, parentOf };
 }
 
 test('items are added, moved, edited and listed as GitHub issues', async () => {
@@ -95,4 +118,26 @@ test('what GitHub refuses is said plainly', async () => {
   await assert.rejects(listItems({ fetchImpl: gh.fetch, token: 'old', repo: 'Divine4k/poeapp' }), /did not accept the token/);
   await assert.rejects(listItems({ fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/other' }), /does not know the repository Divine4k\/other/);
   await assert.rejects(listItems({ fetchImpl: gh.fetch, token: 'good', repo: '' }), /No tracker repository/);
+});
+
+test('items hang together as GitHub sub-issues, read back either way GitHub answers', async () => {
+  for (const withParent of [true, false]) {
+    const gh = fakeGithub('good', { withParent });
+    const base = { fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/poeapp' };
+    await addItem({ ...base, title: 'Stash tab pricing' });
+    await addItem({ ...base, title: 'Read the items' });
+    const c = await addItem({ ...base, title: 'Show the total', parent: 1 });
+    assert.strictEqual(c.parent, 1);
+    assert.strictEqual((await setParent({ ...base, number: 2, parent: 1 })).parent, 1);
+    assert.strictEqual((await setParent({ ...base, number: 2, parent: 3 })).parent, 3); // moved under another
+    const byNumber = (list) => Object.fromEntries(list.map((i) => [i.number, i.parent]));
+    assert.deepStrictEqual(byNumber(await listItems(base)), { 1: null, 2: 3, 3: 1 });
+    assert.strictEqual((await setParent({ ...base, number: 2, parent: null })).parent, null);
+    assert.strictEqual((await setParent({ ...base, number: 1, parent: null })).parent, null); // had none: nothing to undo
+    assert.deepStrictEqual(byNumber(await listItems(base)), { 1: null, 2: null, 3: 1 });
+    // An edit keeps the link the page knew when GitHub does not say.
+    const edited = await updateItem({ ...base, number: 3, patch: { title: 'Show the total value' } });
+    assert.strictEqual(edited.parent, withParent ? 1 : undefined);
+    await assert.rejects(setParent({ ...base, number: 2, parent: 2 }), /part of itself/);
+  }
 });

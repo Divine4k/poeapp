@@ -1044,7 +1044,8 @@ async function trackerAction(a) {
   const base = { fetchImpl: webFetch, token: g.token, repo: String(config.trackerRepo || '').trim() };
   try {
     if (a.type === 'list') return { repo: base.repo, items: await tracker.listItems(base) };
-    if (a.type === 'add') return { item: await tracker.addItem({ ...base, title: a.title, body: a.body, status: a.status, priority: a.priority }) };
+    if (a.type === 'add') return { item: await tracker.addItem({ ...base, title: a.title, body: a.body, status: a.status, priority: a.priority, parent: a.parent }) };
+    if (a.type === 'parent') return { item: await tracker.setParent({ ...base, number: a.number, parent: a.parent }) };
     if (a.type === 'update') return { item: await tracker.updateItem({ ...base, number: a.number, patch: a.patch || {} }) };
   } catch (e) { return { error: e.message || String(e) }; }
   return { error: 'Unknown request.' };

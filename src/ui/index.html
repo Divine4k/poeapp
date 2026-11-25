@@ -325,16 +325,21 @@
   <div class="tk-top">
     <h2 class="pagetitle">Tracker</h2>
     <a class="tk-repo dim" id="tk-repo" target="_blank" rel="noreferrer"></a>
+    <span class="chips tk-views" id="tk-views" role="group" aria-label="View"><button type="button" data-view="map" aria-pressed="true">Map</button><button type="button" data-view="board" aria-pressed="false">Board</button></span>
     <span class="tk-tools row"><input id="tk-filter" placeholder="Find" aria-label="Find an item" spellcheck="false" autocomplete="off"><button type="button" id="tk-refresh">Refresh</button></span>
   </div>
   <form class="tk-add" id="tk-add" autocomplete="off">
+    <span class="tk-under" id="tk-under" hidden>Under <b id="tk-under-name"></b><button type="button" class="link" id="tk-under-clear" title="Put it straight under the app instead" aria-label="Not under this one">×</button></span>
     <input name="title" maxlength="200" placeholder="A new idea, feature or fix…" aria-label="Title of the new item" required>
     <select name="status" aria-label="Where it goes"><option value="idea">Ideas</option><option value="todo">To do</option><option value="doing">In progress</option></select>
     <button type="submit" class="primary">Add</button>
   </form>
   <p class="warn" id="tk-error" hidden></p>
-  <div class="tk-board" id="tk-board"></div>
-  <p class="fine">Kept as issues on GitHub, so Claude can read the same list and move items along while working on the app. Drag a card to another column, or click it to add notes and steps.</p>
+  <div class="tk-map" id="tk-map"><div class="tk-canvas" id="tk-canvas"><svg class="tk-lines" id="tk-lines" aria-hidden="true"></svg><div id="tk-nodes"></div></div></div>
+  <div class="tk-board" id="tk-board" hidden></div>
+  <p class="fine" id="tk-hint-map">Drag a box to move it (what hangs under it moves along). To connect, drag from the dot on a box's right edge onto another box: that one then hangs under it. Click a line to take it off, + to add something under a box, a box to open it.</p>
+  <p class="fine" id="tk-hint-board" hidden>Drag a card to another column, or click it to add notes and steps.</p>
+  <p class="fine">Kept as issues on GitHub (connections are GitHub's sub-issues), so Claude works from the same list.</p>
 </main>
 
 <main class="view" id="tab-settings" role="tabpanel" hidden>
@@ -671,6 +676,7 @@
       <label class="wide">Title <input name="title" maxlength="200" required></label>
       <label>Where it stands <select name="status"><option value="idea">Idea</option><option value="todo">To do</option><option value="doing">In progress</option><option value="done">Done</option></select></label>
       <label>Priority <select name="priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
+      <label class="wide">Part of <select name="parent"></select></label>
       <label class="wide">Notes <textarea name="notes" rows="5" maxlength="20000" placeholder="What it is, why, how it should work…"></textarea></label>
     </div>
     <h3 class="tr-h">Steps <span class="dim" id="tk-dprog"></span></h3>
