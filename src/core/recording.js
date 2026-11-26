@@ -196,6 +196,7 @@ function eventText(e) {
   if (kind === 'setting') return `Setting changed: ${JSON.stringify(r)}`;
   if (kind === 'account') return `Account: ${r.type}${r.error ? ` (${r.error})` : ''}`;
   if (kind === 'checkPanel') return `Price check window closed (${r.closed})`;
+  if (kind === 'inventoryRead') return `Inventory read: capture ${r.captureMs} ms, reading ${r.readMs} ms${r.hidden ? `, ${r.hidden} slots covered` : ''}${r.follow ? ' (follow-up)' : ''}`;
   if (kind === 'key') return `${r.dir === 'up' ? 'Released' : 'Pressed'} ${r.key}${r.by === 'app' ? ' (sent by the app)' : ''}`;
   if (kind === 'mouse') return `${r.dir === 'up' ? 'Released' : 'Clicked'} ${r.button} at ${r.x}, ${r.y}`;
   if (kind === 'wheel') return `Wheel ${r.amount} at ${r.x}, ${r.y}`;

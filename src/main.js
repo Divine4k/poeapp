@@ -727,7 +727,9 @@ async function readInventory(force) {
   invBusy = true;
   const inv = status.inventory, was = `${inv.open}|${inv.error}|${inv.lastReadAt}`;
   try {
+    const t0 = performance.now();
     const frame = await captureFrame(config.inventory.displayId);
+    const captureMs = performance.now() - t0;
     const rect = gridRect(frame.width, frame.height);
     status.inventory.error = null;
     const wasOpen = status.inventory.open;
@@ -739,7 +741,11 @@ async function readInventory(force) {
     if (!status.inventory.open) { stopFollow(); return; }
     // A tooltip (or the mouse pointer) may cover some slots; the reader finds them, keeps what
     // it knew about those and reads the rest.
+    const t1 = performance.now();
     const result = reader.read(frame, { cursor: cursorCell(cursorInFrame(frame), rect) });
+    // How long a reading takes on this PC, for troubleshooting recordings: whether the reading
+    // should move to a worker, or the capture be made smaller.
+    if (trouble && trouble.recording) trouble.event('inventoryRead', { captureMs: Math.round(captureMs), readMs: Math.round(performance.now() - t1), hidden: result ? result.hidden : null, follow: !!follow });
     if (!result) return;
     status.inventory.lastReadAt = Date.now();
     status.inventory.recognised = result.recognised;
