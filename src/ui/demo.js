@@ -302,7 +302,7 @@
       }
       return { error: 'Unknown request.' };
     },
-    runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: snapCells() })) }),
+    runSnapshot: async (id) => ({ cols: 12, rows: 5, trips: (id === 'r3' || id === 'r4' ? [1, 2] : [1]).map((trip) => ({ trip, at: now, image: gridImage(), cells: trip === 2 ? snapCells().map((c) => ({ ...c, carried: true, carriedQty: c.qty })) : snapCells() })) }),
     savedSession: async (id) => { const x = state.sessions.find((q) => q.id === id); return { ...x, runs: runs.slice(0, 3) }; },
     inventory: async () => {
       const img = state.unknown[0].image;

@@ -225,6 +225,10 @@ function setInvPhoto(on) {
 const drawnSlot = (c) => !invPhoto && !!c.icon && (c.status === 'item' || c.status === 'remembered') && c.how !== 'doubt';
 const drawnInner = (c) => `<img src="${esc(c.icon)}" alt="" loading="lazy">${c.qty > 1 ? `<b>${c.qty}</b>` : ''}`;
 
+// Trips that brought nothing new whose picture was opened anyway ("<run>:<trip>").
+const openTrips = new Set();
+const nothingNew = (t) => t.cells.length > 0 && t.cells.every((c) => c.carried);
+
 // One picture per inventory brought out of the map. compact: the small ones beside the timer,
 // newest on top, so the inventory being filled now is always the first one.
 function snapHtml(data, compact, divine) {
@@ -233,6 +237,14 @@ function snapHtml(data, compact, divine) {
   const trips = data.trips.map((t, i) => ({ t, n: i + 1 }));
   if (compact) trips.reverse();
   return trips.map(({ t, n }, i) => {
+    // A trip that brought nothing new (you went back in and came out with the same things):
+    // one line in place of a picture of slots that are all "taken in with you".
+    const key = `${data.runId || ''}:${t.trip}`;
+    if (nothingNew(t) && !openTrips.has(key)) {
+      const slots = t.cells.length;
+      return `<figure class="snap none-new"><p>${total > 1 ? `Inventory ${n} of ${total}, ` : ''}${clock(t.at)}: <b>nothing new</b>. All ${slots} ${slots === 1 ? 'slot was' : 'slots were'} already in your inventory when you went back in.
+        <button type="button" class="link" data-open-trip="${esc(key)}">Show picture</button></p></figure>`;
+    }
     const by = new Map(t.cells.map((c) => [c.cell, c]));
     let cells = '';
     for (let k = 0; k < data.cols * data.rows; k++) {
@@ -485,7 +497,7 @@ function renderNow() {
   }
   setHtml($('inv-trips'), (trips.length > 1 ? trips.map((t, i) => `<button type="button" data-inv-trip="${i}" aria-pressed="${i === ti}" title="Inventory ${i + 1} of ${trips.length}, read at ${clock(t.at)}">${i + 1}</button>`).join('') : '')
     + (trip ? `<button type="button" class="photo" data-inv-photo aria-pressed="${invPhoto}" title="${invPhoto ? 'Showing the pictures as taken in game. Click to show the items as read.' : 'Showing the items as read. Click to see the pictures as taken in game, to check a reading.'}">Photo</button>` : ''));
-  setHtml($('now-uncounted'), run ? uncountedLine(run, true) : '');
+  setHtml($('now-uncounted'), (trip && nothingNew(trip) ? '<p class="uncounted">Nothing new on this trip yet: every item shown was already in your inventory when you went in.</p>' : '') + (run ? uncountedLine(run, true) : ''));
 
   // The loot: picture, name, how many and what it is worth, most valuable first.
   const n = run ? run.items.length : 0;

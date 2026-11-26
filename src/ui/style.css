@@ -269,7 +269,11 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .invgrid .sk.drawn { position: relative; display: grid; place-items: center; overflow: hidden; background: color-mix(in srgb, var(--bone) 4%, var(--deep)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 8%, transparent), 0 0 10px color-mix(in srgb, var(--gold) 10%, transparent); }
 .invgrid .sk.unknown { box-shadow: inset 0 0 0 1px var(--blood), 0 0 10px color-mix(in srgb, var(--blood) 25%, transparent); }
 .invgrid .sk.remembered { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 65%, transparent); }
-.invgrid .sk.carried { opacity: 0.3; box-shadow: none; }
+/* Taken into the map with you, not loot: greyed, darkened, striped, with a dashed frame. */
+.invgrid .sk.carried { box-shadow: none; filter: grayscale(1) brightness(0.5); }
+.invgrid .sk.carried::after, .snap-cells i.carried::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--deep) 55%, transparent) 0 3px, transparent 3px 7px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--deep) 80%, transparent); outline: 1px dashed color-mix(in srgb, var(--ash) 70%, transparent); outline-offset: -3px; }
 .invgrid .sk.fixable { cursor: pointer; }
 .invgrid .sk.fixable:hover { outline: 2px solid var(--bone); outline-offset: -1px; opacity: 1; }
 .invgrid .c0 { --cx: 0; } .invgrid .c1 { --cx: 1; } .invgrid .c2 { --cx: 2; } .invgrid .c3 { --cx: 3; } .invgrid .c4 { --cx: 4; } .invgrid .c5 { --cx: 5; }
@@ -433,11 +437,15 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 .snap-cells i.unknown { box-shadow: inset 0 0 0 1px var(--deep), inset 0 0 0 2.5px var(--blood); }
 .snap-cells i.skipped, .snap-cells i.ignored { box-shadow: inset 0 0 0 1px var(--deep), inset 0 0 0 2.5px var(--seam); }
 /* taken into the map with you, so not loot: the slot is dimmed, with no coloured frame */
-.snap-cells i.carried { box-shadow: inset 0 0 0 1px var(--deep); background: rgba(16, 19, 23, 0.62); }
+.snap-cells i.carried { position: relative; box-shadow: inset 0 0 0 1px var(--deep); background: color-mix(in srgb, var(--deep) 35%, transparent); backdrop-filter: grayscale(1) brightness(0.55); }
 .xkey { color: var(--bone); font-weight: 600; }
 .snap-cells i.drawn { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--deep); }
-.snap-cells i.drawn.carried { background: var(--deep); }
-.snap-cells i.drawn.carried img, .snap-cells i.drawn.carried b { opacity: 0.35; }
+.snap-cells i.drawn.carried { background: var(--deep); backdrop-filter: none; }
+.snap-cells i.drawn.carried img { filter: grayscale(1) brightness(0.5); }
+.snap-cells i.drawn.carried b { opacity: 0.5; }
+.snap.none-new p { margin: 0; padding: 9px 12px; border-radius: var(--r-sm); background: color-mix(in srgb, var(--bone) 3%, transparent); box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; color: var(--ash); }
+.snap.none-new b { color: var(--bone); font-weight: 600; }
+.snap.none-new .link { margin-left: 6px; }
 .invgrid .sk.drawn img, .snap-cells i.drawn img { width: 84%; height: 84%; object-fit: contain; }
 .invgrid .sk.drawn b, .snap-cells i.drawn b { position: absolute; top: 1px; left: 4px; font-size: 11px; font-weight: 700; line-height: 1.2; color: var(--bone); text-shadow: 0 1px 2px var(--deep), 0 0 3px var(--deep); font-variant-numeric: tabular-nums; }
 .snap-cells i.drawn b { font-size: 10px; left: 3px; }
@@ -482,7 +490,7 @@ dialog input[type=password] { width: 100%; }
 .legend.row li { margin-top: 0; font-size: 12px; }
 .legend.row li::before { top: 3px; }
 .legend.row li.none { opacity: 0.45; }
-.legend li.carried::before { border-color: var(--seam); background: rgba(16, 19, 23, 0.62); }
+.legend li.carried::before { border: 1px dashed var(--ash); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ash) 45%, transparent) 0 2px, transparent 2px 4px); }
 .loot-compact { columns: 2; column-gap: 28px; margin: 0; }
 .loot-compact li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; padding: 2px 0; break-inside: avoid; font-size: 13px; }
 .loot-compact .q { text-align: right; color: var(--ash); font-variant-numeric: tabular-nums; }
