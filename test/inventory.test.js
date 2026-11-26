@@ -386,6 +386,8 @@ test('reader: a real tooltip capture, mouse on the bottom-left slot', () => {
   for (let r0 = 0; r0 < 4; r0++) for (let c = 0; c < 6; c++) assert.ok(under.has(r0 * COLS + c), `slot ${r0 * COLS + c} is covered`);
   for (let r0 = 0; r0 < 4; r0++) for (let c = 7; c < COLS; c++) assert.ok(!under.has(r0 * COLS + c), `slot ${r0 * COLS + c} is clear`);
   assert.equal(r.unknown.some((u) => under.has(u.cell)), false);
+  // Nor is anything under it named: a darkened picture is not matched at all.
+  assert.equal(r.cells.some((c) => under.has(c.cell) && c.name), false);
   assert.ok(r.unknown.some((u) => u.cell === 7 && u.qty === 40));
   assert.equal(r.empties.length, 0);
 });

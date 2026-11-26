@@ -71,7 +71,8 @@ class InventoryReader {
   read(frame, { cursor = null } = {}) {
     const rect = gridRect(frame.width, frame.height);
     if (!isInventoryOpen(frame, rect)) return null;
-    const hidden = unsureSlots(coveredCells(frame, rect), cursor);
+    const dark = coveredCells(frame, rect);
+    const hidden = unsureSlots(dark, cursor);
     const counts = new Map();
     const unknown = [];
     const cells = [];
@@ -136,6 +137,13 @@ class InventoryReader {
         if (unsure && this.memory[k]) {
           info.status = 'remembered'; info.name = this.memory[k].name; info.qty = this.memory[k].qty;
           add(k);
+          continue;
+        }
+        // Under a tooltip's dark box and never known: the darkened picture is not matched at all.
+        // A near-black picture looks like a dark item picture (it was read as Scarecrow's
+        // Pitchfork again and again), so it is left for a clear view.
+        if (dark.has(k)) {
+          info.status = 'covered';
           continue;
         }
 
