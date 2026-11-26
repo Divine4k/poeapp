@@ -352,3 +352,43 @@ test('a sale is not a missed offer, keeps when it was asked for, and the book su
   assert.ok(b.rev > rev);
   assert.equal(chatCommand('ignore', { player: 'Ann' }), '/ignore Ann');
 });
+
+test('a lower price named in the whisper is a haggle; three buyers within a minute make a listing hot', () => {
+  const b = new TradeBook();
+  const robe = 'Hi, I would like to buy your Tabula Rasa Simple Robe listed for 10 chaos in Standard (stash tab "Sell"; position: left 3, top 5)';
+  const say = (player, ts, more = '') => b.onLog({ type: 'whisper', dir: 'in', player, text: robe + more, ts });
+  const a = say('Ann', 1000, ' can do 8c?');
+  say('Bob', 20000); say('Cid', 50000);
+  let s = b.summary(null);
+  assert.equal(s.offers[0].haggle, true);
+  assert.equal(s.offers[1].haggle, false);
+  assert.equal(s.offers[0].hot, true);
+  b.remove(a.id);
+  assert.equal(b.missed[0].haggled, true);
+  say('Ann', 400000);
+  s = b.summary(null);
+  assert.equal(s.offers.find((o) => o.player === 'Ann').haggles, 1);
+  assert.equal(s.offers[0].hot, false, 'the third buyer came much later');
+});
+
+test('a unique is priced by its whisper name, and the buying list follows whispers and the purchase', () => {
+  const b = new TradeBook();
+  const prices = { get: (n) => (n === 'Chaos Orb' ? { chaos: 1 } : null), unique: (n) => (n === 'Tabula Rasa Simple Robe' ? { chaos: 20, base: 'Simple Robe', category: 'UniqueArmour', icon: 'https://web.poecdn.com/x.png' } : null) };
+  b.onLog({ type: 'whisper', dir: 'in', player: 'Ann', ts: 1000, text: 'Hi, I would like to buy your Tabula Rasa Simple Robe listed for 10 chaos in Standard (stash tab "Sell"; position: left 3, top 5)' });
+  const o = b.summary(prices).offers[0];
+  assert.equal(o.market, 20);
+  assert.equal(o.low, true);
+  assert.equal(o.unique, true);
+  const w = b.addWant({ name: 'Ashes of the Stars Onyx Amulet', listings: [{ seller: 'Dun', chaos: 300 }, { seller: 'Eve', chaos: 310 }] }, 5000);
+  assert.equal(b.addWant({ name: 'Ashes of the Stars Onyx Amulet', listings: [{ seller: 'Dun', chaos: 300 }] }, 6000).id, w.id, 'the same item is one entry');
+  const out = b.onLog({ type: 'whisper', dir: 'out', player: 'Dun', ts: 7000, text: 'Hi, I would like to buy your Ashes of the Stars Onyx Amulet listed for 3 divine in Standard (stash tab "S"; position: left 1, top 1)' });
+  assert.equal(b.want(w.id).asked.Dun, 7000);
+  b.applied(out.id, 'hideout');
+  b.onLog({ type: 'trade', result: 'accepted', ts: 9000 });
+  assert.equal(b.want(w.id).done, 9000);
+  const again = new TradeBook();
+  again.restore(JSON.parse(JSON.stringify(b.toJSON())), 10000);
+  assert.equal(again.ledger(prices).wants[0].paid.amount, 3);
+  b.setTradeNote(b.history[0].id, ' for the  build ');
+  assert.equal(b.history[0].note, 'for the build');
+});

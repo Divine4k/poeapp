@@ -79,7 +79,7 @@ function parseTradeMessage(text) {
 
 // The short currency words the trade site uses, as the names prices are listed under.
 const CURRENCY = {
-  chaos: 'Chaos Orb', divine: 'Divine Orb', div: 'Divine Orb', exalted: 'Exalted Orb', exa: 'Exalted Orb', ex: 'Exalted Orb',
+  chaos: 'Chaos Orb', c: 'Chaos Orb', divine: 'Divine Orb', div: 'Divine Orb', d: 'Divine Orb', divs: 'Divine Orb', divines: 'Divine Orb', exalted: 'Exalted Orb', exa: 'Exalted Orb', ex: 'Exalted Orb',
   mirror: 'Mirror of Kalandra', alch: 'Orb of Alchemy', alt: 'Orb of Alteration', fusing: 'Orb of Fusing', fuse: 'Orb of Fusing',
   chance: 'Orb of Chance', chisel: "Cartographer's Chisel", vaal: 'Vaal Orb', regal: 'Regal Orb', gcp: "Gemcutter's Prism",
   jewellers: "Jeweller's Orb", chrom: 'Chromatic Orb', scour: 'Orb of Scouring', regret: 'Orb of Regret', blessed: 'Blessed Orb',
@@ -93,6 +93,14 @@ function priceChaos(price, prices) {
   const e = prices.get(currencyName(price.currency));
   return e ? e.chaos * price.amount : null;
 }
+
+// A price a buyer names in the words after the site's message ("can do 80c?"), or null.
+function counterOf(note) {
+  const m = /(\d+(?:[.,]\d+)?)\s*(chaos|c|divines?|divs?|d|exalted|exa?)\b/i.exec(String(note || ''));
+  return m ? { amount: num(m[1]), currency: m[2].toLowerCase() } : null;
+}
+// Whether that price is under the listed one. Only told when both are in the same currency.
+const haggled = (o) => !!(o.counter && o.price && currencyName(o.counter.currency) === currencyName(o.price.currency) && o.counter.amount < o.price.amount);
 
 const priceText = (p) => (p ? `${p.amount} ${p.currency}` : 'no price');
 
@@ -180,6 +188,10 @@ const SOLD_MEMORY_MS = 60 * 60 * 1000;
 const MAX_OFFERS = 30;
 const MAX_HISTORY = 500;
 const MAX_MISSED = 1000;
+const MAX_WANTS = 30;
+// A wanted item against the name in a whisper: a unique by its whole name, a rare by its base ("Doom Knot Coral Ring").
+const wantFits = (w, item) => w.name === item || String(item).endsWith(` ${w.name}`);
+const RUSH_MS = 60 * 1000; // buyers this close together look like a price that is too low
 // What several buyers of one thing share: the listing's slot, or the item's name for bulk offers.
 const groupKey = (o) => listingKey(o) || `bulk|${o.item}`;
 
@@ -199,6 +211,7 @@ class TradeBook {
     this.notes = {}; // the owner's own note per player
     this.rev = 0; // moves when the history, the missed offers or a note changes: the Trade page reads the book again
     this.index = null; // what is known per player, kept until rev moves
+    this.wants = []; // the buying list, newest first: { id, name, icon, body, url, at, searchedAt, listings, asked: { seller: at }, limit, done, paid, error }
   }
 
   get(id) { return this.offers.find((o) => String(o.id) === String(id)) || null; }
@@ -243,10 +256,11 @@ class TradeBook {
     const at = ev.ts || now;
     if (t.left > 12 || t.top > 12) this.quadTabs.add(t.tab);
     const same = this.offers.find((o) => o.dir === dir && o.player === ev.player && o.item === t.item && o.tab === t.tab && o.left === t.left && o.top === t.top);
-    if (same) { same.asks++; same.lastAt = at; return true; }
+    if (same) { same.asks++; same.lastAt = at; if (!same.counter) same.counter = counterOf(t.note); return true; }
+    if (dir === 'out' && !ev.test) this.wantAsked(null, ev.player, at, t.item);
     const offer = {
       id: this.seq++, dir, player: ev.player, ...t, at, lastAt: at, asks: 1,
-      state: 'new', here: false, came: false, thanked: false, soldAlready: false, test: !!ev.test,
+      counter: counterOf(t.note), state: 'new', here: false, came: false, thanked: false, soldAlready: false, test: !!ev.test,
     };
     const soldAt = this.sold.get(listingKey(offer));
     if (dir === 'in' && soldAt && at - soldAt < SOLD_MEMORY_MS) {
@@ -270,7 +284,8 @@ class TradeBook {
     o.doneAt = at;
     this.lastDone = o.id;
     if (o.test) return true;
-    this.history.unshift({ id: `${at.toString(36)}-${o.id}`, dir: o.dir, player: o.player, item: o.item, qty: o.qty, price: o.price, league: o.league, at, askedAt: o.at });
+    this.history.unshift({ id: `${at.toString(36)}-${o.id}`, dir: o.dir, player: o.player, item: o.item, qty: o.qty, price: o.price, league: o.league, at, askedAt: o.at, ...(haggled(o) ? { haggled: true } : {}) });
+    if (o.dir === 'out') { const w = this.wants.find((x) => !x.done && wantFits(x, o.item)); if (w) { w.done = at; w.paid = o.price; } }
     this.rev++;
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
     if (o.dir === 'in' && listingKey(o)) {
@@ -297,7 +312,7 @@ class TradeBook {
   // A buyer's offer that goes away unsold is kept as missed (not one for a thing already sold).
   miss(o) {
     if (!o || o.dir !== 'in' || o.test || o.state === 'done' || o.soldAlready) return;
-    this.missed.unshift({ at: o.at, player: o.player, item: o.item, qty: o.qty, price: o.price, invited: o.state !== 'new', came: !!o.came });
+    this.missed.unshift({ at: o.at, player: o.player, item: o.item, qty: o.qty, price: o.price, invited: o.state !== 'new', came: !!o.came, ...(haggled(o) ? { haggled: true } : {}) });
     if (this.missed.length > MAX_MISSED) this.missed.length = MAX_MISSED;
     this.rev++;
   }
@@ -316,19 +331,56 @@ class TradeBook {
   known() {
     if (this.index && this.index.rev === this.rev) return this.index.map;
     const map = new Map();
-    const of = (p) => map.get(p) || map.set(p, { sales: 0, noShow: 0 }).get(p);
-    for (const h of this.history) if (h.dir === 'in') of(h.player).sales++;
-    for (const m of this.missed) if (m.invited && !m.came) of(m.player).noShow++;
+    const of = (p) => map.get(p) || map.set(p, { sales: 0, noShow: 0, haggles: 0, past: [] }).get(p);
+    for (const h of this.history) { // newest first, so the first three are the latest
+      const x = of(h.player);
+      if (h.dir === 'in') { x.sales++; if (h.haggled) x.haggles++; }
+      if (x.past.length < 3) x.past.push({ at: h.at, dir: h.dir, item: h.item, qty: h.qty, price: h.price });
+    }
+    for (const m of this.missed) { const x = of(m.player); if (m.invited && !m.came) x.noShow++; if (m.haggled) x.haggles++; }
     this.index = { rev: this.rev, map };
     return map;
   }
-  // Everything the Trade page's History, Numbers and People parts read, asked for when they open.
+  setTradeNote(id, text) {
+    const h = this.history.find((x) => x.id === id), note = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (!h) return;
+    if (note) h.note = note; else delete h.note;
+    this.rev++;
+  }
+
+  // ---- the buying list ----
+  // w: { name, icon, body (the search as sent to the trade site), url, listings }. One entry per name.
+  addWant(w, now = Date.now()) {
+    const name = String((w && w.name) || '').trim();
+    if (!name) return null;
+    const old = this.wants.find((x) => x.name === name && !x.done);
+    const want = old || { id: `w${now.toString(36)}${this.seq++}`, name, at: now, asked: {}, limit: null, done: 0, paid: null };
+    Object.assign(want, { icon: w.icon || null, body: w.body || null, url: w.url || '', listings: Array.isArray(w.listings) ? w.listings : [], searchedAt: w.listings ? now : 0, error: '' });
+    if (!old) this.wants.unshift(want);
+    if (this.wants.length > MAX_WANTS) this.wants.length = MAX_WANTS;
+    this.rev++;
+    return want;
+  }
+  want(id) { return this.wants.find((x) => x.id === id) || null; }
+  removeWant(id) { this.wants = this.wants.filter((x) => x.id !== id); this.rev++; }
+  setWant(id, patch) { const w = this.want(id); if (w) { Object.assign(w, patch); this.rev++; } return w; }
+  // A seller was whispered: from the list's own button (id given), or seen in the game log (by the item's name).
+  wantAsked(id, seller, at = Date.now(), item = '') {
+    const w = id ? this.want(id) : this.wants.find((x) => !x.done && wantFits(x, item) && x.listings.some((l) => l.seller === seller));
+    if (!w || !seller) return false;
+    w.asked[seller] = at;
+    this.rev++;
+    return true;
+  }
+
+  // Everything the Trade page's History, Numbers, People and Buying parts read, asked for when they open.
   ledger(prices) {
     const value = (x) => priceChaos(x.price, prices);
     return {
       rev: this.rev, notes: { ...this.notes },
       history: this.history.map((h) => ({ ...h, value: value(h) })),
       missed: this.missed.map((m) => ({ ...m, value: value(m) })),
+      wants: this.wants.map((w) => ({ ...w, body: undefined, limitValue: priceChaos(w.limit, prices), paidValue: priceChaos(w.paid, prices) })),
     };
   }
   clearTests() { this.offers = this.offers.filter((o) => !o.test); }
@@ -353,10 +405,12 @@ class TradeBook {
   summary(prices, now = Date.now()) {
     const value = (x) => priceChaos(x.price, prices);
     const known = this.known(), buyers = new Map();
-    for (const o of this.offers) if (o.dir === 'in' && o.state !== 'done') buyers.set(groupKey(o), (buyers.get(groupKey(o)) || 0) + 1);
+    for (const o of this.offers) if (o.dir === 'in' && o.state !== 'done') (buyers.get(groupKey(o)) || buyers.set(groupKey(o), []).get(groupKey(o))).push(o.at);
+    // Three or more buyers of one thing within a minute: the price is probably too low.
+    const rush = (ats) => { const s = ats.slice().sort((a, b) => a - b); return s.some((t, i) => i + 2 < s.length && s[i + 2] - t <= RUSH_MS); };
     const offers = this.offers.map((o) => {
-      const who = o.dir === 'in' ? known.get(o.player) : null;
-      const entry = prices ? prices.get(currencyName(o.item)) : null;
+      const who = known.get(o.player) || null, mine = o.dir === 'in' ? buyers.get(groupKey(o)) || [] : [];
+      const entry = prices ? prices.get(currencyName(o.item)) || (prices.unique ? prices.unique(o.item) : null) : null;
       const v = value(o);
       const market = entry ? entry.chaos * (o.qty || 1) : null;
       const next = nextAction(o);
@@ -364,8 +418,9 @@ class TradeBook {
         ...o, value: v, market, low: o.dir === 'in' && v != null && market != null && market > 0 && v < market * 0.8,
         next, nextLabel: next ? LABELS[next] : '', waiting: waitingText(o),
         grid: o.tab ? (this.quadTabs.has(o.tab) ? 24 : 12) : 0,
-        group: groupKey(o), buyers: o.dir === 'in' ? buyers.get(groupKey(o)) || 1 : 1,
-        sales: who ? who.sales : 0, noShow: who ? who.noShow : 0, playerNote: this.notes[o.player] || '',
+        group: groupKey(o), buyers: mine.length || 1, hot: mine.length > 2 && rush(mine),
+        sales: who ? who.sales : 0, noShow: who ? who.noShow : 0, haggles: who ? who.haggles : 0, past: who ? who.past : [], playerNote: this.notes[o.player] || '',
+        haggle: o.dir === 'in' && haggled(o), icon: entry && entry.icon ? entry.icon : null, unique: !!(entry && entry.base && /^Unique/.test(entry.category || '')),
       };
     });
     const day = new Date(now); day.setHours(0, 0, 0, 0);
@@ -399,7 +454,7 @@ class TradeBook {
   }
 
   toJSON() {
-    return { seq: this.seq, lastTs: this.lastTs, history: this.history, missed: this.missed, notes: this.notes, quadTabs: [...this.quadTabs], sold: [...this.sold], offers: this.offers.filter((o) => !o.test) };
+    return { seq: this.seq, lastTs: this.lastTs, history: this.history, missed: this.missed, notes: this.notes, wants: this.wants, quadTabs: [...this.quadTabs], sold: [...this.sold], offers: this.offers.filter((o) => !o.test) };
   }
 
   // Offers older than maxAgeMs are not brought back: the buyer has long moved on.
@@ -426,6 +481,7 @@ class TradeBook {
     this.sold = new Map((Array.isArray(data.sold) ? data.sold : []).filter((e) => Array.isArray(e) && now - e[1] < SOLD_MEMORY_MS));
     this.missed = Array.isArray(data.missed) ? data.missed.filter((m) => m && m.item && m.at && m.player) : [];
     this.notes = data.notes && typeof data.notes === 'object' ? { ...data.notes } : {};
+    this.wants = (Array.isArray(data.wants) ? data.wants : []).filter((w) => w && w.id && w.name).map((w) => ({ ...w, asked: w.asked || {}, listings: Array.isArray(w.listings) ? w.listings : [] }));
     const kept = (Array.isArray(data.offers) ? data.offers : []).filter((o) => o && o.player && o.item);
     for (const o of kept) if (now - (o.lastAt || 0) >= maxAgeMs) this.miss(o); // went stale while the app was closed
     this.offers = kept.filter((o) => now - (o.lastAt || 0) < maxAgeMs)
@@ -476,4 +532,4 @@ function placementFromRect(rect, screen) {
 const overlayAllowed = (front) => !front || !front.known || front.game || front.own;
 
 module.exports = {
-  autoSteps, overlayBounds, placementFromRect, OVERLAY_WIDTH, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };
+  counterOf, RUSH_MS, autoSteps, overlayBounds, placementFromRect, OVERLAY_WIDTH, overlayAllowed, parseTradeMessage, priceChaos, priceText, currencyName, chatCommand, nextAction, TradeBook, DEFAULT_MESSAGES, LABELS };

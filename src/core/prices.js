@@ -132,13 +132,13 @@ function parseItemOverview(json, category) {
 
 class PriceTable {
   constructor() {
-    this.byNorm = new Map();
+    this.byNorm = new Map(); this.full = null;
     this.updatedAt = 0;
     this.league = null;
   }
 
   load(entries) {
-    this.byNorm = new Map();
+    this.byNorm = new Map(); this.full = null;
     for (const e of entries) {
       const k = normalize(e.name);
       if (!this.byNorm.has(k)) this.byNorm.set(k, e);
@@ -173,6 +173,15 @@ class PriceTable {
     const out = [];
     for (const e of this.byNorm.values()) if (e.base === base && !e.variant && /^Unique/.test(e.category)) out.push({ name: e.name, chaos: e.chaos, high: e.high || null, icon: e.icon || null });
     return out.sort((a, b) => (b.high || b.chaos) - (a.high || a.chaos));
+  }
+  // A unique by the name a trade whisper gives it, "Tabula Rasa Simple Robe": its name and its
+  // base in one. The list is made on first use and again after new prices.
+  unique(full) {
+    if (!this.full) {
+      this.full = new Map();
+      for (const e of this.byNorm.values()) if (e.base && !e.variant && /^Unique/.test(e.category)) this.full.set(normalize(`${e.name} ${e.base}`), e);
+    }
+    return this.full.get(normalize(full)) || null;
   }
   get divine() { return this.chaosOf('Divine Orb'); }
 

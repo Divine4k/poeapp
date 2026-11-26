@@ -48,6 +48,10 @@
     if (o.asks > 1) flags.push(['', `Asked ${o.asks} times`]);
     if (o.rough) flags.push(['wait', `${o.lang || 'Other language'}: read roughly, check the whisper`]);
     else if (o.lang) flags.push(['', o.lang]);
+    if (o.buyers > 1) flags.push([o.hot ? 'wait' : '', `${o.buyers} buyers${o.hot ? ', may be priced low' : ''}`]);
+    if (o.noShow) flags.push(['wait', 'Did not come before']);
+    else if (o.sales) flags.push(['', o.sales > 2 ? 'Regular' : `Bought ${o.sales}×`]);
+    if (o.haggle) flags.push(['wait', `Offers less: ${o.counter.amount} ${o.counter.currency}`]);
     if (o.soldAlready) flags.push(['bad', 'You already sold this']);
     if (o.low) flags.push(['bad', `Below market: ${chaosText(o.market, opt.divine)} on poe.ninja`]);
     else if (o.market != null && o.value != null) flags.push(['', `Market ${chaosText(o.market, opt.divine)}`]);
@@ -77,7 +81,7 @@
     const step = o.next
       ? `<button type="button" class="primary" data-trade="${o.next}" data-id="${esc(o.id)}" title="${esc(labels[o.next] || o.next)} (${esc(o.player)})">${esc(SHORT[o.next] || labels[o.next] || o.next)}</button>`
       : `<span class="tt-wait" title="${esc(o.waiting)}">…</span>`;
-    const warn = o.soldAlready ? 'Already sold' : (o.low ? 'Below market' : '');
+    const warn = o.soldAlready ? 'Already sold' : o.low ? 'Below market' : o.haggle ? 'Offers less' : o.noShow ? 'Did not come before' : o.buyers > 1 ? `${o.buyers} buyers` : '';
     return `<div class="tt ${o.dir === 'out' ? 'out' : 'in'} ${esc(o.state)}">
       ${step}
       <button type="button" class="tt-open" data-open="${esc(o.id)}" title="${esc(`${o.dir === 'out' ? 'You buy from' : 'Buyer:'} ${o.player}. ${o.waiting || 'Click for all buttons'}`)}">

@@ -126,9 +126,9 @@
     defaultMessages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now. I will invite you in a few minutes if you can wait.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' },
     labels: { invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party', busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?' },
     offers: [
-      offer(3, 'in', 'Zana_Mapper', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, state: 'here', here: true, next: 'trade', waiting: 'In your hideout', grid: 24, group: 'mb', buyers: 2, noShow: 1 }),
+      offer(3, 'in', 'Zana_Mapper', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, state: 'here', here: true, next: 'trade', waiting: 'In your hideout', grid: 24, group: 'mb', buyers: 2, noShow: 1, unique: true, icon: dot('#b8763a'), past: [{ at: now - 3 * 86400000, dir: 'in', item: 'The Brass Dome Gladiator Plate', qty: 1, price: { amount: 1.5, currency: 'divine' } }], playerNote: 'Buys belts for a build guide.', live: { state: 'done', at: now, total: 23, listings: [195, 198, 200, 205, 210].map((n, i) => ({ seller: `Seller_${i + 1}`, price: { amount: n, currency: 'divine' }, chaos: n * 212, listedAt: now - (i + 1) * 3600000, bait: false })) } }),
       offer(5, 'in', 'Einhar_Fan', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, grid: 24, next: 'invite', sales: 4, at: now - 20000, lastAt: now - 20000, group: 'mb', buyers: 2 }),
-      offer(2, 'in', 'xXCurrencyFlipXx', 'Chaos Orb', 400, { amount: 1.5, currency: 'Divine Orb' }, '', 0, 0, { value: 318, market: 400, low: true, asks: 2 }),
+      offer(2, 'in', 'xXCurrencyFlipXx', 'Chaos Orb', 400, { amount: 1.5, currency: 'Divine Orb' }, '', 0, 0, { value: 318, market: 400, low: true, asks: 2, haggle: true, counter: { amount: 1.2, currency: 'div' }, icon: dot('#c9a227') }),
       offer(1, 'out', 'KiracsApprentice', 'The Nurse', 1, { amount: 75, currency: 'chaos' }, 'cards', 4, 9, { value: 75, market: 78, state: 'there', next: null, waiting: 'Waiting for the seller to trade' }),
     ],
     days: [0, 120, 40, 0, 310, 95, 0, 0, 660, 212, 80, 1450, 430, 1320].map((sold, i) => ({ day: new Date(now - (13 - i) * 86400000).setHours(0, 0, 0, 0), sold, soldCount: sold ? 1 + (i % 4) : 0, bought: i === 13 ? 212 : 0, boughtCount: i === 13 ? 1 : 0 })),
@@ -154,7 +154,14 @@
         if (i % 4 === 3) missed.push({ at, player: who[(i * 5) % who.length], item, qty: 1, price: { amount: c, currency: 'chaos' }, invited: i % 8 === 3, came: false, value: c });
         else history.push({ id: `d${i}`, dir: i % 9 === 0 ? 'out' : 'in', player, item, qty: 1, price: { amount: c, currency: 'chaos' }, at, askedAt: at - (40 + (i % 5) * 35) * 1000, value: c });
       }
-      return { rev: 1, notes: { Zana_Mapper: 'Buys Brass Domes. Whisper when I find one.' }, history, missed };
+      const sellers = [['Pell_Arrow', 2.6, true], ['Sable_Wick', 2.9], ['Dunmoor', 3], ['Marrow_Finch', 3], ['Ilse_Thorn', 3.1], ['Corvin_Ash', 3.4]];
+      const wants = [
+        { id: 'w1', name: 'Ashes of the Stars Onyx Amulet', icon: dot('#7fb0d8'), at: now, searchedAt: now - 120000, url: 'https://www.pathofexile.com/trade/search/Demo/abc', asked: { Sable_Wick: now - 130000, Dunmoor: now - 40000 }, limit: { amount: 3.2, currency: 'divine' }, limitValue: 3.2 * 212, done: 0, error: '',
+          listings: sellers.map(([seller, n, bait], i) => ({ seller, price: { amount: n, currency: 'divine' }, chaos: n * 212, status: i === 4 ? 'afk' : 'online', listedAt: now - (i + 1) * 1500000, bait: !!bait, whisper: `@${seller} Hi, I would like to buy your Ashes of the Stars` })) },
+        { id: 'w2', name: 'Lethal Pride Timeless Jewel', icon: null, at: now, searchedAt: 0, url: '', asked: {}, limit: null, limitValue: null, done: 0, error: '', listings: [] },
+        { id: 'w3', name: 'Large Cluster Jewel', icon: null, at: now, searchedAt: now, url: '', asked: {}, limit: null, limitValue: null, done: now - 86400000, paid: { amount: 40, currency: 'chaos' }, error: '', listings: [] },
+      ];
+      return { rev: 1, notes: { Zana_Mapper: 'Buys Brass Domes. Whisper when I find one.' }, history, missed, wants };
     },
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, sockets: true, league: 'Keepers', coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {}, checkKeys: () => {}, onCheckPress: (cb) => { window.demoPress = cb; },

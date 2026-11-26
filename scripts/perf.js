@@ -16,6 +16,8 @@ const LIMITS = {
   trackerDraw: [30, 'drawing the Tracker map, 150 items on four tabs, about 40 on screen'],
   trackerDragMove: [5, 'one pointer movement while dragging a Tracker box'],
   trackerFilterKey: [30, 'one key in the Tracker search'],
+  tradeHistory: [30, 'drawing the Trade page History, 500 trades'],
+  tradeNumbers: [30, 'drawing the Trade page Numbers, 500 trades and 1,000 missed offers'],
   summary: [25, 'main process: summary of a 100 map session'],
 };
 
@@ -56,6 +58,17 @@ const inPage = async () => {
   let n = 0;
   out.trackerDragMove = time(120, () => { n++; map.dispatchEvent(new PointerEvent('pointermove', { clientX: r.left + n * 2, clientY: r.top + n, bubbles: true })); tkLinesNow(); });
   tkGesture = null;
+  // The Trade page with a full book: 500 trades and 1,000 missed offers.
+  const names = ['The Brass Dome Gladiator Plate', 'Tabula Rasa Simple Robe', 'Divine Orb', 'Lifesprig Driftwood Wand', 'Goldrim Leather Cap', 'Chaos Orb'];
+  const row = (i) => ({ id: `p${i}`, dir: i % 7 ? 'in' : 'out', player: `Player_${i % 60}`, item: names[i % names.length], qty: 1, price: { amount: 10 + (i % 40), currency: 'chaos' }, value: 10 + (i % 40), at: Date.now() - i * 1800000, askedAt: Date.now() - i * 1800000 - 90000 });
+  showTab('trade');
+  tradeBook = { history: Array.from({ length: 500 }, (_, i) => row(i)), missed: Array.from({ length: 1000 }, (_, i) => ({ ...row(i), invited: i % 3 === 0, came: false })), notes: {}, wants: [] };
+  tradeBookRev = state.trade.rev; tradeBookKey = 'perf';
+  for (const [id, v] of [['th-when', '0'], ['tn-when', '0']]) tradeSeg[id] = v;
+  tradeTab = 'history'; renderTrade();
+  out.tradeHistory = time(10, () => { ledgerDrawn = ''; renderTrade(); });
+  tradeTab = 'numbers'; renderTrade();
+  out.tradeNumbers = time(10, () => { numbersDrawn = ''; renderTrade(); });
   return out;
 };
 

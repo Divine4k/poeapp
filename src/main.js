@@ -1840,8 +1840,65 @@ function pauseKeys(on) {
 }
 
 // ---- trade offers ---------------------------------------------------------------
+// The trade site's cheapest listings for an offered unique, asked for with a click on the Trade
+// page and kept five minutes: offer id -> { state, at, listings, total, url, error }.
+const offerMarket = new Map();
+const MARKET_KEEP_MS = 5 * 60 * 1000;
+const slimListing = (l) => ({ id: l.id, seller: l.seller, price: l.price, chaos: l.chaos, status: l.status, listedAt: l.listedAt, bait: !!l.bait, whisper: l.whisper || '', name: l.name });
+async function tradeMarket(id) {
+  const o = book.get(id), entry = o ? prices.unique(o.item) : null;
+  if (!entry) { diag.count(`price check: market for an offer not looked up (${o ? 'not a unique' : 'the offer is gone'})`); if (o) say('Only a unique can be looked up from an offer: the whisper carries just its name.'); return; }
+  const kept = offerMarket.get(o.id);
+  if (kept && (kept.state === 'searching' || (kept.state === 'done' && Date.now() - kept.at < MARKET_KEEP_MS))) { diag.count('price check: market for an offer not looked up (asked a moment ago)'); return; }
+  const m = { state: 'searching', at: Date.now(), listings: [], total: 0, url: '', error: '' };
+  offerMarket.set(o.id, m);
+  push();
+  const timed = diag.start('price check: market for a trade offer');
+  try {
+    const r = await tradeClient.check(config.league, { query: { status: { option: 'available' }, name: entry.name, type: entry.base, stats: [{ type: 'and', filters: [] }] }, sort: { price: 'asc' } });
+    m.listings = markBait(r.listings.map((l) => readListing(l, chaosOfPrice))).map(slimListing).map((l) => ({ ...l, whisper: undefined }));
+    m.total = r.total; m.url = r.queryId ? searchUrl(config.league, r.queryId) : ''; m.state = 'done'; m.at = Date.now();
+  } catch (e) { m.state = 'error'; m.error = e.message || String(e); }
+  timed(m.state === 'error' ? `failed: ${m.error}` : `${m.total} listings of ${entry.name}`, false, m.state === 'error');
+  push();
+}
+
+// ---- the buying list (Trade page, Buying) ----
+// The item of the last price check goes on the list with its search and the sellers found.
+function wantAdd() {
+  const tc = tradeCheck, f = tc && tc.filters;
+  if (!tc || tc.kind || !f || !f.ok) { diag.count('trade: nothing added to the buying list (no gear search to take)'); say('Price check an item first (gear, a jewel or a unique); it can then go on the buying list.', true); return; }
+  const name = [f.name, f.type && f.type.value].filter(Boolean).join(' ') || 'Item';
+  book.addWant({ name, icon: tc.icon || null, body: buildQuery(withCrafts(f, craftsOn(tc))), url: tc.url, listings: tc.state === 'done' ? tc.listings.map(slimListing) : null });
+  saveTradesSoon();
+  say(`${name} is on the buying list.`);
+}
+async function wantSearch(id) {
+  const w = book.want(id);
+  if (!w || !w.body) { diag.count('trade: buying list not searched (no search kept)'); return; }
+  const timed = diag.start('price check: search for the buying list');
+  try {
+    const r = await tradeClient.check(config.league, w.body);
+    book.setWant(id, { listings: markBait(r.listings.map((l) => readListing(l, chaosOfPrice))).map(slimListing), url: r.queryId ? searchUrl(config.league, r.queryId) : w.url, searchedAt: Date.now(), error: '' });
+    timed(`${r.total} listings of ${w.name}`);
+  } catch (e) {
+    book.setWant(id, { error: e.message || String(e) });
+    timed(`failed: ${e.message || e}`, false, true);
+  }
+  saveTradesSoon();
+}
+// One whisper per click: the line the trade site gives for that listing.
+async function wantWhisper(id, seller) {
+  const w = book.want(id), l = w ? w.listings.find((x) => x.seller === seller) : null;
+  const text = l ? String(l.whisper || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 500) : '';
+  if (!/^@\S+ \S/.test(text)) { diag.count('trade: seller not whispered (no whisper line for that listing)'); say('That listing has no whisper line. Open it on the trade site.', true); return; }
+  if (await sendChat(text)) { book.wantAsked(id, seller); saveTradesSoon(); }
+}
+
 function tradeState() {
   const s = book.summary(prices);
+  for (const id of offerMarket.keys()) if (!book.get(id)) offerMarket.delete(id);
+  for (const o of s.offers) o.live = offerMarket.get(o.id) || null;
   return { ...s, divine: prices.divine, labels: LABELS, defaultMessages: DEFAULT_MESSAGES,
     overlayInfo: { on: !!config.trade.overlay, helper: watch.running, front: watch.running ? watch.name : '', allowed: overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() }), layoutOpen: !!layoutWin },
     canSend: !!hook && watch.running, sendProblem: !hook ? 'the keyboard helper is not installed' : (watch.running ? '' : 'the app cannot tell which window is in front on this PC'), hotkeys: config.trade.hotkeys, enabled: config.trade.enabled };
@@ -2129,7 +2186,7 @@ function hoodSizes() {
   diag.facts['Game'] = `${watch.running ? 'running' : 'not seen'}${watch.gameInFront() ? ', in front' : ''}; log ${status.log.ok ? 'read' : `not read (${status.log.error})`}; keys helper ${status.inventory.keyHook}; signed in: ${cloud && cloud.signedIn ? `yes (${cloud.role || 'user'})` : 'no'}`;
   return {
     'Maps in this session': session.summary(prices).runs.length, 'Items named on this PC': learned.length, 'Shared item pictures': index.shared.length, 'Item pictures from poe.ninja': index.art.length,
-    'Prices known': prices.size || status.prices.count, 'Items waiting for a name': backlog.items.length, 'Trade offers kept': (tradeState().offers || []).length,
+    'Prices known': prices.size || status.prices.count, 'Items waiting for a name': backlog.items.length, 'Trade offers kept': book.offers.length, 'Finished trades kept': book.history.length, 'Missed offers kept': book.missed.length, 'Things on the buying list': book.wants.length,
     'Slots in the last reading': lastInventory.cells.length, 'Saved sessions': archive ? archive.list().length : 0, 'Files waiting to be written': savesWaiting.size + savesRunning.size,
   };
 }
@@ -2467,6 +2524,14 @@ const actions = {
     try { await fs.promises.writeFile(r.filePath, text, 'utf8'); say(`Saved ${path.basename(r.filePath)}.`); } catch (err) { say(`Could not save the file: ${err.message}`, true); }
   },
   tradeNote: (a) => { book.setNote(a.player, a.text); saveTradesSoon(); },
+  tradeTradeNote: (a) => { book.setTradeNote(String(a.id || ''), a.text); saveTradesSoon(); },
+  tradeMarket: (a) => tradeMarket(a.id),
+  wantAdd: () => wantAdd(),
+  wantSearch: (a) => wantSearch(String(a.id || '')),
+  wantWhisper: (a) => wantWhisper(String(a.id || ''), String(a.seller || '')),
+  wantRemove: (a) => { book.removeWant(String(a.id || '')); saveTradesSoon(); },
+  wantLimit: (a) => { const n = Number(a.amount); book.setWant(String(a.id || ''), { limit: n > 0 ? { amount: n, currency: a.currency === 'chaos' ? 'chaos' : 'divine' } : null }); saveTradesSoon(); },
+  wantOpen: (a) => { const w = book.want(String(a.id || '')); if (w && /^https:\/\/www\.pathofexile\.com\//.test(w.url)) shell.openExternal(w.url); },
   // A player picked on the Trade page's People part, with no open offer: whisper (left open to finish) or /ignore.
   tradePlayer: async (a) => {
     const what = a.do === 'ignore' ? 'ignore' : 'whisper';

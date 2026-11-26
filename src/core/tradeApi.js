@@ -180,6 +180,8 @@ function readListing(raw, chaosOf = () => null, compare = null) {
     icon: /^https:\/\/web\.poecdn\.com\//.test(it.icon || '') ? it.icon : null,
     base: it.baseType || it.typeLine || '', w: it.w || 1, h: it.h || 1, sockets: socketText(it.sockets),
     cmp: cmp === null ? null : Math.round(cmp * 10) / 10,
+    // The line the site would have you send the seller (the Trade page's buying list types it on a click).
+    whisper: typeof l.whisper === 'string' ? l.whisper : '',
     detail: itemDetail(it),
   };
 }
