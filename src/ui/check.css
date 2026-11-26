@@ -92,6 +92,11 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pc-tick small { flex: 0 0 auto; font-size: 10px; font-weight: 650; color: var(--ash); border: 0; border-radius: 5px; padding: 1px 5px; background: color-mix(in srgb, var(--bone) 6%, transparent); }
 .pc-tick small.pc-tier { color: var(--gold); background: color-mix(in srgb, var(--gold) 13%, transparent); font-variant-numeric: tabular-nums; }
 .pc-tick small.pc-tier.best { background: var(--gold); color: var(--ink); }
+/* the advanced check's mark on a line: what the listings say it is worth */
+.pc-tick small.pc-mark { font-weight: 600; white-space: nowrap; }
+.pc-tick small.pc-mark.v-carries { color: var(--gold); background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 55%, transparent); }
+.pc-tick small.pc-mark.v-some { color: var(--bone); }
+.pc-tick small.pc-mark.v-little { color: var(--faint); background: transparent; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 12%, transparent); }
 .pc-tick small.k-corruption { color: #ec6a5e; background: color-mix(in srgb, #ec6a5e 14%, transparent); }
 .pc-tick small.k-fractured { color: #c2ad78; background: color-mix(in srgb, #c2ad78 14%, transparent); }
 .pc-tick small.k-crafted, .pc-tick small.k-enchant { color: #b8c4ff; background: color-mix(in srgb, #b8c4ff 13%, transparent); }

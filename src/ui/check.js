@@ -53,11 +53,17 @@
       // highest where less is better. A "reduced" stat is kept below zero by the trade site;
       // it is shown the way the item words it.
       const bound = x.value === null ? null : (x.min === null && x.max !== null ? 'max' : 'min');
-      out.push({ tc: 'stat', pk: `stat:${x.key}`, key: x.key, label: x.text, mk: x.kind || 'explicit', kind: KIND_WORDS[x.kind] || '', tiers: x.tiers || [], enabled: x.enabled, bound, num: bound ? x[bound] : null, mine: x.value === null ? null : mineFor(x.negated ? -Math.abs(x.value) : x.value, stepFor(x.value)), step: stepFor(x.value), flip: !!x.negated });
+      out.push({ tc: 'stat', pk: `stat:${x.key}`, key: x.key, label: x.text, mk: x.kind || 'explicit', kind: KIND_WORDS[x.kind] || '', tiers: x.tiers || [], mark: x.mark || null, enabled: x.enabled, bound, num: bound ? x[bound] : null, mine: x.value === null ? null : mineFor(x.negated ? -Math.abs(x.value) : x.value, stepFor(x.value)), step: stepFor(x.value), flip: !!x.negated });
     }
     return out;
   }
 
+  // The advanced check's mark on a line (core/advanced/ticks.js): the word, and what it means.
+  const MARK_WORDS = {
+    carries: ['sets the price', 'Items without this line ask half or less: it is what the price stands on.'],
+    some: ['adds some', 'Items without this line ask noticeably less.'],
+    little: ['adds little', 'Items without this line ask about the same, so it is left out of the search to have more to compare with.'],
+  };
   const chipHtml = (r, i) => `<button type="button" class="pc-chip${r.enabled ? ' on' : ''}" data-row="${i}" aria-pressed="${r.enabled}"${r.title ? ` title="${esc(r.title)}"` : ''}>${esc(r.label)}</button>`;
   // One stat: a tick, the line in the colour the game gives its kind, its tier, and the number
   // searched for between - and +.
@@ -72,8 +78,11 @@
     }
     const tiers = (r.tiers || []).map((t) => `<small class="pc-tier${t === 1 ? ' best' : ''}" title="Tier ${t}: tier 1 is the best this modifier can be">T${t}</small>`).join('');
     const kind = r.kind && r.mk !== 'pseudo' ? `<small class="k-${r.mk}">${r.kind}</small>` : '';
+    // what the advanced check found this line to be worth: what items ask without it against with it
+    const m = r.mark, word = m ? MARK_WORDS[m.verdict] : null;
+    const mark = word ? `<small class="pc-mark v-${esc(m.verdict)}" title="${esc(`${word[1]}\nWithout this line: ${m.total.toLocaleString()} listed at about ${fmtValue(m.price)}. With every line: about ${fmtValue(m.ref)}.`)}">${word[0]}</small>` : '';
     return `<li class="${r.enabled ? 'on' : 'off'}" data-row="${i}">
-      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}">${esc(r.label)}</span>${kind}${tiers}</label>${num}</li>`;
+      <label class="pc-tick"><input type="checkbox" ${r.enabled ? 'checked' : ''}><span class="m-${r.tc === 'prop' ? 'prop' : esc(r.mk)}">${esc(r.label)}</span>${kind}${tiers}${mark}</label>${num}</li>`;
   }
 
   // An item's picture as the game shows it: no frame, the sockets and their links drawn over it.
@@ -354,7 +363,7 @@
     if (a.near && a.near.id !== 'usual') {
       const n = a.near, same = n.id === 'all' || n.first;
       fits = done || a.state === 'none'
-        ? (n.id === 'most' ? `Compared by ${lines} of its modifiers; left out: <b>${esc(n.dropped || '')}</b>.` : same ? `Compared with items that have the same ${lines} modifiers (ticked below).` : `Compared by its ${lines} strongest modifiers (ticked below).`)
+        ? (n.id === 'most' ? `Compared by the ${lines} modifiers that count; adds little: <b>${esc(n.dropped || '')}</b>.` : same ? `Compared with items that have the same ${lines} modifiers (ticked below).` : `Compared by its ${lines} strongest modifiers (ticked below).`)
         : (n.id === 'most' ? `Looking without <b>${esc(n.dropped || '')}</b>…` : same ? `Looking for items with the same ${lines} modifiers…` : `Looking by its ${lines} strongest modifiers…`);
     }
     else if (a.touched) fits = 'Read from the lines you ticked.';
@@ -371,7 +380,7 @@
       // priced from one or two: what the usual ticks find, to hold against it
       done && a.usual ? `<span title="Items that share only what the usual search ticks. They are lesser items; the price here is from the few that really are like it.">by the usual ticks: <b>${a.usual.total.toLocaleString()}</b>${a.usual.low ? ` from <b>${esc(fmtValue(a.usual.low))}</b>` : ''}</span>` : '',
       // the lines tried one at a time, with what each search found in its hover text
-      done && a.lines && a.lines.length ? `<span title="${esc(a.lines.map((l) => `Without ${l.text}: ${l.total} listed${l.low ? ` from ${fmtValue(l.low)}` : ''}`).join('\n'))}">${a.lines.length} lines tried one by one</span>` : '',
+      done && a.lines && a.lines.length ? `<span title="${esc(a.lines.map((l) => `Without ${l.text}: ${l.total} listed${l.price ? ` at about ${fmtValue(l.price)}` : ''}${l.verdict ? ` (${(MARK_WORDS[l.verdict] || [''])[0]})` : ''}`).join('\n'))}">${a.lines.length} lines weighed</span>` : '',
       ...(done ? (a.facts || []).map(esc) : []),
       done && a.source === 'score' && a.step > 0 ? STEP_WORDS[a.step] || '' : '',
       a.base ? `<span title="poe.ninja's price for ${esc(a.base.what)}, whatever is rolled on it">base alone ≈ <b>${esc(fmtValue(a.base.chaos))}</b></span>` : '',

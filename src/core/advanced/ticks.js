@@ -47,7 +47,7 @@ function classOf(stat, armour) {
 // filters: from buildFilters, as the standard check ticked them. Returns the sets of ticks to
 // try, strictest first, each { id, ticks: { <stat key>: bool }, lines }:
 //   'all'     every line that is not junk: items that are nearly the same
-//   ('most'   all but one line, put in by dropRung once the lines were tried one at a time)
+//   ('most'   without the lines that add little, put in by dropRung once each line was tried)
 //   'strong'  the strong lines only
 //   'usual'   the standard check's own ticks (always the last one)
 // Sets that tick the same lines are given once (as the later one). [] for what this is not
@@ -80,21 +80,30 @@ function applyRung(filters, rung) {
   return { ...filters, stats: filters.stats.map((s) => (rung.ticks[s.key] === undefined || rung.ticks[s.key] === s.enabled ? s : { ...s, enabled: rung.ticks[s.key] })) };
 }
 
-// ---- one line at a time ----
-// When too few items have every line, the lines are left out together only as a last resort.
-// First each one is left out by itself and searched (the owner, 2026-11-26: "it doesn't really
-// matter how long it takes to accurately price check it as long as it's accurate"): the line
-// that can go while the price stays highest is the one that matters least, and only that one
-// is dropped. Each try is a search, and the trade site allows about fifteen a minute.
-const MAX_PROBES = 6;
+// ---- which lines carry the price ----
+// Each line is left out by itself and searched (the owner, 2026-11-26: "it doesn't really
+// matter how long it takes to accurately price check it as long as it's accurate", and "the
+// important thing is that the price checker marks the right mods"). What the items without a
+// line ask, against what the items with every line ask, says what that line is worth:
+//   'carries'  without it they ask half or less: this line is what the price stands on
+//   'little'   without it they ask about the same: it adds little, and is unticked so there
+//              are more items to compare with
+//   'some'     in between
+// Which line matters cannot be known beforehand, and guesses were wrong both times: on the
+// owner's gloves and on his boots it was Chaos Resistance that the price stood on (measured on
+// the live site), not the lines that looked rare. Each try is a search, and the trade site allows
+// about fifteen a minute and thirty in five minutes.
+const MAX_PROBES = 8;
+const LITTLE = 0.9, CARRIES = 0.5;
+const WIDE_ENOUGH = 10; // with this many nearly the same listed, nothing needs unticking
 
-// The lines that may be left out one at a time: ticked in this set and not among the usual
-// ticks (those are what any comparison stands on). What a buyer can add himself comes first,
-// then the weaker tiers; at most MAX_PROBES. Each { key, text }.
+// The lines to try: every ticked one but the fractured modifier and an influence (they are
+// what the item is). What a buyer can add himself comes first, then the weaker tiers, the
+// standard check's own ticks last; at most MAX_PROBES. Each { key, text }.
 function probeLines(filters, rung, usual) {
-  const rank = (s) => (s.kind === 'crafted' || s.kind === 'implicit' ? 0 : 20 - Math.min(19, (s.tiers && s.tiers[0]) || 9));
+  const rank = (s) => (usual && usual.ticks[s.key] ? 40 : s.kind === 'crafted' || s.kind === 'implicit' ? 0 : 20 - Math.min(19, (s.tiers && s.tiers[0]) || 9));
   return filters.stats
-    .filter((s) => rung.ticks[s.key] && !(usual && usual.ticks[s.key]) && s.kind !== 'fractured' && !String(s.key).startsWith('influence:'))
+    .filter((s) => rung.ticks[s.key] && s.kind !== 'fractured' && !String(s.key).startsWith('influence:'))
     .sort((a, b) => rank(a) - rank(b))
     .slice(0, MAX_PROBES)
     .map((s) => ({ key: s.key, text: s.text }));
@@ -103,24 +112,54 @@ function probeLines(filters, rung, usual) {
 // The filters with one line unticked.
 const withoutLine = (filters, key) => ({ ...filters, stats: filters.stats.map((s) => (s.key === key && s.enabled ? { ...s, enabled: false } : s)) });
 
-// tried: what each search without one line found, [{ key, text, total, low }] (low: about the
-// cheapest real price in chaos, null when none). Returns the one to leave out, or null when no
-// try found enough: the one whose items are dearest (leaving it out costs the least), unless
-// another is nearly as dear (three quarters) with at least twice as many listed, which is the
-// better evidence.
+// tried: what each search without one line found, [{ key, text, total, price }] (price: what
+// they ask, in chaos: where the cheap end of them lies; null when none has a price). Returns the one to leave out when too few have
+// every line, or null when no try found enough: the one whose items are dearest (leaving it out
+// costs the least), unless another is nearly as dear (three quarters) with at least twice as
+// many listed, which is the better evidence.
 function judgeLines(tried) {
-  const ok = (tried || []).filter((t) => t.total >= NEAR_ENOUGH && t.low > 0).sort((a, b) => b.low - a.low || b.total - a.total);
+  const ok = (tried || []).filter((t) => t.total >= NEAR_ENOUGH && t.price > 0).sort((a, b) => b.price - a.price || b.total - a.total);
   if (!ok.length) return null;
   const best = ok[0];
-  const wider = ok.filter((t) => t !== best && t.low >= best.low * 0.75 && t.total >= best.total * 2).sort((a, b) => b.total - a.total)[0];
+  const wider = ok.filter((t) => t !== best && t.price >= best.price * 0.75 && t.total >= best.total * 2).sort((a, b) => b.total - a.total)[0];
   return wider || best;
 }
 
-// The set of ticks after leaving one line out of a set.
-function dropRung(rung, line) {
-  const ticks = { ...rung.ticks, [line.key]: false };
-  return { id: 'most', ticks, lines: Object.values(ticks).filter(Boolean).length, dropped: line.text };
+// base: what the search with every line found, { total, price }. tried: as for judgeLines.
+// Returns { ref, marks, drop }:
+//   ref    what items with every line ask (chaos); with none listed, what the dearest try asks
+//   marks  { <stat key>: { verdict: 'carries' | 'some' | 'little', total, price, ref } }
+//   drop   the lines to untick, [{ key, text }]: those that add little when there are too few
+//          nearly the same to price by; with nothing listed at all, the one judgeLines picks
+//          (and whatever adds little beside it)
+function weighLines(base, tried) {
+  const pick = judgeLines(tried);
+  const have = base && base.total >= 1 && base.price > 0;
+  const ref = have ? base.price : pick ? pick.price : null;
+  const marks = {};
+  if (ref) for (const t of tried) {
+    if (!(t.total >= 1) || !(t.price > 0)) continue;
+    marks[t.key] = { verdict: t.price >= ref * LITTLE ? 'little' : t.price <= ref * CARRIES ? 'carries' : 'some', total: t.total, price: t.price, ref };
+  }
+  let drop = [];
+  if (!have || base.total < WIDE_ENOUGH) {
+    // one or two listings are no evidence that a line can go
+    drop = tried.filter((t) => marks[t.key] && marks[t.key].verdict === 'little' && t.total >= NEAR_ENOUGH && t.total > (base ? base.total : 0));
+    if (!drop.length && pick && (!have || base.total < NEAR_ENOUGH)) drop = [pick];
+  }
+  return { ref, marks, drop: drop.map((t) => ({ key: t.key, text: t.text })), pick };
 }
 
-module.exports = { rungs, applyRung, classOf, probeLines, withoutLine, judgeLines, dropRung, NEAR_ENOUGH, NOBODY_PAYS, MAX_PROBES };
+// The filters with what was found written on each line (the window shows it beside the line).
+const markLines = (filters, marks) => ({ ...filters, stats: filters.stats.map((s) => (marks[s.key] ? { ...s, mark: marks[s.key] } : s)) });
 
+// The set of ticks after leaving lines out of a set. floor: what its items must still ask
+// (chaos) for it to stand; below that, leaving them all out together cost too much.
+function dropRung(rung, lines, floor = null) {
+  const list = Array.isArray(lines) ? lines : [lines];
+  const ticks = { ...rung.ticks };
+  for (const l of list) ticks[l.key] = false;
+  return { id: 'most', ticks, lines: Object.values(ticks).filter(Boolean).length, dropped: list.map((l) => l.text).join('; '), floor };
+}
+
+module.exports = { rungs, applyRung, classOf, probeLines, withoutLine, judgeLines, weighLines, markLines, dropRung, NEAR_ENOUGH, WIDE_ENOUGH, NOBODY_PAYS, MAX_PROBES };

@@ -1947,31 +1947,34 @@ function advancedBegin(tc, item) {
   if (trouble) trouble.event('advanced plan', { item: tc.filters.title, plan: advanced.describe(plan), ticks: rungs.map((r) => `${r.id}: ${r.lines} lines`).join(', ') || undefined, base: base ? `${base.chaos}c for ${base.what}` : undefined });
 }
 
-// After a search with the advanced check's own ticks: when fewer than NEAR_ENOUGH are listed it
-// lets go of lines and searches again. First one line at a time (advancedProbe: a search
-// without each line, and only the one that matters least is dropped); then the next set of
-// tc.advRungs. It never ends on the usual ticks while a stricter set found anything: one or two
-// items that really are like it say more than hundreds that are not (the owner's boots,
-// 2026-11-26: 2 at 2 divine with its strong lines, 4,524 from 1 chaos by the usual ticks).
-// true: more searching is on its way.
+// After a search with the advanced check's own ticks. At the first set every line is tried by
+// itself (advancedProbe): what the items without a line ask says what that line is worth, each
+// line gets its mark in the window, and the lines that add little are unticked when there are
+// too few nearly the same to price by. When fewer than NEAR_ENOUGH are listed and no line can
+// go, it moves on to the next set of tc.advRungs. It never ends on the usual ticks while a
+// stricter set found anything: one or two items that really are like it say more than hundreds
+// that are not (the owner's boots, 2026-11-26: 2 at 2 divine with their strong lines, 4,524
+// from 1 chaos by the usual ticks). true: more searching is on its way.
 const MAX_LINE_TRIES = 8; // searches spent on trying lines one at a time, for one item
 function advancedLoosen(tc, announce) {
   if (!tc.adv || !tc.advRungs || tc.advTouched || tc.advSettled || tc.state !== 'done') return false;
   const rung = tc.advRungs[tc.advRung];
-  const real = tc.listings.filter((l) => !l.bait && l.chaos > 0).map((l) => l.chaos).sort((a, b) => a - b);
-  tc.advFound[tc.advRung] = { id: rung.id, lines: rung.lines, total: tc.total, low: real.length ? real[0] : null, high: real.length ? real[real.length - 1] : null };
-  if (tc.total >= advanced.NEAR_ENOUGH || rung.id === 'usual') return false;
+  const est = advanced.estimate({ listings: tc.listings, total: tc.total });
+  tc.advFound[tc.advRung] = { id: rung.id, lines: rung.lines, total: tc.total, low: est ? est.low : null, high: est ? est.high : null, price: est ? est.typical : null };
+  if (rung.id === 'usual') return false;
+  // a set with lines left out stands only while its items still ask about as much
+  const enough = tc.total >= advanced.NEAR_ENOUGH && !(rung.floor && est && est.typical < rung.floor);
   const used = tc.advTries || 0;
-  if (!rung.tried && used < MAX_LINE_TRIES) {
+  if (!rung.tried && used < MAX_LINE_TRIES && (tc.advRung === 0 || !enough) && rung.id !== 'most') {
     rung.tried = true;
     const lines = advanced.probeLines(tc.filters, rung, tc.advRungs[tc.advRungs.length - 1]).slice(0, MAX_LINE_TRIES - used);
-    // with one line to let go of there is nothing to choose between
-    if (lines.length >= 2) { tc.advTries = used + lines.length; advancedProbe(tc, announce, lines).catch(() => {}); return true; }
-    diag.count('price check: advanced line test not run (fewer than two lines could go)');
+    if (lines.length >= 2) { tc.advTries = used + lines.length; advancedProbe(tc, announce, lines, enough).catch(() => {}); return true; }
+    diag.count('price check: advanced line test not run (fewer than two lines to try)');
   }
+  if (enough) return false;
   return advancedOn(tc, announce);
 }
-// No single line can go: on to the next set, or stay. true: another search is on its way.
+// Nothing more to try at this set: on to the next one, or stay. true: another search is on its way.
 function advancedOn(tc, announce) {
   const next = tc.advRungs[tc.advRung + 1];
   if (next.id === 'usual' && tc.total >= 1) {
@@ -1989,20 +1992,25 @@ function advancedNext(tc, announce) {
   tc.filters = advanced.applyRung(tc.filters, next);
   tc.filtersRev += 1; // the window draws the ticks again
   tc.adv.near = { id: next.id, lines: next.lines, dropped: next.dropped, first: false };
-  diag.count(`price check: advanced let go of lines (too few listed with ${rung.id === 'all' ? 'every line' : rung.id === 'most' ? 'all but one' : 'the strong lines'})`);
+  const named = (r) => (r.id === 'all' ? 'every line' : r.id === 'most' ? `without ${r.dropped.split('; ').length} line${r.dropped.includes('; ') ? 's' : ''}` : r.id === 'strong' ? 'the strong lines' : 'the usual ticks');
+  diag.count(`price check: advanced changed its ticks (from ${named(rung)} to ${named(next)})`);
   if (trouble) trouble.event('advanced loosened', { item: tc.filters.title, from: `${rung.id}: ${rung.lines} lines, ${tc.total} listed`, to: `${next.id}: ${next.lines} lines${next.dropped ? `, without "${next.dropped}"` : ''}` });
   runTradeSearch(announce);
 }
-// Too few items have every line: each line that could go is left out by itself and searched,
-// and the one whose items stay dearest is the one dropped (core/advanced/ticks.js). A search
+// Each line is left out by itself and searched (core/advanced/ticks.js): what its items ask
+// against what the items with every line ask is the line's mark, written on the line for the
+// window. Lines that add little are unticked when that gives more to compare with. A search
 // each, waiting its turn with the trade site: this takes its time, by the owner's wish.
+// enough: the set tried has enough listed to price by as it is.
 const PROBE_PAUSE_MS = 90 * 1000; // a pause the site asks for beyond this is not waited out
-async function advancedProbe(tc, announce, lines) {
+async function advancedProbe(tc, announce, lines, enough) {
   const done = diag.start('price check: advanced line test (waiting included)');
   const stale = () => tradeCheck !== tc || tc.advTouched || tc.state !== 'done';
   const show = (patch) => { Object.assign(tc.adv, patch); tc.rev = ++tradeRev; push(); };
+  const found = tc.advFound[tc.advRung] || {};
+  const base = { total: found.total || 0, price: found.price || null };
   const tried = [];
-  let text = '', failed = false, pick = null;
+  let text = '', failed = false, weighed = null;
   try {
     for (let i = 0; i < lines.length; i++) {
       show({ state: 'working', probe: { at: i + 1, of: lines.length } });
@@ -2013,23 +2021,34 @@ async function advancedProbe(tc, announce, lines) {
       if (stale()) { text = 'left: another item or search came'; return; }
       const r = await tradeClient.check(config.league, buildQuery(advanced.withoutLine(tc.filters, lines[i].key)));
       const est = advanced.estimate({ listings: markBait(r.listings.map((l) => readListing(l, chaosOfPrice))), total: r.total });
-      tried.push({ key: lines[i].key, text: lines[i].text, total: r.total, low: est ? est.low : null });
+      tried.push({ key: lines[i].key, text: lines[i].text, total: r.total, price: est ? est.typical : null });
     }
     if (stale()) { text = 'left: another item or search came'; return; }
-    pick = advanced.judgeLines(tried);
-    if (pick) tc.advRungs.splice(tc.advRung + 1, 0, advanced.dropRung(tc.advRungs[tc.advRung], pick));
-    text = text || (pick ? `${tried.length} lines tried, left out "${pick.text}": ${pick.total} listed from ${Math.round(pick.low)}c` : `${tried.length} lines tried, none can go by itself`);
+    weighed = advanced.weighLines(base, tried);
+    tc.filters = advanced.markLines(tc.filters, weighed.marks);
+    tc.filtersRev += 1; // the window draws the marks
+    const rung = tc.advRungs[tc.advRung];
+    if (weighed.drop.length) {
+      // all that add little go together when their items still ask about as much; else the one that matters least
+      const sets = [advanced.dropRung(rung, weighed.drop, weighed.ref ? weighed.ref * 0.75 : null)];
+      if (weighed.drop.length > 1) { const one = weighed.pick && weighed.drop.find((l) => l.key === weighed.pick.key) ? weighed.pick : weighed.drop[0]; sets.push(advanced.dropRung(rung, one)); }
+      // with enough listed as it was, a try that costs too much ends back at every line
+      if (enough) sets.push({ ...rung, tried: true });
+      tc.advRungs.splice(tc.advRung + 1, 0, ...sets);
+    }
+    const said = (v) => tried.filter((t) => weighed.marks[t.key] && weighed.marks[t.key].verdict === v).map((t) => t.text);
+    text = text || `${tried.length} lines tried against ${base.total} listed${base.price ? ` at ${Math.round(base.price)}c` : ''}: ${said('carries').length} set the price, ${said('some').length} add some, ${said('little').length} add little${weighed.drop.length ? `; unticked "${weighed.drop.map((l) => l.text).join('", "')}"` : ''}`;
   } catch (e) {
     failed = true; text = `failed after ${tried.length} of ${lines.length}: ${e.message || e}`;
   } finally {
     tc.adv.probe = null;
-    tc.adv.lines = tried.map((t) => ({ text: t.text, total: t.total, low: t.low }));
+    tc.adv.lines = tried.map((t) => ({ text: t.text, total: t.total, price: t.price, verdict: weighed && weighed.marks[t.key] ? weighed.marks[t.key].verdict : '' }));
     done(text, false, failed);
-    if (trouble) trouble.event('advanced lines', { item: tc.filters.title, outcome: text, tried: tried.map((t) => `without "${t.text}": ${t.total} listed${t.low ? ` from ${Math.round(t.low)}c` : ''}`) });
+    if (trouble) trouble.event('advanced lines', { item: tc.filters.title, outcome: text, with: `every line: ${base.total} listed${base.price ? ` at ${Math.round(base.price)}c` : ''}`, tried: tried.map((t) => `without "${t.text}": ${t.total} listed${t.price ? ` at ${Math.round(t.price)}c` : ''}${weighed && weighed.marks[t.key] ? ` (${weighed.marks[t.key].verdict})` : ''}`) });
   }
   if (stale()) return;
-  if (pick) advancedNext(tc, announce);
-  else if (!advancedOn(tc, announce)) searchSettled(tc, false); // it stays with what this set found
+  if (weighed && weighed.drop.length) advancedNext(tc, announce);
+  else if (enough || !advancedOn(tc, announce)) searchSettled(tc, false); // it stays with what this set found
 }
 
 // The price came from one or two items (nothing looser short of the usual ticks found more):
@@ -2076,7 +2095,7 @@ async function runAdvanced(tc) {
   // these listings, which are the ones in the window.
   const rung = tc.advRungs && !tc.advTouched ? tc.advRungs[tc.advRung] : null;
   // a stricter set that found only one or two: said beside the price, as they are the closest there is
-  tc.adv.closer = rung ? (tc.advFound || []).find((f) => f.id !== rung.id && f.total > 0 && f.low) || null : null;
+  tc.adv.closer = rung ? (tc.advFound || []).find((f) => f.id !== rung.id && f.total > 0 && f.total < advanced.NEAR_ENOUGH && f.low) || null : null;
   if ((rung && rung.id !== 'usual') || tc.advTouched) {
     const near = rung ? { id: rung.id, lines: rung.lines, dropped: rung.dropped, first: tc.advRung === 0 } : null;
     const est = advanced.estimate({ listings: tc.listings, total: tc.total });

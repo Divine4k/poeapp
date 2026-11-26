@@ -61,7 +61,7 @@
       icon: boots, iconW: 2, iconH: 2, compare: { label: '+# total maximum Life', mine: 88, lower: false },
       summary: { total: 37, low: 45, median: 80 },
       // the advanced check's band, as it looks with its answer in (Settings, Price check)
-      adv: { state: 'done', kind: 'score', worth: true, source: 'near', near: { id: 'all', lines: 5 }, closer: null, step: 0, score: 231, fits: ['life builds'], parts: [{ as: 'movement speed', share: 45 }, { as: 'life', share: 38 }, { as: 'resistances', share: 16 }], unknown: [],
+      adv: { state: 'done', kind: 'score', worth: true, source: 'near', near: { id: 'most', lines: 3, dropped: '8% reduced Mana Cost of Skills' }, closer: null, lines: [{ text: '+88 total maximum Life', total: 61, price: 48, verdict: 'some' }, { text: '30% increased Movement Speed', total: 412, price: 6, verdict: 'carries' }, { text: '8% reduced Mana Cost of Skills', total: 37, price: 70, verdict: 'little' }], step: 0, score: 231, fits: ['life builds'], parts: [{ as: 'movement speed', share: 45 }, { as: 'life', share: 38 }, { as: 'resistances', share: 16 }], unknown: [],
         low: 60, typical: 75, high: 95, sure: 'fair', speed: 'fast', seen: 10, fresh: 7, total: 46, facts: ['46 like it listed', '7 of the 10 seen listed within a day'], why: '', url: 'https://www.pathofexile.com/trade/search/Demo/adv123', base: { chaos: 12, what: 'Two-Toned Boots, item level 86' }, said: '' },
       filters: {
         ok: true, rarity: 'Rare', title: 'Kraken Spark, Two-Toned Boots', name: '', offline: false, sockets: 'R-G-B B', itemLevel: 86,
@@ -69,12 +69,12 @@
         flags: [{ key: 'corrupted', label: 'Not corrupted', value: false, enabled: true }, { key: 'ilvl', label: 'Item level 86 or higher', value: 86, enabled: false }],
         props: [{ key: 'ar', label: 'Armour', group: 'armour_filters', value: 251, min: 226, enabled: false }, { key: 'ev', label: 'Evasion Rating', group: 'armour_filters', value: 251, min: 226, enabled: false }],
         stats: [
-          { key: 'pseudo:life', text: '+88 total maximum Life', kind: 'pseudo', ids: ['x'], value: 88, min: 79, max: null, enabled: true, tiers: [2] },
+          { key: 'pseudo:life', text: '+88 total maximum Life', kind: 'pseudo', ids: ['x'], value: 88, min: 79, max: null, enabled: true, tiers: [2], mark: { verdict: 'some', total: 61, price: 48, ref: 70 } },
           { key: 'pseudo:res', text: '+70% total Elemental Resistance', kind: 'pseudo', ids: ['x'], value: 70, min: 63, max: null, enabled: true, tiers: [1, 4] },
-          { key: 'stat:0', text: '30% increased Movement Speed', kind: 'explicit', ids: ['x'], value: 30, min: 27, max: null, enabled: true, tiers: [2] },
+          { key: 'stat:0', text: '30% increased Movement Speed', kind: 'explicit', ids: ['x'], value: 30, min: 27, max: null, enabled: true, tiers: [2], mark: { verdict: 'carries', total: 412, price: 6, ref: 70 } },
           { key: 'stat:1', text: '35% increased Armour and Evasion', kind: 'fractured', ids: ['x'], value: 35, min: 32, max: null, enabled: false, tiers: [3] },
           { key: 'stat:3', text: '+1 to Level of Socketed Gems', kind: 'corruption', ids: ['x'], value: 1, min: 1, max: null, enabled: false },
-          { key: 'stat:2', text: '8% reduced Mana Cost of Skills', kind: 'crafted', ids: ['x'], value: -8, min: null, max: -7, negated: true, enabled: false },
+          { key: 'stat:2', text: '8% reduced Mana Cost of Skills', kind: 'crafted', ids: ['x'], value: -8, min: null, max: -7, negated: true, enabled: false, mark: { verdict: 'little', total: 37, price: 70, ref: 70 } },
         ],
         unknown: [],
         presets: {

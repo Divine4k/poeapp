@@ -13,7 +13,7 @@
 const { plan, describe, scoreListing, STEPS } = require('./score');
 const { estimate } = require('./estimate');
 const { run, ENOUGH } = require('./run');
-const { rungs, applyRung, probeLines, withoutLine, judgeLines, dropRung, NEAR_ENOUGH } = require('./ticks');
+const { rungs, applyRung, probeLines, withoutLine, judgeLines, weighLines, markLines, dropRung, NEAR_ENOUGH } = require('./ticks');
 const { PROFILES, WORTH_FROM } = require('./values');
 
 // What the base alone is worth: poe.ninja prices base types by item level (82 to 86) and
@@ -43,11 +43,11 @@ function outcome(adv) {
   if (adv.state !== 'done') return `${adv.state}${adv.why ? `: ${adv.why}` : ''}`;
   const r = (c) => (c >= 100 ? Math.round(c) : Math.round(c * 10) / 10);
   const speed = !adv.speed ? '' : adv.speed === 'crowded' ? ', many listed' : `, sells ${adv.speed}`;
-  const set = !adv.near ? '' : adv.near.id === 'all' ? `all ${adv.near.lines}` : adv.near.id === 'most' ? `${adv.near.lines} (all but "${adv.near.dropped}")` : `the strongest ${adv.near.lines}`;
+  const set = !adv.near ? '' : adv.near.id === 'all' ? `all ${adv.near.lines}` : adv.near.id === 'most' ? `${adv.near.lines} (without "${adv.near.dropped}")` : `the strongest ${adv.near.lines}`;
   const from = adv.source === 'near' ? `the ${adv.total} listed with ${set} of its lines`
     : adv.source === 'score' ? `its own search (step ${adv.step + 1} of ${STEPS.length}, ${adv.seen} of the ${adv.looked} looked at count, ${adv.total} like it)`
       : adv.source === 'exact' ? `the exact search (${adv.total} found)` : `the usual search (${adv.total} found)`;
   return `${r(adv.low)} to ${r(adv.high)} chaos, ${adv.sure}${speed}, from ${from}`;
 }
 
-module.exports = { plan, describe, scoreListing, run, estimate, rungs, applyRung, probeLines, withoutLine, judgeLines, dropRung, NEAR_ENOUGH, baseValue, outcome, ENOUGH, STEPS, PROFILES, WORTH_FROM };
+module.exports = { plan, describe, scoreListing, run, estimate, rungs, applyRung, probeLines, withoutLine, judgeLines, weighLines, markLines, dropRung, NEAR_ENOUGH, baseValue, outcome, ENOUGH, STEPS, PROFILES, WORTH_FROM };
