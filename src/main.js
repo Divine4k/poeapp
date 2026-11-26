@@ -698,12 +698,29 @@ function keepSnapshot(result) {
   if (!snapshots || !run || !(ledger.inMap || ledger.pendingArrival)) return;
   const trip = run.trip || 1;
   const base = carriedIn && carriedIn.runId === run.id && carriedIn.trip === trip ? carriedIn.cells : [];
-  const cells = markCarried(result.cells.filter((c) => c.status !== 'covered'), base, (a, b) => similarity(a, b) > 0.9)
+  // Back from the map, a slot first seen empty (or seen holding something else) has been filled
+  // from the stash since: not what the map brought out, so it is not in the picture.
+  const withdrawn = new Set();
+  if (ledger.pendingArrival) {
+    for (const c of result.cells) {
+      if (!ledger.arrival.has(c.cell)) continue;
+      const first = ledger.arrival.get(c.cell);
+      if (first === null || (c.name && first.name !== c.name)) withdrawn.add(c.cell);
+    }
+  }
+  const cells = markCarried(result.cells.filter((c) => c.status !== 'covered' && !withdrawn.has(c.cell)), base, (a, b) => similarity(a, b) > 0.9)
     .map((c) => ({ ...c, score: c.score ? Math.round(c.score * 100) : null, near: nearList(c.near), packed: c.print ? packPrint(c.print) : null }));
   const growing = ledger.inMap;
   const stale = !!(carriedIn && carriedIn.stale && base === carriedIn.cells);
-  if (!snapshots.wants(run.id, trip, cells, growing)) return;
-  if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing, stale })) session.markSnapshot(run.id);
+  // A picture that shows such a slot is replaced even by a smaller one.
+  const prev = snapshots.get(run.id).trips.find((t) => t.trip === trip);
+  const fix = !!prev && ledger.pendingArrival && prev.cells.some((c) => {
+    if (!ledger.arrival.has(c.cell)) return false;
+    const first = ledger.arrival.get(c.cell);
+    return first === null || (c.name && first.name !== c.name);
+  });
+  if (!snapshots.wants(run.id, trip, cells, growing || fix)) return;
+  if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing: growing || fix, stale })) session.markSnapshot(run.id);
 }
 
 function updateUnknown(found) {
