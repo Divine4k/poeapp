@@ -139,10 +139,11 @@ function closeToast(t) { t.classList.add('gone'); setTimeout(() => t.remove(), 2
 // What a map's total leaves out, in words.
 function uncountedLine(run, withHelp) {
   const u = run.uncounted || { stacks: 0, singles: 0 };
-  if (!u.stacks && !u.singles) return '';
+  if (!u.stacks && !u.singles && !u.hidden) return '';
   const parts = [];
   if (u.stacks) parts.push(`${u.stacks} unrecognised ${u.stacks === 1 ? 'stack' : 'stacks'}`);
   if (u.singles) parts.push(`${u.singles} single ${u.singles === 1 ? 'item' : 'items'} (maps, gear, gems)`);
+  if (u.hidden) parts.push(`whatever was in ${u.hidden} ${u.hidden === 1 ? 'slot' : 'slots'} a tooltip hid until it was stashed`);
   const help = withHelp ? ` Hover one in game and press ${esc(state.config.hotkeys.clipboard)} to count it.` : '';
   return `<p class="uncounted">Not in this total: ${parts.join(' and ')}.${help}</p>`;
 }

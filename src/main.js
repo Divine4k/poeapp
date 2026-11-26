@@ -763,6 +763,7 @@ async function readInventory(force) {
         };
       }),
     };
+    trackBlind(result);
     const known = result.cells.filter((c) => c.name).map((c) => ({ cell: c.cell, name: c.name, qty: c.qty }));
     const gains = ledger.reading({ counts: result.counts, cells: known, empties: result.empties });
     if (gains.length && session.current) session.addLoot(gains, 'inventory');
@@ -793,6 +794,27 @@ function mouseSpot() {
   const p = cursorOnDisplay(config.inventory.displayId);
   return p ? `${Math.round(p.x / 6)},${Math.round(p.y / 6)}` : 'off';
 }
+// Back from a map: slots that were covered every time they were looked at, so nothing is known
+// about them. One that is first seen empty may have held loot that went to the stash unseen:
+// the map then says so in its "not in this total" line. Asked before the ledger takes the reading.
+const blindSlots = new Set();
+let blindTold = false; // the in-game hint was given for this trip back
+function trackBlind(result) {
+  if (!ledger.pendingArrival) { blindSlots.clear(); blindTold = false; return; }
+  for (const k of result.blind) if (!ledger.arrival.has(k)) blindSlots.add(k);
+  let lost = 0;
+  for (const k of result.empties) if (blindSlots.delete(k)) lost++;
+  for (const c of result.cells) if (c.status !== 'covered') blindSlots.delete(c.cell);
+  if (lost && session.current) session.addHidden(session.currentId, lost);
+}
+// The follow-up readings are over and slots are still blind: ask for a moment without a tooltip.
+function tellBlind() {
+  if (blindTold || !blindSlots.size || config.inventory.alerts === false) return;
+  blindTold = true;
+  const n = blindSlots.size;
+  showToast({ title: `${n} ${n === 1 ? 'slot is' : 'slots are'} hidden by a tooltip`, detail: 'Move the mouse off the inventory for a moment so Map Companion can read them before you stash.', bad: true }, true);
+}
+
 function followUp(hidden) {
   if (!hidden) { stopFollow(); return; }
   if (follow) return; // already watching
@@ -800,7 +822,12 @@ function followUp(hidden) {
 }
 function followTick() {
   if (!follow) return;
-  if (Date.now() > follow.until || follow.reads >= FOLLOW.reads || !status.inventory.open) { stopFollow(); return; }
+  if (Date.now() > follow.until || follow.reads >= FOLLOW.reads || !status.inventory.open) {
+    const open = status.inventory.open;
+    stopFollow();
+    if (open) tellBlind();
+    return;
+  }
   if (invBusy) return;
   const at = mouseSpot();
   if (at === follow.at) return;

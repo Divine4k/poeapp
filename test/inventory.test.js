@@ -176,6 +176,16 @@ test('reader: a covered slot that still holds its item keeps its clean picture, 
   for (const c of again.cells) if (before.has(c.cell)) assert.equal(c.cleanView, undefined);
 });
 
+test('reader: covered slots never seen clearly are reported as blind, once seen they are not', () => {
+  const reader = new InventoryReader(taughtIndex());
+  const first = reader.read(tooltipFrame, { cursor: { row: 4, col: 0 } });
+  const under = coveredCells(tooltipFrame);
+  assert.ok(first.blind.length > 0);
+  for (const k of first.blind) assert.ok(under.has(k) || k === 48);
+  reader.read(frames.inv_map);                                     // every slot seen clearly
+  assert.equal(reader.read(tooltipFrame, { cursor: { row: 4, col: 0 } }).blind.length, 0);
+});
+
 // Builds a reading from { name: qty } with every item in its own fixed slot.
 const SLOT = { portal: 0, chaos: 1, divine: 2, alt: 3, scarab: 4, thread: 5 };
 function obs(items, hidden = []) {

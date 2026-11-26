@@ -199,7 +199,16 @@ class Session {
     const run = this.runs.find((r) => r.id === runId);
     if (!run) return;
     const u = run.uncounted || { stacks: 0, singles: 0 };
-    run.uncounted = { stacks: Math.max(u.stacks, stacks), singles: Math.max(u.singles, singles) };
+    run.uncounted = { ...u, stacks: Math.max(u.stacks, stacks), singles: Math.max(u.singles, singles) };
+  }
+
+  // Back from this run, n slots were hidden by a tooltip every time they were looked at and
+  // then found empty: whatever they held went to the stash without being counted.
+  addHidden(runId, n) {
+    const run = this.runs.find((r) => r.id === runId);
+    if (!run || !(n > 0)) return;
+    const u = run.uncounted || { stacks: 0, singles: 0 };
+    run.uncounted = { ...u, hidden: (u.hidden || 0) + n };
   }
 
   // A trip is one stay in the map between two visits to the hideout. The inventory picture

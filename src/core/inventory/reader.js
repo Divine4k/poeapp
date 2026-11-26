@@ -25,6 +25,9 @@ class InventoryReader {
     // (or anything else) that still holds the same item is shown and kept with this picture, so
     // the inventory pictures never show a tooltip in place of an item.
     this.clean = new Array(COLS * ROWS).fill(null);
+    // Slots seen clearly at least once (empty or not). A covered slot never seen clearly is
+    // "blind": what is in it is not known at all.
+    this.known = new Array(COLS * ROWS).fill(false);
   }
 
   // The kept answers for slot k, started afresh when its picture changed.
@@ -59,6 +62,8 @@ class InventoryReader {
   // Returns null when the inventory is not open, otherwise:
   // { counts: Map(name -> qty), recognised, unknown: [{ cell, qty, print, rgb }], empties: [cell],
   //   cells: [{ cell, rgb, print, status, name, qty, score, source }] }
+  // hidden: how many slots may be covered. blind: covered slots never seen clearly, so nothing
+  // at all is known about them.
   // status: 'item' recognised now, 'remembered' covered but known from before,
   //         'unknown' has a stack number but no match, 'skipped' no stack number, 'ignored'.
   read(frame, { cursor = null } = {}) {
@@ -69,6 +74,11 @@ class InventoryReader {
     const unknown = [];
     const cells = [];
     const empties = [];
+    const blind = [];
+    for (let k = 0; k < COLS * ROWS; k++) {
+      if (!hidden.has(k)) this.known[k] = true;
+      else if (!this.known[k] && !this.memory[k]) blind.push(k);
+    }
     let recognised = 0;
     const add = (k) => { const m = this.memory[k]; counts.set(m.name, (counts.get(m.name) || 0) + m.qty); recognised++; };
     // First the whole grid is cut out, so pieces of items that take several slots (a bow, a
@@ -171,7 +181,7 @@ class InventoryReader {
       }
     }
     this.cleanUp(cells, hidden);
-    return { counts, recognised, unknown, cells, empties, hidden: hidden.size };
+    return { counts, recognised, unknown, cells, empties, hidden: hidden.size, blind };
   }
 
   // A slot read clearly keeps its picture as the clean one. A slot that may be covered and still

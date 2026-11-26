@@ -166,6 +166,9 @@ test('session: run lifecycle, timing, deaths, loot and costs', () => {
   s.setUncounted(s.runs[1].id, 1, 4);
   assert.deepEqual(s.summary(prices).runs[1].uncounted, { stacks: 2, singles: 4 });
   assert.deepEqual(s.summary(prices).runs[0].uncounted, { stacks: 0, singles: 0 });
+  s.addHidden(s.runs[1].id, 2);
+  s.setUncounted(s.runs[1].id, 1, 1);                              // keeps the hidden slots
+  assert.deepEqual(s.summary(prices).runs[1].uncounted, { stacks: 2, singles: 4, hidden: 2 });
 
   const s2 = new Session({ now: () => t });
   s2.restore(JSON.parse(JSON.stringify(s)));
