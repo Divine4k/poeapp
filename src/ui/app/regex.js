@@ -40,12 +40,13 @@ function rxLenHtml(text) {
 }
 function rxBarHtml(name) {
   return `<section class="panel rx-bar" aria-label="Your search">
-    <input type="text" id="rx-name" class="rx-name" maxlength="60" placeholder="${esc(name)}" aria-label="Name to save it under">
+    <input type="text" id="rx-name" class="rx-name" maxlength="60" placeholder="${esc(name)}" value="${esc(rxEditing && rxTab === 'maps' ? rxEditing.name : '')}" aria-label="Name to save it under">
     <input type="text" class="rx-code" id="rx-code" spellcheck="false" autocomplete="off" aria-label="The search: paste one you have, or edit it here">
     <span class="rx-n" id="rx-n"></span>
     <button type="button" class="primary" data-rx-do="copy" data-rx-need>Copy</button>
     <button type="button" data-rx-do="send" data-rx-need title="Brings the game to the front and puts the search in the stash search box">Put in game</button>
-    <button type="button" data-rx-do="save" data-rx-need title="Adds it to My searches, under the name on the left">Save</button>
+    ${rxEditing && rxTab === 'maps' ? `<button type="button" data-rx-do="save" data-rx-need title="Changes &quot;${esc(rxEditing.name || 'this search')}&quot; in My searches">Save changes</button><button type="button" class="link" data-rx-do="saveNew" data-rx-need title="Adds it to My searches as a new search">Save as new</button>`
+    : '<button type="button" data-rx-do="save" data-rx-need title="Adds it to My searches, under the name on the left">Save</button>'}
     <button type="button" class="link" data-rx-do="reset" title="Clears everything picked here">Reset</button>
   </section>
   <p class="rx-kept" id="rx-kept" hidden></p>`;
@@ -79,6 +80,8 @@ const rxCk = (path, on, label) => `<label class="rx-ck"><input type="checkbox" d
 const rxNum = (path, n, label) => `<label class="rx-nf">${label}<span><input type="text" inputmode="numeric" maxlength="3" data-rx-num="${path}" value="${n || ''}" placeholder="–" aria-label="${label}, at least">%</span></label>`;
 
 // ---- map builder: the four boxes as on poe.re, then mods not wanted and wanted ---------------
+// A saved search opened with Edit: Save then changes it in place. { i, name } or null.
+let rxEditing = null;
 let rxFind = { avoid: '', wantMods: '' }; // what is typed in each list's search box
 const rxListKey = {}; // what each list was last drawn from
 function rxMapsHtml() {
@@ -223,6 +226,7 @@ function renderSearches() {
       <span class="ss-btns">
         <button type="button" class="small" data-ss-copy="${i}" ${x.text ? '' : 'disabled'}>Copy</button>
         <button type="button" class="small" data-ss-send="${i}" ${x.text ? '' : 'disabled'} title="Brings the game to the front and puts the search in the stash search box">In game</button>
+        <button type="button" class="small" data-ss-edit="${i}" ${x.text ? '' : 'disabled'} title="Opens it in Maps, ready to change">Edit</button>
         <button type="button" class="link" data-ss-try="${i}" ${x.text ? '' : 'disabled'} title="Try it on an item">Try</button>
         <button type="button" class="link" data-ss-move="${i}" data-dir="-1" ${i && !f ? '' : 'disabled'} aria-label="Move up">Up</button>
         <button type="button" class="link" data-ss-move="${i}" data-dir="1" ${i < list.length - 1 && !f ? '' : 'disabled'} aria-label="Move down">Down</button>
@@ -292,6 +296,7 @@ $('rx-body').addEventListener('click', (e) => {
     if (what === 'fromRules') rxSet('map.avoid', [...new Set([...rxB.map.avoid, ...RX.modsFromRules(state.config.mapRules)])]);
     else if (what === 'unkeep') rxSet('map.kept', []);
     else if (what === 'reset') {
+      rxEditing = null;
       rxB = RX.cleanBuilders({ ...rxB, [rxTab === 'maps' ? 'map' : 'vendor']: {} });
       rxFind = { avoid: '', wantMods: '' };
       clearTimeout(rxSaveTimer); api.setConfig({ regex: rxB });
@@ -299,10 +304,19 @@ $('rx-body').addEventListener('click', (e) => {
     }
     else if (what === 'copy' && text) act({ type: 'regexCopy', text });
     else if (what === 'send' && text) act({ type: 'regexSend', text });
-    else if (what === 'save' && text) {
-      const name = $('rx-name').value.trim() || $('rx-name').placeholder;
-      saveSearches([...ssList(), { name, text }]);
-      $('rx-name').value = '';
+    else if ((what === 'save' || what === 'saveNew') && text) {
+      const name = $('rx-name').value.trim() || $('rx-name').placeholder, list = ssList();
+      // The row is found again by its text, in case the list was moved around meanwhile.
+      const at = rxEditing ? (list[rxEditing.i] && list[rxEditing.i].text === rxEditing.orig ? rxEditing.i : list.findIndex((x) => x.text === rxEditing.orig)) : -1;
+      if (what === 'save' && rxEditing && rxTab === 'maps' && at >= 0) {
+        list[at] = { name, text };
+        rxEditing = { i: at, name, orig: text };
+        saveSearches(list);
+      } else {
+        saveSearches([...list, { name, text }]);
+        if (rxEditing && rxTab === 'maps') { rxEditing = { i: list.length, name, orig: text }; rxDrawn = ''; renderRegex(); return; } // now editing the new copy
+        $('rx-name').value = '';
+      }
       rxFlash(d, 'Saved');
     }
     return;
@@ -315,11 +329,24 @@ $('rx-body').addEventListener('click', (e) => {
     if (rows.length) rows[rows.length - 1].focus();
     return;
   }
-  const row = e.target.closest('[data-ss-copy],[data-ss-send],[data-ss-try],[data-ss-move],[data-ss-del]');
+  const row = e.target.closest('[data-ss-copy],[data-ss-send],[data-ss-edit],[data-ss-try],[data-ss-move],[data-ss-del]');
   if (!row) return;
   const list = ssList(), ds = row.dataset;
   if (ds.ssCopy) { const x = list[Number(ds.ssCopy)]; if (x && x.text) act({ type: 'regexCopy', text: x.text }); return; }
   if (ds.ssSend) { act({ type: 'stashSearch', i: Number(ds.ssSend) }); return; }
+  if (ds.ssEdit) {
+    // Opens Maps with this search read in, its name in the bar; Save changes it in place.
+    const i = Number(ds.ssEdit), x = list[i];
+    if (!x || !x.text) return;
+    rxB = { ...rxB, map: RX.readMapSearch(x.text) };
+    clearTimeout(rxSaveTimer); api.setConfig({ regex: rxB });
+    rxEditing = { i, name: x.name, orig: x.text };
+    rxFind = { avoid: '', wantMods: '' };
+    rxTab = 'maps';
+    try { localStorage.setItem('regexTab', rxTab); } catch (_) { /* not kept */ }
+    rxDrawn = ''; renderRegex();
+    return;
+  }
   if (ds.ssTry) { const x = list[Number(ds.ssTry)]; if (x) { rxTry.search = x.text; rxTab = 'test'; renderRegex(); } return; }
   if (ds.ssMove) {
     const i = Number(ds.ssMove), j = i + Number(ds.dir);
