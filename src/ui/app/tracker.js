@@ -581,6 +581,9 @@ const tkLayoutKey = (key) => `${tkTab === 'Main' ? 'root' : `tab:${tkTab}`}/${ke
 
 // Boxes not moved by hand yet are laid out as a tree: one column per level, each parent
 // halfway along its children (open ones first). height(key): the box's drawn height.
+// The tab itself is the map's left edge (0.60, owner's idea: "a tab is technically a box"): a
+// rail with connector dots there, a line from it to each box straight on the tab.
+const TK_EDGE = 14;
 function tkAutoLayout(height, list) {
   const kids = new Map();
   for (const i of list) { const k = tkParentKey(i); if (kids.has(k)) kids.get(k).push(i); else kids.set(k, [i]); }
@@ -593,10 +596,11 @@ function tkAutoLayout(height, list) {
     const ch = (kids.get(key) || []).filter((c) => !seen.has(c.number));
     let mid;
     if (!ch.length) { mid = next + h / 2; next += h + 14; } else { const ms = ch.map((c) => place(c.number, depth + 1)); mid = (ms[0] + ms[ms.length - 1]) / 2; next = Math.max(next, mid + h / 2 + 14); }
-    pos[key] = [40 + depth * 300, Math.round(mid - h / 2)];
+    pos[key] = [TK_EDGE + 70 + (depth - 1) * 300, Math.round(mid - h / 2)];
     return mid;
   };
   place('root', 0);
+  delete pos.root; // the tab has no box of its own: its edge is the map's left side
   return pos;
 }
 
@@ -615,14 +619,8 @@ function tkMapDraw() {
       <span class="tk-plug" data-plug="${i.number}" title="Drag onto another box to connect it under this one"></span>
     </div>`;
   };
-  const all = tkItems.filter((i) => tkTabOf(i) === tkTab), open = all.filter((i) => !tkClosed(i)).length;
-  const head = `<div class="tk-node root" data-node="root" tabindex="0" role="button" aria-label="${esc(tkTab)}">
-      <span class="tk-ntitle">${esc(tkTab === 'Main' ? 'Map Companion' : tkTab)}</span>
-      <span class="tk-nmeta">${open} open, ${all.length - open} done${tkHideDone && all.length > open ? ' (hidden)' : ''}</span>
-      <button type="button" class="tk-plus" data-plus="root" title="Add something to this tab" aria-label="Add something to this tab">+</button>
-      <span class="tk-plug" data-plug="root" title="Drag onto a box to hang it straight under the tab"></span>
-    </div>`;
-  setHtml($('tk-nodes'), head + list.map(node).join('') + (list.length ? '' : `<p class="empty tk-loading tk-nothing">${all.length ? 'Everything on this tab is finished (Hide finished is on).' : 'Nothing on this tab yet. Add something with the field above, or drag a box onto this tab from another one.'}</p>`));
+  const all = tkItems.filter((i) => tkTabOf(i) === tkTab);
+  setHtml($('tk-nodes'), list.map(node).join('') + (list.length ? '' : `<p class="empty tk-loading tk-nothing">${all.length ? 'Everything on this tab is finished (Hide finished is on).' : 'Nothing on this tab yet. Add something with the field above, or drag a box onto this tab from another one.'}</p>`));
   tkUnderLine();
   // Laid out once the boxes are drawn, so each one's real height is known.
   const els = tkEls = new Map([...$('tk-nodes').querySelectorAll('[data-node]')].map((el) => [tkKey(el.dataset.node), el]));
@@ -640,7 +638,7 @@ function tkMapDraw() {
     const next = [tkPos[key][0] - auto[key][0], tkPos[key][1] - auto[key][1]];
     for (const c of kids.get(key) || []) if (!(c in tkPos) && auto[c]) placeAt(c, next);
   };
-  placeAt('root', [0, 0]);
+  for (const c of kids.get('root') || []) if (auto[c]) placeAt(c, [0, 0]);
   for (const k of Object.keys(auto)) if (!(k in tkPos)) tkPos[k] = auto[k];
   for (const el of els.values()) tkPlace(el);
   tkLinesNow();
@@ -686,18 +684,27 @@ function tkLines(temp) {
     canvas.style.width = `${maxX + 240}px`; canvas.style.height = `${maxY + 160}px`;
     svg.setAttribute('width', maxX + 240); svg.setAttribute('height', maxY + 160);
   }
-  const paths = [];
+  const height = maxY + 160;
+  const paths = [`<path class="tk-rail" d="M${TK_EDGE},0 V${height}"/>`], dots = [];
   for (const k of tkSize.keys()) {
-    const i = k === 'root' ? null : tkFind(k);
-    if (!i) continue;
-    const a = tkBox(tkParentKey(i)), b = tkBox(k);
-    if (!a || !b) continue;
+    const i = tkFind(k), b = tkBox(k);
+    if (!i || !b) continue;
+    const my = Math.round(b.y + b.h / 2);
+    if (tkParentKey(i) === 'root') {
+      // Straight on the tab: a line from the edge, with its dot there.
+      paths.push(`<path class="tk-line st-${i.status}" d="M${TK_EDGE},${my} H${b.x}"/>`);
+      dots.push(my);
+      continue;
+    }
+    const a = tkBox(tkParentKey(i));
+    if (!a) continue;
     const d = tkBranchPath(a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2);
-    // A line from the tab's own box is just "on this tab": it has nothing to take off.
-    const hit = tkParentKey(i) === 'root' ? '' : `<path class="tk-hit" data-line="${i.number}" d="${d}"><title>Click to take #${i.number} off here</title></path>`;
-    paths.push(`${hit}<path class="tk-line st-${i.status}" d="${d}"/>`);
+    paths.push(`<path class="tk-hit" data-line="${i.number}" d="${d}"><title>Click to take #${i.number} off here</title></path><path class="tk-line st-${i.status}" d="${d}"/>`);
   }
-  svg.innerHTML = paths.join('') + (temp ? `<path class="tk-line temp" d="${temp}"/>` : '');
+  // Spare dots every so often down the edge, to drag from wherever is handy.
+  for (let y = 60; y < height - 20; y += 120) if (!dots.some((d) => Math.abs(d - y) < 45)) dots.push(y);
+  const dot = (y) => `<circle class="tk-edgedot" data-plug="root" data-y="${y}" cx="${TK_EDGE}" cy="${y}" r="5"><title>Drag onto a box to put it straight on this tab</title></circle>`;
+  svg.innerHTML = paths.join('') + dots.map(dot).join('') + (temp ? `<path class="tk-line temp" d="${temp}"/>` : '');
 }
 // While a box or a line is dragged the lines are drawn once per screen refresh, however many
 // pointer movements arrive in between.
@@ -749,7 +756,7 @@ $('tk-map').addEventListener('pointerdown', (e) => {
   }
   e.preventDefault();
   map.setPointerCapture(e.pointerId);
-  if (plug) tkGesture = { kind: 'link', from: tkKey(plug.dataset.plug) };
+  if (plug) tkGesture = { kind: 'link', from: tkKey(plug.dataset.plug), fromY: Number(plug.dataset.y) || 0 };
   else if (box) {
     const key = tkKey(box.dataset.node), [x0, y0] = tkCanvasPoint(e);
     tkGesture = { kind: 'move', key, x0, y0, moved: false, tabs: key === 'root' ? null : $('tk-tabs').getBoundingClientRect(), start: Object.fromEntries(tkBranch(key).map((k) => [k, (tkPos[k] || [40, 40]).slice()])) };
@@ -776,7 +783,7 @@ $('tk-map').addEventListener('pointermove', (e) => {
     return;
   }
   // Connecting: a line follows the pointer, the box under it lights up.
-  const a = tkBox(g.from), [x, y] = tkCanvasPoint(e);
+  const a = g.from === 'root' ? { x: TK_EDGE, w: 0, y: g.fromY, h: 0 } : tkBox(g.from), [x, y] = tkCanvasPoint(e);
   const t = tkTargetAt(e);
   const over = t != null && t !== 'root' && t !== g.from ? tkEls.get(t) : null;
   if (over !== g.over) { if (g.over) g.over.classList.remove('drop'); if (over) over.classList.add('drop'); g.over = over; }
@@ -1019,7 +1026,7 @@ for (const id of ['tk-map', 'tk-board']) {
     const box = e.target.closest('[data-node], [data-tk]');
     const line = e.target.closest('[data-line]');
     const col = e.target.closest('[data-col]');
-    if (box && (box.dataset.node === 'root')) tkRootMenu(e.clientX, e.clientY);
+    if (e.target.closest('[data-plug="root"]')) tkRootMenu(e.clientX, e.clientY);
     else if (box) tkBoxMenu(Number(box.dataset.node || box.dataset.tk), e.clientX, e.clientY);
     else if (line) tkLineMenu(Number(line.dataset.line), e.clientX, e.clientY);
     else if (col) tkColMenu(col.dataset.col, e.clientX, e.clientY);

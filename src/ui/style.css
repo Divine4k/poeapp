@@ -1889,3 +1889,9 @@ button.primary.danger:hover { background: color-mix(in srgb, var(--blood) 85%, w
 .ul-key { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--ash); font-size: 12px; }
 .ul-key i { width: 12px; flex: none; margin-left: 10px; }
 .ul-key i:first-child { margin-left: 0; }
+
+/* The tab is the map's left edge (0.60): a faint rail, a dot where each box straight on the tab
+   joins it, and spare dots to drag from. */
+.tk-rail { fill: none; stroke: color-mix(in srgb, var(--gold) 28%, transparent); stroke-width: 2; }
+.tk-edgedot { fill: var(--slab); stroke: color-mix(in srgb, var(--gold) 70%, transparent); stroke-width: 2; pointer-events: all; cursor: crosshair; }
+.tk-edgedot:hover { fill: var(--gold); }
