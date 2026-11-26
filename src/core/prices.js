@@ -183,6 +183,24 @@ class PriceTable {
     }
     return this.full.get(normalize(full)) || null;
   }
+  // A gem as it is: poe.ninja prices each gem per level, quality and corrupted or not
+  // ("Grace (20/20c)", "Grace (21c)", "Grace (1/20)"). Of the versions this gem is at least as
+  // good as, the one with the highest level, then the highest quality; a corrupted gem only
+  // against corrupted ones and the other way round. Returns that entry with what it stands for,
+  // { ...entry, gem: { level, quality, corrupted } }, or null when no version fits.
+  gem(name, level, quality, corrupted) {
+    const head = `${String(name || '').toLowerCase()} (`;
+    let best = null;
+    for (const e of this.byNorm.values()) {
+      if (!e.variant || !/Gem$/.test(e.category) || !e.name.toLowerCase().startsWith(head)) continue;
+      const m = /\((\d+)(?:\/(\d+))?(c)?\)$/.exec(e.name.slice(head.length - 1));
+      if (!m) continue;
+      const g = { level: Number(m[1]), quality: Number(m[2]) || 0, corrupted: !!m[3] };
+      if (g.corrupted !== !!corrupted || g.level > (level || 1) || g.quality > (quality || 0)) continue;
+      if (!best || g.level > best.gem.level || (g.level === best.gem.level && g.quality > best.gem.quality)) best = { ...e, gem: g };
+    }
+    return best;
+  }
   get divine() { return this.chaosOf('Divine Orb'); }
 
   // Items that can be recognised by their inventory picture.

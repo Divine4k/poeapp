@@ -129,6 +129,22 @@ class TradeClient {
     } finally { this.busy = false; }
   }
 
+  // The gems of the site's own item list, [{ type, text, disc }], asked for once and kept: it
+  // says how a transfigured gem is named in a search (gemType in tradeQuery). [] when the site
+  // does not give it; that is tried again with the next gem.
+  async gems() {
+    if (!this.gemList) {
+      this.gemList = (async () => {
+        const res = await this.fetchImpl(`${SITE}/api/trade/data/items`, { headers: { Accept: 'application/json' } });
+        const json = await res.json();
+        const group = ((json && json.result) || []).find((g) => g && (g.id === 'gems' || g.id === 'gem'));
+        if (!res.ok || !group || !Array.isArray(group.entries)) throw new Error(`no gem list (${res.status})`);
+        return group.entries.map((e) => ({ type: e.type || '', text: e.text || '', disc: e.disc || '' }));
+      })().catch(() => { this.gemList = null; return []; });
+    }
+    return this.gemList;
+  }
+
   // The bulk exchange (currency and other stackables): offers selling `want` for `have`, as the
   // site sends them in one request. Returns { queryId, total, offers: [...] }.
   async exchange(league, want, have) {
@@ -181,6 +197,14 @@ function statValue(item, ids) {
   return null;
 }
 
+// A listed gem's level and quality as "21/20", from its properties ("Level": "21 (Max)",
+// "Quality": "+20%"); a gem without quality has no such line.
+function gemOf(it) {
+  const prop = (name) => { const p = (it.properties || []).find((x) => plainText(x.name) === name); const v = p && p.values && p.values[0] ? String(p.values[0][0]) : ''; const m = /\d+/.exec(v); return m ? Number(m[0]) : null; };
+  const level = prop('Level');
+  return level === null ? null : `${level}/${prop('Quality') || 0}`;
+}
+
 // One listing as the site sends it -> what the app shows.
 // chaosOf: (amount, currency) -> value in chaos, or null when the currency's rate is unknown.
 // compare: what each listing is compared on (compareSpec in tradeQuery), or null.
@@ -188,7 +212,8 @@ function readListing(raw, chaosOf = () => null, compare = null) {
   const l = raw.listing || {}, it = raw.item || {}, acc = l.account || {};
   const price = l.price && isFinite(Number(l.price.amount)) ? { amount: Number(l.price.amount), currency: String(l.price.currency || '') } : null;
   let cmp = null;
-  if (compare && compare.prop) { const v = Number((it.extended || {})[compare.prop]); cmp = isFinite(v) && v > 0 ? v : null; }
+  if (compare && compare.gem) cmp = gemOf(it);
+  else if (compare && compare.prop) { const v = Number((it.extended || {})[compare.prop]); cmp = isFinite(v) && v > 0 ? v : null; }
   else if (compare && compare.ids) cmp = statValue(it, compare.ids);
   return {
     id: raw.id, price, chaos: price ? chaosOf(price.amount, price.currency) : null,
@@ -200,7 +225,7 @@ function readListing(raw, chaosOf = () => null, compare = null) {
     // Its picture (only from the game's own picture site) with its sockets, and its size in cells.
     icon: /^https:\/\/web\.poecdn\.com\//.test(it.icon || '') ? it.icon : null,
     base: it.baseType || it.typeLine || '', w: it.w || 1, h: it.h || 1, sockets: socketText(it.sockets),
-    cmp: cmp === null ? null : Math.round(cmp * 10) / 10,
+    cmp: cmp === null || typeof cmp === 'string' ? cmp : Math.round(cmp * 10) / 10,
     // The line the site would have you send the seller (the Trade page's buying list types it on a click).
     whisper: typeof l.whisper === 'string' ? l.whisper : '',
     detail: itemDetail(it),

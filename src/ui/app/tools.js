@@ -81,7 +81,7 @@ function tradeFormHtml(f) {
   if (f.type) rows.push(`<li>${tick('data-tc="type"', `Base type: ${esc(f.type.value)}`, f.type.enabled)}</li>`);
   for (const x of f.flags) rows.push(`<li>${tick(`data-tc="flag" data-key="${esc(x.key)}"`, esc(x.label), x.enabled)}</li>`);
   for (const x of f.props) {
-    rows.push(`<li>${tick(`data-tc="prop" data-key="${esc(x.key)}"`, `${esc(x.label)}: ${x.value}`, x.enabled)}
+    rows.push(`<li>${tick(`data-tc="prop" data-key="${esc(x.key)}"`, `${esc(x.label)}: ${x.value}${x.unit || ''}`, x.enabled)}
         <input type="number" step="any" data-tc-min="${esc(x.key)}" value="${numAttr(x.min)}" placeholder="min" aria-label="Lowest ${esc(x.label)}"></li>`);
   }
   for (const x of f.stats) {

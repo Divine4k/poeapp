@@ -41,7 +41,7 @@ const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
 const { placeWindow } = require('./core/windowPlace');
 const { StatIndex } = require('./core/tradeStats');
-const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
+const { searchable, gemType, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
 const ultimatum = require('./core/ultimatum');
 const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
 const { JewelService } = require('./jewels');
@@ -1439,9 +1439,11 @@ function checkText(text, { count = true } = {}) {
   const name = priceName(item);
   const entry = prices.get(name);
   startTradeCheck(item, { always: !count });
+  // A gem is worth what its level and quality make it, not what the cheapest of its name costs.
+  const worth = (item.isGem && gemEntry(item)) || entry;
   priceCheck = {
-    at: Date.now(), name, qty: item.stackSize, found: !!entry,
-    each: entry ? entry.chaos : 0, total: entry ? entry.chaos * item.stackSize : 0,
+    at: Date.now(), name, qty: item.stackSize, found: !!worth,
+    each: worth ? worth.chaos : 0, total: worth ? worth.chaos * item.stackSize : 0,
   };
   if (count) nameUnderCursor(item, entry ? entry.name : name, entry);
 }
@@ -1586,6 +1588,18 @@ async function runCrafts(tc, filters = tc.filters) {
   tc.rev = ++tradeRev; push();
 }
 
+// poe.ninja's price for a gem as it is (its level, quality, corrupted or not), or null.
+const gemEntry = (item) => prices.gem(item.name, item.gemLevel, item.quality, item.corrupted);
+// A transfigured gem is named differently in a search; the site's own list says how. Asked for
+// only for gems that can be one ("… of …"), once per run. The search goes by the plain name
+// when the list cannot be had.
+async function nameGem(tc) {
+  const t = tc.filters.type;
+  if (!tc.filters.gem || !t || t.as !== undefined || !/ of /.test(t.value)) return;
+  const list = await tradeClient.gems();
+  if (!list.length) { diag.count('price check: gem searched by its plain name (the trade site gave no item list)'); return; }
+  tc.filters = { ...tc.filters, type: { ...tc.filters.type, as: gemType(list, t.value) } };
+}
 function startTradeCheck(item, { always = false } = {}) {
   tradeCheck = null;
   if (!searchable(item)) { bulkCheck(item, always); return; }
@@ -1598,9 +1612,12 @@ function startTradeCheck(item, { always = false } = {}) {
     filters = { ok: false, why: `The list of trade stats could not be read: ${e.message || e}` };
   }
   tradeCheck = { at: Date.now(), rev: ++tradeRev, filtersRev: 0, filters, state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, inGame: false };
-  const entry = prices.get(priceName(item));
-  tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques
-  tradeCheck.ninjaHigh = entry && entry.high ? entry.high : null; // its dearest common variant, when they differ
+  const plain = prices.get(priceName(item));
+  const entry = (item.isGem && gemEntry(item)) || plain;
+  tradeCheck.ninja = entry ? entry.chaos : null; // what poe.ninja says, for uniques and gems
+  tradeCheck.ninjaHigh = entry && entry.high && !item.isGem ? entry.high : null; // its dearest common variant, when they differ
+  // which of poe.ninja's versions of the gem that price is for ("20/20, corrupted")
+  tradeCheck.ninjaFor = entry && entry.gem ? `level ${entry.gem.level}, quality ${entry.gem.quality}%${entry.gem.corrupted ? ', corrupted' : ''}` : '';
   tradeCheck.icon = entry && entry.icon ? entry.icon : null; // a unique's picture; others get theirs from the search
   tradeCheck.dust = item.rarity === 'Unique' ? dustValue(item) : null; // what it gives at the Disenchanting bench
   tradeCheck.vendor = vendorFor(item);
@@ -1610,7 +1627,8 @@ function startTradeCheck(item, { always = false } = {}) {
   // The price check key searches at once, with what is ticked from the start. The check key is
   // also pressed just to count loot, so there a unique (it has a poe.ninja price already) and
   // an item with nothing ticked (it would only find the cheapest of its kind) wait for the button.
-  const worthIt = always || (item.rarity !== 'Unique' && isNarrow(filters));
+  // A gem poe.ninja prices waits like a unique.
+  const worthIt = always || (item.rarity !== 'Unique' && !(item.isGem && entry) && isNarrow(filters));
   if (filters.ok && worthIt && (config.priceSearch || {}).auto !== false) runTradeSearch(true);
 }
 // announce: say the outcome in game, as the check key's own message does.
@@ -1631,6 +1649,7 @@ async function runTradeSearch(announce) {
     waited = performance.now() - w0;
     // Time spent only waiting for the trade site's permission to ask again (its rate limit).
     if (waited > 5) diag.time('price check: waiting for the trade site\'s pause', waited);
+    await nameGem(tc);
     const r = await tradeClient.check(config.league, buildQuery(withCrafts(tc.filters, craftsOn(tc))));
     tc.compare = compareSpec(tc.filters);
     tc.listings = markBait(r.listings.map((l) => readListing(l, chaosOfPrice, tc.compare)));

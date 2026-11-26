@@ -41,7 +41,21 @@ function parseItemText(text) {
   item.corrupted = /^Corrupted$/m.test(text);
   item.unidentified = /^Unidentified$/m.test(text);
   if (!item.isMap) readGear(item, text, sections);
+  item.isGem = /Gems$/.test(item.itemClass);
+  if (item.isGem) readGem(item, text, sections);
   return item;
+}
+
+// A skill or support gem: its level and, for a Vaal gem, its real name. The game heads a Vaal
+// gem with the plain skill's name ("Grace") and names the Vaal one on a line of its own further
+// down ("Vaal Grace"); the trade site and poe.ninja know it by that second name. The level is
+// the first "Level:" line: the one under "Requirements:" comes later.
+function readGem(item, text, sections) {
+  const level = /^Level: (\d+)( \(Max\))?/m.exec(text);
+  item.gemLevel = level ? parseInt(level[1], 10) : 1;
+  item.gemMax = !!(level && level[2]);
+  const vaal = sections.slice(1).find((s) => s.length === 1 && /^Vaal [A-Z][A-Za-z' -]+$/.test(s[0]));
+  if (vaal) { item.name = vaal[0]; item.baseType = vaal[0]; }
 }
 
 // What a line after a modifier says about where it came from: "(implicit)", "(crafted)"...

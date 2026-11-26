@@ -36,9 +36,40 @@ function gearKind(item) {
   return { category: c[0], tradeId: c[1] };
 }
 
-// Whether the trade search can price this item: gear, jewels and flasks that are magic, rare or unique.
+// Whether the trade search can price this item: gear, jewels and flasks that are magic, rare or
+// unique, and gems.
 function searchable(item) {
-  return !!gearKind(item) && ['Magic', 'Rare', 'Unique'].includes(item.rarity);
+  return (!!item && !!item.isGem) || (!!gearKind(item) && ['Magic', 'Rare', 'Unique'].includes(item.rarity));
+}
+
+// Gems whose price starts to climb with their first levels: they stop at level 3 to 5.
+const SMALL_GEM = /^(Awakened |(Empower|Enlighten|Enhance) Support$)/;
+// A gem is searched by its name, its level, its quality and whether it is corrupted: those four
+// are its whole price. Level and quality are lines with a number, like a weapon's damage.
+// Levels below 20 and quality below 20% rarely change the price, so they start unticked (a level
+// 12 gem is then compared with the cheapest of its name), and are one click away.
+function gemFilters(item) {
+  const level = item.gemLevel || 1, quality = item.quality || 0;
+  return {
+    ok: true, gem: true, rarity: 'Gem', title: item.name, name: '',
+    type: { value: item.name, enabled: true }, category: null,
+    flags: [{ key: 'corrupted', label: item.corrupted ? 'Corrupted' : 'Not corrupted', value: !!item.corrupted, enabled: true }],
+    props: [
+      { key: 'gem_level', label: 'Level', group: 'misc_filters', value: level, min: level, enabled: level >= 20 || (level > 1 && SMALL_GEM.test(item.name)) },
+      { key: 'quality', label: 'Quality', unit: '%', group: 'misc_filters', value: quality, min: quality, enabled: quality >= 20 },
+    ],
+    stats: [], unknown: [], offline: false, sockets: '', itemLevel: null, quality: 0, catalyst: null, size: [1, 1],
+    level, gemQuality: quality, corrupted: !!item.corrupted,
+  };
+}
+
+// How the trade site wants a gem named in a search. A transfigured gem ("Ice Nova of Frostbolts")
+// is listed under the plain gem's type with a mark telling which version it is.
+// list: the gems of the site's own item list (TradeClient.gems). Returns { option, discriminator }
+// for those, null for a gem searched by its plain name (and when the list does not know it).
+function gemType(list, name) {
+  const e = (list || []).find((x) => x && (x.text || x.type) === name);
+  return e && e.disc && e.type ? { option: e.type, discriminator: e.disc } : null;
 }
 
 // Resistances that count towards the trade site's "total Elemental Resistance", and how often.
@@ -120,6 +151,7 @@ function statFilter(key, text, kind, found, enabled, tiers = [], span = null) {
 // item: from parseItemText. index: a StatIndex. Returns what the price check window shows:
 // { ok, why, title, rarity, name, type, category, flags: [...], props: [...], stats: [...], unknown: [...], offline }.
 function buildFilters(item, index) {
+  if (item && item.isGem) return gemFilters(item);
   const kind = gearKind(item);
   if (!kind || !searchable(item)) return { ok: false, why: 'The trade search covers magic, rare and unique gear, jewels and flasks.' };
   const unique = item.rarity === 'Unique';
@@ -292,10 +324,11 @@ function buildQuery(filters) {
   const and = { type: 'and', filters: [] };
   const query = { status: { option: filters.offline ? 'any' : 'available' }, stats: [and], filters: {} };
   if (filters.name) query.name = filters.name;
-  if (filters.type && filters.type.enabled && filters.type.value) query.type = filters.type.value;
+  // as: how the site wants a transfigured gem named (gemType), set just before its search
+  if (filters.type && filters.type.enabled && filters.type.value) query.type = filters.type.as || filters.type.value;
   const type = {};
   if (filters.category && filters.category.enabled) type.category = { option: filters.category.id };
-  if (filters.rarity !== 'Unique') type.rarity = { option: 'nonunique' };
+  if (filters.rarity !== 'Unique' && !filters.gem) type.rarity = { option: 'nonunique' };
   if (Object.keys(type).length) query.filters.type_filters = { filters: type };
   const misc = {};
   for (const f of filters.flags) {
@@ -334,6 +367,8 @@ function summarize(total, listings) {
 // lower: a stat where less is better.
 function compareSpec(filters) {
   if (!filters || !filters.ok) return null;
+  // A gem: each listing's level and quality, side by side ("21/20"). Not better or worse, just shown.
+  if (filters.gem) return { gem: true, label: 'Level / quality', mine: `${filters.level}/${filters.gemQuality}` };
   const p = (filters.props || []).find((x) => x.enabled && x.value);
   if (p) return { prop: p.key, label: p.label, mine: p.value, lower: false };
   const st = (filters.stats || []).find((x) => x.enabled && x.value !== null && x.ids && x.ids.length);
@@ -356,4 +391,4 @@ function markBait(listings) {
   return listings;
 }
 
-module.exports = { wholeFor, gearKind, searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks, compareSpec, markBait };
+module.exports = { wholeFor, gearKind, searchable, gemType, buildFilters, applyEdits, isNarrow, buildQuery, summarize, floorFor, ticks, compareSpec, markBait };

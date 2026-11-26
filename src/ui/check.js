@@ -47,7 +47,7 @@
     if (f.type) out.push({ tc: 'type', pk: 'type', chip: true, label: f.type.value, title: 'Only this base type', enabled: f.type.enabled });
     for (const x of f.flags) out.push({ tc: 'flag', pk: `flag:${x.key}`, chip: true, key: x.key, label: x.label, enabled: x.enabled });
     out.push({ tc: 'offline', chip: true, label: 'Offline sellers too', enabled: f.offline });
-    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}`, enabled: x.enabled, bound: 'min', num: x.min === null ? mineFor(x.value, stepFor(x.value)) : x.min, mine: mineFor(x.value, stepFor(x.value)), step: stepFor(x.value) });
+    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}${x.unit || ''}`, enabled: x.enabled, bound: 'min', num: x.min === null ? mineFor(x.value, stepFor(x.value)) : x.min, mine: mineFor(x.value, stepFor(x.value)), step: stepFor(x.value) });
     for (const x of f.stats) {
       // The number shown is the one the search asks for: a lowest value for most stats, a
       // highest where less is better. A "reduced" stat is kept below zero by the trade site;
@@ -120,7 +120,7 @@
     if (d.state === 'searching') return `<p class="pc-wait">Searching the ${bulk ? 'bulk exchange' : 'trade site'}…</p>${extrasHtml(d)}`;
     if (d.state === 'error') return `<p class="pc-bad">${esc(d.error)}</p>${extrasHtml(d)}`;
     // poe.ninja's price; a unique listed per variant (Mageblood by its flasks) as the range it is
-    const ninja = d.ninja !== null && d.ninja !== undefined ? `<span${d.ninjaHigh ? ' title="poe.ninja prices it per variant: from the cheapest to the dearest one commonly listed"' : ''}>poe.ninja <b>${d.ninjaHigh ? rangeText(d.ninja, d.ninjaHigh) : fmtValue(d.ninja)}</b></span>` : '';
+    const ninja = d.ninja !== null && d.ninja !== undefined ? `<span${d.ninjaHigh ? ' title="poe.ninja prices it per variant: from the cheapest to the dearest one commonly listed"' : d.ninjaFor ? ` title="poe.ninja's price for this gem at ${esc(d.ninjaFor)}: the closest version it lists"` : ''}>poe.ninja <b>${d.ninjaHigh ? rangeText(d.ninja, d.ninjaHigh) : fmtValue(d.ninja)}</b></span>` : '';
     const s = d.summary || {};
     // what the whole stack is worth, at the cheapest offer (or poe.ninja's price before a search)
     const each = s.typical !== null && s.typical !== undefined ? s.typical : (s.low !== null && s.low !== undefined ? s.low : d.ninja);
@@ -167,7 +167,8 @@
       const price = l.price ? `<b>${amount}</b>${coin(l.price.currency)}` : '<span class="pc-cw">no price</span>';
       let vs = '';
       if (cmp && l.cmp !== null && l.cmp !== undefined) {
-        const better = cmp.lower ? l.cmp < cmp.mine : l.cmp > cmp.mine, worse = cmp.lower ? l.cmp > cmp.mine : l.cmp < cmp.mine;
+        // a gem's "21/20" is shown as it is: neither more nor less than yours
+        const better = !cmp.gem && (cmp.lower ? l.cmp < cmp.mine : l.cmp > cmp.mine), worse = !cmp.gem && (cmp.lower ? l.cmp > cmp.mine : l.cmp < cmp.mine);
         vs = `<span class="pc-vs ${better ? 'up' : worse ? 'down' : ''}" title="${esc(cmp.label)}: ${l.cmp} (yours ${cmp.mine})">${l.cmp}</span>`;
       } else if (cmp) vs = '<span class="pc-vs">—</span>';
       return `<li class="${l.bait ? 'bait' : l === first ? 'first' : ''}${l.detail ? ' can-open' : ''}" data-li="${i}"${l.detail ? ' title="Click to see the whole item"' : ''}>${art(l.icon, l.sockets, l.w, l.h, 'sm')}<span class="pc-lp">${price}</span>
@@ -335,7 +336,7 @@
     const chips = rows.map((r, i) => (r.chip ? chipHtml(r, i) : '')).join('');
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
     const busy = d.state === 'searching';
-    const about = [f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.quality ? `quality +${f.quality}%` : '', f.catalyst ? `quality +${f.catalyst.value}% (${f.catalyst.kind.toLowerCase()})` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
+    const about = [f.gem ? `Gem · level ${f.level} · quality +${f.gemQuality}%` : '', !f.gem && f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.quality ? `quality +${f.quality}%` : '', f.catalyst ? `quality +${f.catalyst.value}% (${f.catalyst.kind.toLowerCase()})` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
     const craft = craftHtml(d);
     const main = (chips, stats, c) => `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
         <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${d.picked ? 'Unidentified · <button type="button" class="pc-link" data-pick="">Not this one?</button> · ' : ''}${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
