@@ -18,7 +18,7 @@ function render() {
   renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderHood(); renderDev(); renderTracker(); renderSettings(); renderRefresh();
   clockStart();
 }
-const TABS = ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'regex', 'trouble', 'hood', 'tracker', 'settings'];
+const TABS = ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'regex', 'ultimatum', 'trouble', 'hood', 'tracker', 'settings'];
 const openTab = () => TABS.find((id) => !$(`tab-${id}`).hidden) || 'mapping';
 // What a page needs drawn from the state. Pages not listed draw themselves when shown (showTab).
 function drawPage(name) {
@@ -182,6 +182,7 @@ function showTab(name) {
   if (name === 'prices') renderPrices(true);
   if (name === 'jewels') jewelsShown();
   if (name === 'regex') regexShown();
+  if (name === 'ultimatum') ultShown();
   if (name === 'trouble') troubleShown();
   if (name === 'tracker') trackerShown();
   if (name === 'hood') hoodShown();

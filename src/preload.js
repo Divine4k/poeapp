@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('api', {
   // the Jewels page
   jewels: (a) => ipcRenderer.invoke('jewels', a),
   onJewelProgress: (cb) => ipcRenderer.on('jewel-progress', (_e, p) => cb(p)),
+  // the Ultimatum page: { op: 'get' | 'scan', account }
+  ultimatum: (a) => ipcRenderer.invoke('ultimatum', a),
+  onUltimatumProgress: (cb) => ipcRenderer.on('ultimatum-progress', (_e, p) => cb(p)),
   // the Troubleshooting page and the Developer tools
   troubleList: () => ipcRenderer.invoke('trouble-list'),
   troubleDetails: (id) => ipcRenderer.invoke('trouble-details', id),

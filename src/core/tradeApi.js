@@ -108,6 +108,27 @@ class TradeClient {
     }
   }
 
+  // The two steps of a search on their own, for reading many results (the Ultimatum page):
+  // every result id of a search (the site gives at most 100), and the items of up to ten ids.
+  // Each holds the client only while its one request is out. Nothing is kept.
+  async search(league, body) {
+    if (this.busy) throw new TradeError('A search is already running.');
+    this.busy = true;
+    try {
+      const found = await this.call('search', `${SITE}/api/trade/search/${encodeURIComponent(league)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return { queryId: found.id || '', total: Number(found.total) || 0, ids: Array.isArray(found.result) ? found.result : [] };
+    } finally { this.busy = false; }
+  }
+  async fetchItems(ids, queryId) {
+    if (!ids.length) return [];
+    if (this.busy) throw new TradeError('A search is already running.');
+    this.busy = true;
+    try {
+      const got = await this.call('fetch', `${SITE}/api/trade/fetch/${ids.slice(0, 10).join(',')}?query=${encodeURIComponent(queryId)}`, {});
+      return (got.result || []).filter(Boolean);
+    } finally { this.busy = false; }
+  }
+
   // The bulk exchange (currency and other stackables): offers selling `want` for `have`, as the
   // site sends them in one request. Returns { queryId, total, offers: [...] }.
   async exchange(league, want, have) {

@@ -1848,3 +1848,44 @@ button.primary.danger:hover { background: color-mix(in srgb, var(--blood) 85%, w
 .tk-noteadd { margin-top: 8px; align-items: flex-end; }
 .tk-noteadd textarea { flex: 1; font: inherit; color: var(--bone); background: var(--well); border: 1px solid var(--line2); border-radius: var(--r-sm); padding: 8px 10px; resize: vertical; }
 .tk-notetag { color: var(--soft); }
+
+/* ---- Ultimatum page: a public tab of Inscribed Ultimatums, valued and shown in place ---- */
+.view.ul:not([hidden]) { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 18px; overflow: hidden; }
+.ul-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ul-top .pagetitle { margin: 0 8px 0 0; }
+.ul-field { display: flex; align-items: center; gap: 8px; color: var(--ash); font-size: 13px; }
+#ul-account { width: 190px; }
+#ul-keep { width: 64px; text-align: right; }
+.ul-status { color: var(--ash); font-size: 13px; }
+.ul-status.bad { color: var(--blood); }
+.ul-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 420px); gap: 14px; }
+.ul-list, .ul-tabs { overflow-y: auto; }
+.ul-tabs { padding: 14px 16px; gap: 16px; }
+.ul-help { padding: 18px 20px; max-width: 70ch; }
+.ul-help h3, .ul-tab h3 { margin: 0 0 10px; font-size: 15px; color: var(--bone); }
+.ul-help ol { margin: 0 0 12px; padding-left: 20px; color: var(--soft); line-height: 1.55; }
+.ul-help li + li { margin-top: 6px; }
+.ul-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 12px 16px; color: var(--ash); font-size: 13.5px; }
+.ul-sum b { color: var(--bone); }
+.ul-more { margin: 0; padding: 0 16px 12px; color: var(--gold); font-size: 13px; }
+.ul-row { display: grid; grid-template-columns: 86px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--line); }
+.ul-row.hot { background: var(--raise); }
+.ul-row.keep { box-shadow: inset 3px 0 0 var(--gold); }
+.ul-val { text-align: right; color: var(--soft); font-weight: 650; }
+.ul-row.keep .ul-val { color: var(--gold); }
+.ul-row.blind .ul-val { color: var(--faint); font-weight: 500; font-size: 12.5px; }
+.ul-what { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ul-what > span { color: var(--bone); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ul-what small, .ul-where, .ul-tab h3 small { color: var(--ash); font-size: 12px; font-weight: 500; }
+.ul-where { white-space: nowrap; }
+.ul-grid { display: grid; gap: 2px; padding: 6px; border-radius: var(--r-sm); background: var(--deep); }
+.ul-grid.g12 { grid-template-columns: repeat(12, 1fr); }
+.ul-grid.g24 { grid-template-columns: repeat(24, 1fr); gap: 1px; }
+.ul-grid i, .ul-key i { display: block; aspect-ratio: 1; border-radius: 3px; background: color-mix(in srgb, var(--bone) 4%, transparent); }
+.ul-grid i.has, .ul-key i.has { background: color-mix(in srgb, var(--ash) 45%, transparent); cursor: pointer; }
+.ul-grid i.has.blind, .ul-key i.has.blind { background: transparent; box-shadow: inset 0 0 0 1px var(--ash); }
+.ul-grid i.has.keep, .ul-key i.has.keep { background: var(--gold); }
+.ul-grid i.hot { outline: 2px solid var(--bone); outline-offset: 1px; }
+.ul-key { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--ash); font-size: 12px; }
+.ul-key i { width: 12px; flex: none; margin-left: 10px; }
+.ul-key i:first-child { margin-left: 0; }

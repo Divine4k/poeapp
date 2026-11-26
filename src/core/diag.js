@@ -60,6 +60,7 @@ const LIMITS = [
   ['asked by the window: account', 4000],
   ['asked by the window: jewels', 2500],
   ['asked by the window: trouble-video', 60000],
+  ['asked by the window: ultimatum scan', 90000], // up to 100 items, ten at a time, at the trade site's pace
   ['asked by the window: trouble-new', 2000],
   ['asked by the window:', 100],
   ['start:', 8000],

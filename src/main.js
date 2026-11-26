@@ -42,6 +42,7 @@ const { checkPanelBounds } = require('./core/checkPanel');
 const { placeWindow } = require('./core/windowPlace');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
+const ultimatum = require('./core/ultimatum');
 const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
 const { JewelService } = require('./jewels');
 const { readJewelText, tradeQuery: jewelTradeQuery } = require('./core/jewels/timeless');
@@ -2145,6 +2146,34 @@ async function jewelAction(a) {
   }
 }
 
+// ---- ultimatum page --------------------------------------------------------------
+// Inscribed Ultimatums in a public stash tab, read from the trade site by account name and
+// valued by what they give (src/core/ultimatum.js). The last answer is kept for the page.
+let ultimatumLast = null;
+let ultimatumBusy = false;
+async function ultimatumAction(a) {
+  a = a || {};
+  if (a.op === 'get') return { last: ultimatumLast, busy: ultimatumBusy, league: config.league };
+  if (a.op !== 'scan') return null;
+  if (ultimatumBusy) { diag.count('ultimatum: not done, a look-up is already running'); throw new Error('A look-up is already running.'); }
+  ultimatumBusy = true;
+  const tell = (done, total) => { if (win && !win.isDestroyed()) win.webContents.send('ultimatum-progress', { done, total }); };
+  try {
+    const r = await ultimatum.scan({ client: tradeClient, league: config.league, account: a.account, sleep, onPart: tell });
+    const chaosOf = (name) => prices.chaosOf(name);
+    const items = ultimatum.sortByWorth(r.items.map((u) => ({ ...u, value: ultimatum.valueOf(u, chaosOf), listedChaos: u.listed ? chaosOfPrice(u.listed.amount, u.listed.currency) : null })));
+    ultimatumLast = { at: Date.now(), account: r.account, league: r.league, total: r.total, items, tabs: ultimatum.tabsOf(items) };
+    const unknown = items.filter((u) => u.value.chaos === null).length;
+    if (trouble) trouble.event('ultimatum', { found: r.total, read: items.length, noValue: unknown, tabs: ultimatumLast.tabs.length });
+    return { last: ultimatumLast, busy: false, league: config.league };
+  } catch (e) {
+    if (trouble) trouble.event('ultimatum', { failed: String(e && e.message) });
+    throw e;
+  } finally {
+    ultimatumBusy = false;
+  }
+}
+
 // ---- window --------------------------------------------------------------------
 // Opens where it was last (window.json: its place when not maximised, and whether it was
 // maximised), see core/windowPlace.js. Saved a moment after every move or resize, not at
@@ -2609,6 +2638,7 @@ function setupIpc() {
     };
   });
   handle('jewels', (_e, a) => jewelAction(a), kind);
+  handle('ultimatum', (_e, a) => ultimatumAction(a), kind);
   handle('items-list', () => itemDatabase());
   handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
   handle('price-categories', () => {
