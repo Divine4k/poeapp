@@ -19,19 +19,12 @@ function weighted(list, q) {
   return list[list.length - 1].chaos;
 }
 
-// Which of a search's results to look at, cheapest first: ten can be fetched in one go. With
-// plenty of results a few from further up are taken too, so the range does not come from the
-// very cheapest alone (where the underpriced and the nearly-as-good sit).
-function pickRanks(n) {
-  if (n >= 20) return [0, 1, 2, 3, 4, 6, 8, 11, 14, 18];
-  return Array.from({ length: Math.min(10, Math.max(0, n)) }, (_, i) => i);
-}
-
 // listings: [{ chaos, listedAt, bait }] as readListing and markBait give them. total: how many
-// the search found in all. step: how far the search had to be widened (0: not at all).
+// like it are listed in all (about: worked out, not counted). step: how far the search had to
+// be widened (0: not at all).
 // Returns null when no listing has a price, else
 // { low, typical, high, sure: 'sure' | 'fair' | 'guess', why: [..], speed: 'fast' | 'steady' | 'slow' | null, seen, fresh, total }.
-function estimate({ listings, total = 0, step = 0, now = Date.now() }) {
+function estimate({ listings, total = 0, about = false, step = 0, now = Date.now() }) {
   const seen = (listings || [])
     .filter((l) => l && !l.bait && l.chaos !== null && l.chaos !== undefined && isFinite(l.chaos) && l.chaos > 0)
     .map((l) => ({ chaos: l.chaos, age: l.listedAt ? Math.max(0, now - l.listedAt) : null }))
@@ -58,10 +51,10 @@ function estimate({ listings, total = 0, step = 0, now = Date.now() }) {
   if (mid !== null && mid > 7 * DAY) doubts.push([1, 'the cheapest have been listed for over a week']);
   const worst = doubts.reduce((n, d) => Math.max(n, d[0]), 0);
   const why = [];
-  if (!doubts.some((d) => /^only /.test(d[1]))) why.push(`${count.toLocaleString('en-US')} like it listed`);
+  if (!doubts.some((d) => /^only /.test(d[1]))) why.push(`${about ? 'about ' : ''}${count.toLocaleString('en-US')} like it listed`);
   if (ages.length) why.push(`${fresh} of the ${seen.length} seen listed within a day`);
   for (const d of doubts) why.push(d[1]);
   return { low, typical, high, sure: worst >= 2 ? 'guess' : worst === 1 ? 'fair' : 'sure', why, speed, seen: seen.length, fresh, total: count };
 }
 
-module.exports = { estimate, pickRanks, weighted, freshness, DAY };
+module.exports = { estimate, weighted, freshness, DAY };

@@ -337,4 +337,4 @@ const currencyName = (id) => CURRENCIES[id] || '';
 const exchangeUrl = (league, queryId) => `${SITE}/trade/exchange/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 const searchUrl = (league, queryId) => `${SITE}/trade/search/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 
-module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, tokensOf, itemDetail, socketText, searchUrl, exchangeUrl, currencyName };
+module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, tokensOf, itemDetail, modText, plainText, socketText, searchUrl, exchangeUrl, currencyName };

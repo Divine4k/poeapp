@@ -7,8 +7,8 @@ const { parseItemText } = require('../src/core/itemText');
 const { StatIndex } = require('../src/core/tradeStats');
 const advanced = require('../src/core/advanced');
 const { PROFILES, TOTALS, BENCH } = require('../src/core/advanced/values');
-const { KINDS, MAX_STATS, STEPS, lowest } = require('../src/core/advanced/score');
-const { estimate, pickRanks, DAY } = require('../src/core/advanced/estimate');
+const { KINDS, MAX_COST, STEPS, lowest, costOf, scoreListing, listingLines } = require('../src/core/advanced/score');
+const { estimate, DAY } = require('../src/core/advanced/estimate');
 
 const index = StatIndex.load();
 const plan = (text) => advanced.plan(parseItemText(text), index);
@@ -180,8 +180,7 @@ Added Small Passive Skills also grant: +6 to Maximum Life
 const EVERY = { CHEST, ES_CHEST, RING, AMULET, WAND, BOW, JEWEL };
 
 const group = (body, type) => body.query.stats.filter((g) => g.type === type);
-// every stat a search holds, whatever group it is in
-const size = (body) => body.query.stats.reduce((n, g) => n + g.filters.length, 0);
+const idsIn = (g) => g.filters.map((f) => f.id);
 
 test('value table: every stat is one the trade site knows, on a kind of item it is listed for', () => {
   const ids = new Set();
@@ -229,44 +228,46 @@ test('a rare is scored for the buyer it is worth most to, and says what carries 
   assert.equal(Math.round(w.scored.entries.find((e) => e.stat.t === '#% increased Spell Damage').value), 130);
 });
 
-test('the search: the selling point asked for outright, the rest as one weighted total', () => {
+test('the search: the selling point asked for outright, and its other strong stats all needed at first', () => {
   const p = plan(CHEST);
   const body = p.body(0);
   assert.deepEqual(body.sort, { price: 'asc' });
   assert.equal(body.query.status.option, 'available');
   assert.deepEqual(body.query.filters.type_filters.filters, { category: { option: 'armour.chest' }, rarity: { option: 'nonunique' } });
   assert.equal(body.query.filters.misc_filters.filters.corrupted.option, 'false');
-  const [w] = group(body, 'weight');
-  assert.equal(body.query.stats[0], w, 'the weighted part comes first');
-  assert.equal(w.value.min, 284); // nine tenths of 316
-  const by = Object.fromEntries(w.filters.map((f) => [f.id, f.value.weight]));
-  assert.equal(by['pseudo.pseudo_total_life'], 1);
-  assert.equal(by['pseudo.pseudo_total_elemental_resistance'], 1);
-  assert.equal(by['explicit.stat_3680664274'], 5); // spell suppression as rolled
-  assert.equal(by['crafted.stat_3680664274'], 5);  // and from the bench: worth the same to a buyer
+  // the site refuses a weighted search from someone not logged in: none is ever sent
+  for (let i = 0; i < p.steps; i++) for (const lean of [false, true]) assert.deepEqual(p.body(i, { lean }).query.stats.filter((g) => g.type !== 'and' && g.type !== 'count'), []);
+  const [point, near] = group(body, 'count');
   // 22% suppression is what this chest is bought for: at least nine tenths of it, however it got on the item
-  const [c] = group(body, 'count');
-  assert.equal(c.value.min, 1);
-  assert.ok(c.filters.some((f) => f.id === 'explicit.stat_3680664274') && c.filters.some((f) => f.id === 'crafted.stat_3680664274'));
-  assert.ok(c.filters.every((f) => f.value.min === 19));
+  assert.equal(point.value.min, 1);
+  assert.deepEqual(idsIn(point), ['explicit.stat_3680664274', 'fractured.stat_3680664274', 'crafted.stat_3680664274']);
+  assert.ok(point.filters.every((f) => f.value.min === 19));
+  // what else carries its score, each at nine tenths: both needed in the first step
+  assert.deepEqual(near.filters, [{ id: 'pseudo.pseudo_total_life', value: { min: 111 } }, { id: 'pseudo.pseudo_total_elemental_resistance', value: { min: 73 } }]);
+  assert.equal(near.value.min, 2);
   // sellers who are offline too, when the window's chip says so
   assert.equal(p.body(0, { offline: true }).query.status.option, 'any');
 });
 
-test('the search widens step by step: less of the score, less of the selling point, then none of it', () => {
+test('the search widens step by step: less of each stat, one may be missing, then the selling point is no longer a must', () => {
   const p = plan(CHEST);
   assert.equal(p.steps, STEPS.length);
-  const mins = [0, 1, 2].map((i) => group(p.body(i), 'weight')[0].value.min);
-  assert.ok(mins[0] > mins[1] && mins[1] > mins[2], `${mins}`);
-  assert.equal(group(p.body(1), 'count')[0].filters[0].value.min, 16); // three quarters of 22
-  assert.equal(group(p.body(2), 'count').length, 0);
-  // what the item is stays in every step: its influence
+  const [point1, near1] = group(p.body(1), 'count');
+  assert.equal(point1.filters[0].value.min, 16); // three quarters of 22
+  assert.deepEqual([near1.value.min, near1.filters.map((f) => f.value.min)], [1, [93, 61]]); // one of the two is enough
+  const last = group(p.body(2), 'count');
+  assert.equal(last.length, 1); // suppression is now one of its strong stats like the others
+  assert.ok(idsIn(last[0]).includes('explicit.stat_3680664274') && idsIn(last[0]).includes('pseudo.pseudo_total_life'));
+  // a ring's four strong stats: all, then all but one, then all but two
   const r = plan(RING);
-  for (const i of [0, 1, 2]) assert.ok(group(r.body(i), 'and')[0].filters.some((f) => f.id === 'pseudo.pseudo_has_shaper_influence'), `step ${i + 1}`);
+  assert.deepEqual([0, 1].map((i) => group(r.body(i), 'count')[0].value.min), [3, 2]);
+  assert.equal(group(r.body(2), 'count')[0].value.min, 2); // of four: the attack damage has joined them
+  // what the item is stays in every step: its influence
+  for (const i of [0, 1, 2]) assert.ok(idsIn(group(r.body(i), 'and')[0]).includes('pseudo.pseudo_has_shaper_influence'), `step ${i + 1}`);
   // and a fractured modifier, with what the weapon is bought for: its damage
   const b = plan(BOW);
   assert.equal(b.profile.id, 'weapon');
-  assert.ok(group(b.body(2), 'and')[0].filters.some((f) => /^fractured\./.test(f.id)));
+  assert.ok(idsIn(group(b.body(2), 'and')[0]).some((id) => /^fractured\./.test(id)));
   assert.deepEqual([0, 1, 2].map((i) => b.body(i).query.filters.weapon_filters.filters.pdps.min), [332, 295, 258]); // of 369
 });
 
@@ -279,14 +280,68 @@ test('energy shield gear is bought for its energy shield', () => {
   assert.ok(!plan(CHEST).fits.includes('energy shield builds'));
 });
 
-test('a search never holds more stats than the trade site takes', () => {
+test('a search never costs more than the trade site takes from someone not logged in', () => {
   for (const [name, text] of Object.entries(EVERY)) {
     const p = plan(text);
     assert.equal(p.ok, true, name);
-    for (let i = 0; i < p.steps; i++) assert.ok(size(p.body(i)) <= MAX_STATS + 2, `${name}, step ${i + 1}: ${size(p.body(i))} stats`);
-    // the smaller form, for when the site still finds it too large: only what the item has
-    if (p.steps) assert.ok(size(p.body(0, { lean: true })) < size(p.body(0)), `${name}: the lean search is smaller`);
+    for (let i = 0; i < p.steps; i++) {
+      assert.ok(costOf(p.body(i)) <= MAX_COST, `${name}, step ${i + 1}: ${costOf(p.body(i))}`);
+      // the smaller form, for when the site still finds it too large
+      assert.ok(costOf(p.body(i, { lean: true })) <= costOf(p.body(i)), `${name}, step ${i + 1}: the lean search is no larger`);
+    }
   }
+  // the cost as the live site counted it on 2026-11-26 (its answer's `complexity`)
+  const stat = (id) => ({ id, value: { min: 1 } });
+  const body = (stats) => ({ query: { stats, filters: { type_filters: {}, misc_filters: {} } } });
+  assert.equal(costOf(body([{ type: 'and', filters: [stat('a')] }])), 11);
+  assert.equal(costOf(body([{ type: 'count', filters: [stat('a'), stat('b'), stat('c')] }])), 22);
+  assert.equal(costOf(body([{ type: 'and', filters: [stat('a'), stat('b')] }, { type: 'count', filters: Array.from({ length: 8 }, (_, i) => stat(i)) }, { type: 'count', filters: Array.from({ length: 6 }, (_, i) => stat(i)) }])), 46);
+});
+
+// Three of the trade site's own results for boots with movement speed and resistances, as it
+// sent them on 2026-11-26: each modifier an object, a crafted one in the explicit list.
+const LIVE_BOOTS = require('./fixtures/trade-boots.json');
+const BOOTS = `Item Class: Boots
+Rarity: Rare
+Dread Spur
+Two-Toned Boots
+--------
+Armour: 126
+Evasion Rating: 126
+--------
+Requirements:
+Level: 70
+Str: 62
+Dex: 62
+--------
+Sockets: R-G-G-R 
+--------
+Item Level: 84
+--------
++12% to Fire and Cold Resistances (implicit)
+--------
++45% to Fire Resistance
++42% to Cold Resistance
++38% to Lightning Resistance
+30% increased Movement Speed
++38 to Dexterity
+`;
+
+test('listed items are scored like the item itself, from what the trade site sends', () => {
+  const p = plan(BOOTS);
+  assert.equal(p.score, 265);
+  // every modifier is read, and a crafted one is known as crafted
+  const lines = LIVE_BOOTS.map((l) => listingLines(l.item, index, 'Boots'));
+  assert.deepEqual(lines.map((l) => l.length), [7, 9, 6]);
+  assert.ok(lines.every((l) => l.every((x) => x.ref && x.value !== null)));
+  assert.deepEqual(lines[0].find((x) => x.ref === '+#% to Fire Resistance'), { ref: '+#% to Fire Resistance', value: 29, type: 'crafted' });
+  assert.ok(lines[1].some((x) => x.ref === '+#% to Item Rarity' && x.value === 17)); // "[PlayerItemRarity|Item Rarity]" as the site writes it
+  // 120 resistance and 30 speed; 109 and 30; 102, 30 and 49 life (life counts for these buyers)
+  assert.deepEqual(LIVE_BOOTS.map((l) => scoreListing(p, l.item, index)), [225, 233, 285]);
+  // plain lines of text, as the site used to send them, read the same
+  const plain = { explicitMods: ['+48% to Cold Resistance', '+43% to Lightning Resistance', '30% increased Movement Speed'], craftedMods: ['+29% to Fire Resistance'] };
+  assert.equal(scoreListing(p, plain, index), 225);
+  assert.equal(scoreListing(p, {}, index), 0);
 });
 
 test('nothing buyers look for: no search of its own', () => {
@@ -358,13 +413,6 @@ test('how sure: few listings, a widened search and prices far apart are all said
   assert.equal(estimate({ now: NOW, total: 0, listings: [] }), null);
 });
 
-test('which results are looked at: the cheapest, and a few from further up when there are plenty', () => {
-  assert.deepEqual(pickRanks(100), [0, 1, 2, 3, 4, 6, 8, 11, 14, 18]);
-  assert.deepEqual(pickRanks(12), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  assert.deepEqual(pickRanks(3), [0, 1, 2]);
-  assert.deepEqual(pickRanks(0), []);
-});
-
 test('base value: poe.ninja prices a base by item level and influence', () => {
   const table = { 'Vaal Regalia (ilvl 86)': 12, 'Vaal Regalia (ilvl 84)': 4, 'Two-Stone Ring (ilvl 84, Shaper)': 55, 'Opal Ring (ilvl 85, Hunter/Warlord)': 300 };
   const get = (name) => (table[name] ? { chaos: table[name] } : null);
@@ -378,8 +426,8 @@ test('base value: poe.ninja prices a base by item level and influence', () => {
 });
 
 test('the outcome in a few words, for Under the hood', () => {
-  assert.match(advanced.describe(plan(CHEST)), /^life builds, 316 points, \d+ stats weighed, asks for spell suppression 19\+$/);
-  assert.equal(advanced.outcome({ state: 'done', source: 'score', step: 1, total: 46, low: 30, high: 45.25, sure: 'fair', speed: 'fast' }), '30 to 45.3 chaos, fair, sells fast, from its own search (step 2 of 3, 46 found)');
+  assert.equal(advanced.describe(plan(CHEST)), 'life builds, 316 points, asks for spell suppression 19+, looks for life, spell suppression, resistances');
+  assert.equal(advanced.outcome({ state: 'done', source: 'score', step: 1, total: 46, seen: 6, looked: 20, low: 30, high: 45.25, sure: 'fair', speed: 'fast' }), '30 to 45.3 chaos, fair, sells fast, from its own search (step 2 of 3, 6 of the 20 looked at count, 46 like it)');
   assert.equal(advanced.outcome({ state: 'none', why: 'nothing listed' }), 'none: nothing listed');
 });
 
@@ -387,7 +435,8 @@ test('the outcome in a few words, for Under the hood', () => {
 const { run } = require('../src/core/advanced/run');
 const { markBait } = require('../src/core/tradeQuery');
 
-// totals: how many each search in turn finds. Every result is listed at 10c more than the one before.
+// totals: how many each search in turn finds. Every result is listed at 10c more than the one
+// before. points: what result number n scores (the chest itself scores 316).
 function fakeSite({ totals, waits = [], busyFor = 0, fail = null } = {}) {
   const site = { busy: false, searches: [], fetched: [], slept: 0, asked: 0 };
   let busyLeft = busyFor;
@@ -400,29 +449,60 @@ function fakeSite({ totals, waits = [], busyFor = 0, fail = null } = {}) {
     site.searches.push(body);
     return { queryId: `q${site.searches.length}`, total, ids: Array.from({ length: Math.min(100, total) }, (_, i) => `id${i}`) };
   };
-  site.fetchItems = async (ids, queryId) => { site.fetched.push({ ids, queryId }); return ids.map((id) => ({ id, chaos: 20 + Number(id.slice(2)) * 10, listedAt: NOW - DAY / 2 })); };
+  site.fetchItems = async (ids, queryId) => { site.fetched.push({ ids, queryId }); return ids.map((id) => ({ id, n: Number(id.slice(2)), chaos: 20 + Number(id.slice(2)) * 10, listedAt: NOW - DAY / 2 })); };
   return site;
 }
-const go = (site, more = {}) => run({ plan: plan(CHEST), league: 'Test', client: site, read: (raw) => markBait(raw), sleep: site.sleep, now: () => NOW, ...more });
+const go = (site, more = {}) => run({ plan: plan(CHEST), league: 'Test', client: site, read: (raw) => markBait(raw), score: () => 316, sleep: site.sleep, now: () => NOW, ...more });
 
-test('sending: enough listed at the first step is one search and ten of its results', async () => {
+test('sending: enough listed at the first step is one search and its ten cheapest results', async () => {
   const site = fakeSite({ totals: [46] });
   const r = await go(site);
-  assert.deepEqual([r.state, r.step, r.total, r.queryId, r.sent], ['done', 0, 46, 'q1', 2]);
+  assert.deepEqual([r.state, r.step, r.total, r.queryId, r.sent, r.looked], ['done', 0, 46, 'q1', 2, 10]);
   assert.equal(site.searches.length, 1);
-  assert.deepEqual(site.fetched[0].ids, ['id0', 'id1', 'id2', 'id3', 'id4', 'id6', 'id8', 'id11', 'id14', 'id18']); // the cheapest and a few from further up
+  assert.deepEqual(site.fetched[0].ids, ['id0', 'id1', 'id2', 'id3', 'id4', 'id5', 'id6', 'id7', 'id8', 'id9']);
   assert.equal(r.est.sure, 'sure');
+  assert.match(r.est.why[0], /^about 46 like it listed$/); // worked out from those looked at, so "about"
   assert.ok(r.est.low < r.est.high);
+});
+
+test('sending: results are scored here, and reading goes on until enough of them are worth as much', async () => {
+  // every other result is junk (cheap items that have the stats asked for and little else)
+  const half = fakeSite({ totals: [200] });
+  const r = await go(half, { score: (l) => (l.n % 2 ? 316 : 120) });
+  assert.deepEqual([r.state, r.step, half.fetched.length, r.looked, r.sent], ['done', 0, 2, 20, 3]); // 5 of the first ten, so ten more
+  assert.ok(r.est.seen >= 8 && r.est.seen <= 10, `${r.est.seen}`); // the ten that count, less any priced as bait
+  assert.equal(r.total, 100); // half of the 200 found
+  assert.ok([r.est.low, r.est.typical, r.est.high].every((c) => c % 20 === 10)); // junk (20c, 40c, 60c...) is not what it is compared with
+  // at most thirty are read; with only two that reach the first step's score, weaker ones count too, and that is said
+  const thin = fakeSite({ totals: [200] });
+  const t = await go(thin, { score: (l) => (l.n === 4 || l.n === 25 ? 316 : l.n % 3 === 0 ? 260 : 100) });
+  assert.deepEqual([t.state, thin.fetched.length, t.looked, t.step], ['done', 3, 30, 1]); // 260 is over 80% of 316
+  assert.ok(t.est.seen >= 9 && t.est.seen <= 12, `${t.est.seen}`);
+  assert.notEqual(t.est.sure, 'sure');
+  // nothing read is worth nearly as much: no price, and it says why
+  const junk = fakeSite({ totals: [200] });
+  const j = await go(junk, { score: () => 90 });
+  assert.deepEqual([j.state, j.looked, j.total], ['none', 30, 0]);
+  assert.match(j.why, /None of the 30 cheapest with stats like it is worth as much/);
+  // every result read: the number like it is counted, not worked out
+  const few = fakeSite({ totals: [9] });
+  const f = await go(few, { score: (l) => (l.n < 7 ? 316 : 50) });
+  assert.deepEqual([f.state, f.total, f.looked], ['done', 7, 9]);
+  assert.ok(!/about/.test(f.est.why.join()));
+  // a cluster jewel's exact search is not scored: its ten cheapest count as they are
+  const exact = fakeSite({ totals: [40] });
+  const e = await go(exact, { plan: plan(CLUSTER), score: null });
+  assert.deepEqual([e.state, e.total, e.looked, exact.fetched.length], ['done', 40, 10, 1]);
 });
 
 test('sending: few listed widens the search, and says how far it had to go', async () => {
   const site = fakeSite({ totals: [2, 5, 30] });
   const r = await go(site);
-  assert.deepEqual([r.state, r.step, r.total, site.searches.length, site.fetched.length, r.sent], ['done', 2, 30, 3, 1, 4]);
+  assert.deepEqual([r.state, r.step, site.searches.length, site.fetched.length, r.sent], ['done', 2, 3, 1, 4]);
   assert.equal(r.est.sure, 'guess'); // weaker items were compared
-  // each step asks for less of the score
-  const mins = site.searches.map((b) => b.query.stats[0].value.min);
-  assert.ok(mins[0] > mins[1] && mins[1] > mins[2]);
+  // each step asks for less of its strong stats
+  const least = site.searches.map((b) => Math.min(...b.query.stats[b.query.stats.length - 1].filters.map((f) => f.value.min)));
+  assert.ok(least[0] > least[1] && least[1] > least[2], `${least}`);
   // still too few at the widest: the step that found most is read, not the last one
   const thin = fakeSite({ totals: [1, 6, 3] });
   const t = await go(thin);
@@ -477,8 +557,7 @@ test('sending: a search the site finds too large goes again in its smaller form;
   const r = await go(site, { count: (c) => counts.push(c) });
   assert.equal(r.state, 'done');
   assert.equal(site.searches.length, 2);
-  const stats = (b) => b.query.stats[0].filters.length;
-  assert.ok(stats(site.searches[1]) < stats(site.searches[0]), 'the second try weighs fewer stats');
+  assert.ok(costOf(site.searches[1]) < costOf(site.searches[0]), 'the second try is a smaller search');
   assert.match(counts.join(), /smaller form/);
   const bad = fakeSite({ totals: [46], fail: () => new Error('The trade site said: Invalid query') });
   await assert.rejects(go(bad), /Invalid query/);

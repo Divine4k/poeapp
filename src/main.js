@@ -1899,11 +1899,12 @@ function pauseKeys(on) {
 // ---- the advanced price check (its own key, hotkeys.advancedCheck) --------------------
 // A checker of its own beside the standard one (owner, 0.64.1: its own key, not a band on every
 // check). Its key checks the item as the price check key does and marks the check `advanced`;
-// the other keys never set it, so the standard check is left as it was. For that item this adds: for a
-// rare, a search of its own by score (core/advanced: the value table, the anchored weighted
-// search, widened step by step); for anything searched, a range with how sure it is and how fast
-// such items sell; and what the base alone is worth. Its answer is `tradeCheck.adv`, drawn as a
-// band of its own in the window over the game. Nothing here runs for a check from another key.
+// the other keys never set it, so the standard check is left as it was. For that item this
+// adds: for a rare, a comparison by score (core/advanced: the value table, a search for items
+// with most of what carries its score, their results scored here, widened step by step); for
+// anything searched, a range with how sure it is and how fast such items sell; and what the
+// base alone is worth. Its answer is `tradeCheck.adv`, drawn as a band of its own in the window
+// over the game. Nothing here runs for a check from another key.
 const advPlans = new WeakMap(); // a check -> { plan, item }: what its search is built from
 const advKept = new Map();      // a search -> { at, found }: answers kept for a minute, as the trade client keeps the standard ones
 let checkedText = null;         // { at, text }: the item text last checked, kept with a mark
@@ -1960,12 +1961,14 @@ async function runAdvanced(tc) {
     const r = await advanced.run({
       plan, league: config.league, offline: !!tc.filters.offline, client: tradeClient, kept: advKept, sleep, stale,
       read: (raw) => markBait(raw.map((l) => readListing(l, chaosOfPrice))),
+      // a rare's results are scored here with the value table (the site takes no weighted search without a login)
+      score: plan.kind === 'score' ? (l) => advanced.scoreListing(plan, l.item, statIndex) : null,
       count: (what) => diag.count(`price check: advanced ${what}`),
       waited: (ms) => diag.time("price check: advanced, waiting for the trade site's pause", ms),
     });
     if (r.left) { text = 'left: another item or search came'; return; }
     const url = r.queryId ? searchUrl(config.league, r.queryId) : '';
-    show(r.state === 'done' ? read(r.est, { source: plan.kind, step: r.step, url }) : { state: 'none', source: plan.kind, step: r.step, why: r.why, url });
+    show(r.state === 'done' ? read(r.est, { source: plan.kind, step: r.step, looked: r.looked, url }) : { state: 'none', source: plan.kind, step: r.step, looked: r.looked, why: r.why, url });
     text = `${advanced.outcome(tc.adv)}; ${r.sent} request${r.sent === 1 ? '' : 's'} sent`;
     said(text);
   } catch (e) {

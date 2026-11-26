@@ -1,0 +1,27 @@
+[
+ {"id":"2f5e6649","listing":{"price":{"amount":1,"currency":"chaos"},"indexed":"2026-11-26T14:27:14Z"},"item":{"typeLine":"Goliath Greaves","ilvl":85,"explicitMods":[
+  {"description":"+116 to Armour","domain":"explicit","hash":"stat.explicit.stat_3484657501","mods":[{"name":"Carapaced","tier":"P2","level":35,"magnitudes":[{"min":"102","max":"120"}]}]},
+  {"description":"38% increased Armour","domain":"explicit","hash":"stat.explicit.stat_1062208444","mods":[{"name":"Elephant's","tier":"P2","level":60,"magnitudes":[{"min":"33","max":"38"}]}]},
+  {"description":"+48% to Cold Resistance","domain":"explicit","hash":"stat.explicit.stat_4220027924","mods":[{"name":"of Haast","tier":"S1","level":84,"magnitudes":[{"min":"46","max":"48"}]}]},
+  {"description":"+43% to Lightning Resistance","domain":"explicit","hash":"stat.explicit.stat_1671376347","mods":[{"name":"of the Lightning","tier":"S2","level":72,"magnitudes":[{"min":"42","max":"45"}]}]},
+  {"description":"30% increased Movement Speed","domain":"explicit","hash":"stat.explicit.stat_2250533757","mods":[{"name":"Cheetah's","tier":"P2","level":55,"magnitudes":[{"min":"30","max":"30"}]}]},
+  {"description":"14% increased Stun and Block Recovery","domain":"explicit","hash":"stat.explicit.stat_2511217560","mods":[{"name":"Elephant's","tier":"P2","level":60,"magnitudes":[{"min":"14","max":"15"}]}]},
+  {"description":"+29% to Fire Resistance","flags":{"crafted":true},"domain":"crafted","hash":"stat.crafted.stat_3372524247","mods":[{"name":"of Craft","tier":"R3","level":50,"magnitudes":[{"min":"29","max":"35"}]}]}],"extended":{"ar":515}}},
+ {"id":"e0954c09","listing":{"price":{"amount":1,"currency":"chaos"},"indexed":"2026-11-26T19:13:14Z"},"item":{"typeLine":"Paladin Boots","ilvl":85,"implicitMods":[
+  {"description":"Gain 4% of Physical Damage as Extra Chaos Damage","domain":"implicit","hash":"stat.implicit.stat_3319896421","mods":[{"level":75,"magnitudes":[{"min":"4","max":"4"}]}]},
+  {"description":"4% increased Action Speed","domain":"implicit","hash":"stat.implicit.stat_2878959938","mods":[{"level":75,"magnitudes":[{"min":"4","max":"4"}]}]}],"explicitMods":[
+  {"description":"36% increased Armour and Energy Shield","domain":"explicit","hash":"stat.explicit.stat_3321629045","mods":[{"name":"Djinn's","tier":"P2","level":60,"magnitudes":[{"min":"33","max":"38"}]}]},
+  {"description":"+17% to [PlayerItemRarity|Item Rarity]","domain":"explicit","hash":"stat.explicit.stat_3917489142","mods":[{"name":"Pirate's","tier":"P1","level":39,"magnitudes":[{"min":"13","max":"18"}]}]},
+  {"description":"+46% to Fire Resistance","domain":"explicit","hash":"stat.explicit.stat_3372524247","mods":[{"name":"of Tzteosh","tier":"S1","level":84,"magnitudes":[{"min":"46","max":"48"}]}]},
+  {"description":"+44% to Lightning Resistance","domain":"explicit","hash":"stat.explicit.stat_1671376347","mods":[{"name":"of the Lightning","tier":"S2","level":72,"magnitudes":[{"min":"42","max":"45"}]}]},
+  {"description":"30% increased Movement Speed","domain":"explicit","hash":"stat.explicit.stat_2250533757","mods":[{"name":"Cheetah's","tier":"P2","level":55,"magnitudes":[{"min":"30","max":"30"}]}]},
+  {"description":"15% increased Stun and Block Recovery","domain":"explicit","hash":"stat.explicit.stat_2511217560","mods":[{"name":"Djinn's","tier":"P2","level":60,"magnitudes":[{"min":"14","max":"15"}]}]},
+  {"description":"+19% to Fire and Cold Resistances","flags":{"crafted":true},"domain":"crafted","hash":"stat.crafted.stat_2915988346","mods":[{"name":"of Craft","tier":"R3","level":75,"magnitudes":[{"min":"17","max":"20"}]}]}],"extended":{"es":75,"ar":375}}},
+ {"id":"eb4fd4ba","listing":{"price":{"amount":3,"currency":"chaos"},"indexed":"2026-11-24T21:25:35Z"},"item":{"typeLine":"Two-Toned Boots","ilvl":78,"implicitMods":[
+  {"description":"+17% to Cold and Lightning Resistances","domain":"implicit","hash":"stat.implicit.stat_4277795662","mods":[{"level":78,"magnitudes":[{"min":"16","max":"20"}]}]}],"explicitMods":[
+  {"description":"+39 to Intelligence","domain":"explicit","hash":"stat.explicit.stat_328541901","mods":[{"name":"of the Savant","tier":"S3","level":66,"magnitudes":[{"min":"38","max":"42"}]}]},
+  {"description":"+43% to Fire Resistance","domain":"explicit","hash":"stat.explicit.stat_3372524247","mods":[{"name":"of the Magma","tier":"S2","level":72,"magnitudes":[{"min":"42","max":"45"}]}]},
+  {"description":"+42% to Lightning Resistance","domain":"explicit","hash":"stat.explicit.stat_1671376347","mods":[{"name":"of the Lightning","tier":"S2","level":72,"magnitudes":[{"min":"42","max":"45"}]}]},
+  {"description":"30% increased Movement Speed","domain":"explicit","hash":"stat.explicit.stat_2250533757","mods":[{"name":"Cheetah's","tier":"P2","level":55,"magnitudes":[{"min":"30","max":"30"}]}]},
+  {"description":"+49 to maximum Life","flags":{"crafted":true},"domain":"crafted","hash":"stat.crafted.stat_3299347043","mods":[{"name":"Upgraded","tier":"R3","level":68,"magnitudes":[{"min":"41","max":"55"}]}]}],"extended":{"es":35,"ev":168}}}
+]
