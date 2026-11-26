@@ -168,3 +168,57 @@ test('capture: an app window only counts as in the way when it is over the inven
   assert.equal(over({ x: -300, y: 450, width: 200, height: 150 }, left, 1920, 1080), true);
   assert.equal(over({ x: -1280, y: 0, width: 300, height: 100 }, left, 1920, 1080), false);
 });
+
+test('capture trial: only clear comparisons count, a real difference is caught, off is not for ever', () => {
+  const { Trial } = require('../src/capturehelper');
+  let now = 1e12;
+  const t = new Trial({ now: () => now });
+  assert.equal(t.state, 'trial');
+  // matches gain trust; an unclear one (inventory closed in between, a tooltip opened) neither gains nor loses
+  assert.equal(t.compared(59, 60, true), 'match');
+  assert.equal(t.compared(11, 60, false), 'unclear');
+  assert.equal(t.compared(45, 60, true), 'unclear');
+  assert.equal(t.compared(57, 60, true), 'match');
+  assert.equal(t.compared(60, 60, true), 'trusted');
+  assert.equal(t.state, 'trusted');
+  // what happened on RaQner's PC: two comparisons of 11 of 60 with the scene changed in between
+  assert.equal(t.compared(11, 60, false), 'unclear');
+  assert.equal(t.compared(11, 60, false), 'unclear');
+  assert.equal(t.state, 'trusted');
+  // a real difference while trusted: the old way at once, until it has matched three times again
+  assert.equal(t.compared(0, 60, true), 'back on trial');
+  assert.equal(t.state, 'trial');
+  assert.equal(t.compared(60, 60, true), 'match');
+  assert.equal(t.compared(60, 60, true), 'match');
+  assert.equal(t.state, 'trial');
+  assert.equal(t.compared(60, 60, true), 'trusted');
+  // three real differences in a row: off
+  assert.equal(t.compared(3, 60, true), 'back on trial');
+  assert.equal(t.compared(3, 60, true), 'different');
+  assert.equal(t.compared(3, 60, true), 'off');
+  assert.equal(t.state, 'off');
+  assert.equal(t.compared(60, 60, true), 'off');
+  // tried again after ten minutes, three times at most
+  assert.equal(t.again(), false);
+  now += 10 * 60 * 1000 + 1;
+  assert.equal(t.again(), true);
+  assert.equal(t.state, 'trial');
+  for (let i = 0; i < 3; i++) {
+    for (let k = 0; k < 3; k++) t.compared(0, 60, true);
+    assert.equal(t.state, 'off');
+    now += 10 * 60 * 1000 + 1;
+    assert.equal(t.again(), i < 2, `try ${i + 2}`);
+  }
+  assert.equal(t.state, 'off');
+  assert.match(t.fact, /^the old way \(its pictures differed 3 times in a row/);
+  // a helper that cannot be started is never tried again; and nothing is tried off Windows
+  const dead = new Trial({ now: () => now });
+  dead.off('the helper could not be started', true);
+  now += 60 * 60 * 1000;
+  assert.equal(dead.again(), false);
+  assert.equal(new Trial({ on: false }).again(), false);
+  // the fact says what was seen
+  const f = new Trial({ now: () => now });
+  f.compared(59, 60, true); f.compared(20, 60, false);
+  assert.match(f.fact, /being compared \(1 of 3 matched\); comparisons: 1 matched, 0 differed, 1 not counted; the last at \d\d:\d\d:\d\d: 20 of 60, not counted/);
+});

@@ -209,4 +209,57 @@ function overReadArea(win, display, width, height) {
   return w.x0 < area.x1 && w.x1 > area.x0 && w.y0 < area.y1 && w.y1 > area.y0;
 }
 
-module.exports = { CaptureHelper, AnswerReader, slotsSame, overReadArea, SCRIPT };
+// Whether the helper's pictures may be used: on trial, trusted, or off. Fed with the outcome
+// of each comparison of a picture taken both ways (see capture.js).
+//
+// A comparison only says something when both pictures show the inventory open and none of the
+// app's windows was over it: the two are taken about half a second apart, and in that time the
+// inventory can be closed, a tooltip can open over twenty slots, or the price check can come
+// up. (RaQner's PC, 0.63.2: trusted, then two comparisons of 11 of 60 slots switched the quick
+// way off for the rest of an hour, 680 s of freezes.) So:
+//   56 or more slots the same  -> a match; three in a row and it is trusted
+//   fewer than 30 the same     -> a real difference (wrong colours change every slot)
+//   in between                 -> says nothing either way
+// One real difference while trusted puts it back on trial at once (the old way until it has
+// matched three times again). Three in a row and it is off, and tried again ten minutes
+// later, three times at most in one run.
+const TRUST_AFTER = 3, SAME_SLOTS = 56, DIFFERENT_BELOW = 30, OFF_AFTER = 3, RETRY_MS = 10 * 60 * 1000, RETRIES = 3;
+class Trial {
+  constructor({ on = true, now = Date.now } = {}) {
+    this.now = now;
+    this.state = on ? 'trial' : 'off';
+    this.good = 0; this.bad = 0; this.why = ''; this.offAt = 0; this.retries = 0; this.final = !on;
+    this.tally = { matched: 0, differed: 0, unclear: 0 };
+    this.last = '';
+  }
+  // same: slots the same, of total; clear: both pictures showed the inventory open, no app window over it.
+  compared(same, total, clear) {
+    if (this.state === 'off') return 'off';
+    const at = new Date(this.now()).toTimeString().slice(0, 8);
+    if (!clear || (same < SAME_SLOTS && same >= DIFFERENT_BELOW)) { this.tally.unclear++; this.last = `${at}: ${same} of ${total}, not counted`; return 'unclear'; }
+    if (same >= SAME_SLOTS) {
+      this.tally.matched++; this.good++; this.bad = 0; this.last = `${at}: ${same} of ${total}, a match`;
+      if (this.state === 'trial' && this.good >= TRUST_AFTER) { this.state = 'trusted'; return 'trusted'; }
+      return 'match';
+    }
+    this.tally.differed++; this.good = 0; this.bad++; this.last = `${at}: ${same} of ${total}, different`;
+    if (this.bad >= OFF_AFTER) { this.off(`its pictures differed ${OFF_AFTER} times in a row, last ${same} of ${total} slots the same`); return 'off'; }
+    if (this.state === 'trusted') { this.state = 'trial'; return 'back on trial'; }
+    return 'different';
+  }
+  off(why, final = false) { this.state = 'off'; this.why = why; this.offAt = this.now(); this.final = this.final || final; }
+  // Called before each capture: off for long enough, and it goes on trial again.
+  again() {
+    if (this.state !== 'off' || this.final || this.retries >= RETRIES || this.now() - this.offAt < RETRY_MS) return false;
+    this.retries++; this.state = 'trial'; this.good = 0; this.bad = 0;
+    return true;
+  }
+  get fact() {
+    const t = this.tally, seen = `comparisons: ${t.matched} matched, ${t.differed} differed, ${t.unclear} not counted${this.last ? `; the last at ${this.last}` : ''}`;
+    if (this.state === 'trusted') return `the quick way (helper process), after its pictures matched the old way; ${seen}`;
+    if (this.state === 'trial') return `the old way, the quick way is being compared (${this.good} of ${TRUST_AFTER} matched${this.retries ? `, try ${this.retries + 1}` : ''}); ${seen}`;
+    return `the old way${this.why ? ` (${this.why})` : ''}${this.final || this.retries >= RETRIES ? '' : ', tried again later'}; ${seen}`;
+  }
+}
+
+module.exports = { CaptureHelper, AnswerReader, Trial, slotsSame, overReadArea, SCRIPT };

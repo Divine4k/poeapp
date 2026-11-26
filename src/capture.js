@@ -3,8 +3,8 @@
 // recording software uses). Nothing here reads game memory, touches game files or sends input.
 const { desktopCapturer, screen } = require('electron');
 const { diag } = require('./diagnose');
-const { CaptureHelper, slotsSame, overReadArea } = require('./capturehelper');
-const { COLS, ROWS } = require('./core/inventory/grid');
+const { CaptureHelper, Trial, slotsSame, overReadArea } = require('./capturehelper');
+const { COLS, ROWS, isInventoryOpen } = require('./core/inventory/grid');
 
 // ---- the quick way ----
 // Asking Windows through Electron for the picture of a screen freezes the app for about half
@@ -15,20 +15,17 @@ const { COLS, ROWS } = require('./core/inventory/grid');
 // byte for byte (judge). Reading loot is only as good as its pixels, so on any doubt the app
 // stays with the old way.
 const helper = new CaptureHelper({ onStarted: (ms) => diag.time('helper: capture helper started (on its own thread)', ms) });
-const TRUST_AFTER = 3;   // readings in a row whose slots matched
-const SAME_SLOTS = 56;   // of 60: a tooltip or the mouse may move between the two pictures
 const CHECK_EVERY = 30;  // once trusted, every so many pictures both are taken and compared again
 let quickShots = 0;
-const quick = { state: process.platform === 'win32' ? 'trial' : 'off', good: 0, bad: 0, why: '' };
+// On trial, trusted or off: see Trial in capturehelper.js for the rules.
+const quick = new Trial({ on: process.platform === 'win32' });
+let noTwin = 0; // comparisons in a row for which the helper gave no picture
 let ownWindows = () => []; // set by main.js: where the app's own windows over the game are right now
 let ownWindowsShown = () => false; // replaced per capture, see captureFrame
-function quickFact() {
-  diag.facts['Screen capture'] = quick.state === 'trusted' ? 'the quick way (helper process), after its pictures matched the old way'
-    : quick.state === 'trial' ? `the old way, the quick way is being compared (${quick.good} of ${TRUST_AFTER} matched)`
-      : `the old way${quick.why ? ` (${quick.why})` : ''}`;
-}
+function quickFact() { diag.facts['Screen capture'] = quick.fact; }
 quickFact();
-function quickOff(why) { quick.state = 'off'; quick.why = why; helper.stop(); diag.note('capture', `Screen capture stays the old way: ${why}`); quickFact(); }
+// final: no point in trying again in this run (the helper cannot be started).
+function quickOff(why, final) { quick.off(why, final); helper.stop(); diag.note('capture', `Screen capture the old way: ${why}`); quickFact(); }
 
 // The screen's rectangle in real pixels, as the helper needs it; null where Electron cannot say.
 function realRect(display, width, height) {
@@ -62,17 +59,15 @@ function judge(frame, rect) {
   if (!twin || quick.state === 'off') return;
   frame.twin = null;
   const same = slotsSame(frame, twin, rect);
-  diag.note('capture', `Quick picture compared with the old one: ${same} of ${COLS * ROWS} slots the same`);
-  if (same >= SAME_SLOTS) {
-    quick.good++; quick.bad = 0;
-    if (quick.state === 'trial' && quick.good >= TRUST_AFTER) { quick.state = 'trusted'; diag.note('capture', 'Screen capture now the quick way: its pictures matched'); }
-  } else {
-    quick.good = 0; quick.bad++;
-    diag.count('inventory: the quick picture differed from the old one');
-    // Trusted and now different: back on trial at once, the old way until it has matched again.
-    if (quick.state === 'trusted') { quick.state = 'trial'; diag.note('capture', `Screen capture back to the old way for now: a later comparison differed, ${same} of ${COLS * ROWS} slots the same`); }
-    if (quick.bad >= 2) { quickOff(`its pictures differed, ${same} of ${COLS * ROWS} slots the same`); return; }
-  }
+  // The twin was taken half a second after the other: it only counts if it shows the open
+  // inventory too and none of the app's windows came up over it in between.
+  const clear = !frame.twinCovered && isInventoryOpen(twin, rect);
+  const was = quick.state, said = quick.compared(same, COLS * ROWS, clear);
+  diag.note('capture', `Quick picture compared with the old one: ${same} of ${COLS * ROWS} slots the same${clear ? '' : frame.twinCovered ? ', not counted (a window of the app was over the inventory)' : ', not counted (the inventory was not open in both)'} -> ${said}`);
+  if (said === 'unclear') diag.count('inventory: a comparison of the two pictures was not counted');
+  if (said === 'different' || said === 'back on trial' || said === 'off') diag.count('inventory: the quick picture differed from the old one');
+  if (said === 'off') helper.stop();
+  if (quick.state !== was) diag.note('capture', `Screen capture: ${quick.fact}`);
   quickFact();
 }
 
@@ -86,8 +81,11 @@ async function captureFrame(displayId) {
   const display = pickDisplay(displayId);
   const width = Math.round(display.size.width * display.scaleFactor);
   const height = Math.round(display.size.height * display.scaleFactor);
-  if (quick.state !== 'off' && !helper.usable) quickOff('the helper could not be started');
-  const inTheWay = ownWindows().some((w) => overReadArea(w, display, width, height));
+  if (quick.state !== 'off' && !helper.usable) quickOff('the helper could not be started', true);
+  if (quick.again()) { diag.note('capture', 'Screen capture: the quick way is on trial again'); quickFact(); }
+  // Asked again after a picture is taken: a window that came up meanwhile may be in it.
+  const covered = () => ownWindows().some((w) => overReadArea(w, display, width, height));
+  const inTheWay = covered();
   ownWindowsShown = () => inTheWay;
   // The app's own windows are left out of the old way's pictures (see guard in overlay.js);
   // whether the helper's copy leaves them out too is not known, so with one of them over the
@@ -99,8 +97,8 @@ async function captureFrame(displayId) {
     if (ownWindowsShown()) diag.count('inventory: old way of capture, a window of the app was over the inventory');
     else {
       const frame = await quickShot(display, width, height);
-      if (frame) return frame;
-      diag.count('inventory: old way of capture, the quick one gave nothing');
+      if (frame && !covered()) return frame;
+      diag.count(frame ? 'inventory: old way of capture, a window of the app came up during the quick one' : 'inventory: old way of capture, the quick one gave nothing');
     }
   }
   // The two halves are timed apart (Under the hood): asking Windows for the pictures of every
@@ -119,7 +117,9 @@ async function captureFrame(displayId) {
   // While the quick way is on trial, its picture is taken right after, for judge().
   if ((quick.state === 'trial' || again) && !ownWindowsShown() && size.width === width && size.height === height) {
     frame.twin = await quickShot(display, width, height);
-    if (!frame.twin) { quick.bad++; if (quick.bad >= 3) quickOff('the helper gave no picture'); }
+    frame.twinCovered = covered();
+    if (!frame.twin && ++noTwin >= 3) { noTwin = 0; quickOff('the helper gave no picture'); }
+    else if (frame.twin) noTwin = 0;
   }
   return frame;
 }
