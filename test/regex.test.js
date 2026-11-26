@@ -53,13 +53,14 @@ test('the map search: mods not wanted, mods wanted, any or all', () => {
   assert.equal(on(o, MAP(['Monsters have 30% more Life'])), true);
   assert.equal(on(o, MAP(['Monsters reflect 18% of Physical Damage'])), false);
   assert.equal(on(o, MAP(['Players cannot Regenerate Life, Mana or Energy Shield'])), false);
-  const want = { wantMods: ['blind', 'maim'] };
+  const want = { wantMods: ['blind', 'maim'], wantAll: false, wantMatch: 'any' };
   assert.equal(R.mapSearch(want).text, '"blind|maim"');
   assert.equal(on(want, MAP(['Monsters Blind on Hit'])), true);
   assert.equal(on(want, MAP([])), false);
-  const all = { wantMods: ['blind', 'maim'], wantAll: true };
+  const all = { wantMods: ['blind', 'maim'] }; // All of them is the default
   assert.equal(on(all, MAP(['Monsters Blind on Hit'])), false);
   assert.equal(on(all, MAP(['Monsters Blind on Hit', 'Monsters Maim on Hit with Attacks'])), true);
+  assert.equal(R.cleanBuilders({ map: { wantAll: false } }).map.wantAll, true); // the old saved Any one does not stick
   // one mod in both lists stays only in "don't want"
   assert.deepEqual(R.cleanBuilders({ map: { avoid: ['blind'], wantMods: ['blind', 'maim'] } }).map.wantMods, ['maim']);
   assert.equal(R.mapSearch({}).text, '');
@@ -83,8 +84,11 @@ test('the map search: numbers, quality, rarity, corrupted, unidentified, map typ
   assert.equal(on({ corruptedOn: true, corruptedMode: 'exclude' }, MAP([], ['Corrupted'])), false);
   assert.equal(on({ corruptedOn: true }, MAP([], ['Corrupted'])), true);
   assert.equal(on({ unidOn: true }, MAP([], ['Unidentified'])), false);
-  assert.equal(R.mapSearch({ typesOn: true, typeMode: { shaper: 'include' }, typeOn: { blighted: false, ravaged: false } }).text, '"!the elder|citadel|originator" "the shaper"');
-  assert.equal(R.mapSearch({ typeMode: { shaper: 'include' } }).text, ''); // map types only count when switched on
+  assert.equal(R.mapSearch({ typeMode: { shaper: 'include' }, typeOn: { shaper: true, elder: true, conqueror: true, originator: true } }).text, '"!the elder|citadel|originator" "the shaper"');
+  assert.equal(R.mapSearch({ typeMode: { shaper: 'include' } }).text, ''); // only ticked map types count
+  assert.deepEqual(R.cleanBuilders({ map: {} }).map.typeOn.shaper, false); // none ticked to begin with
+  assert.equal(R.cleanBuilders({ map: { typesOn: true } }).map.typeOn.shaper, true); // before 0.54.2: all ticked once switched on
+  assert.equal(R.cleanBuilders({ map: { typesOn: false } }).map.typeOn.shaper, false);
 });
 
 test('the number on a mod is the characters it adds', () => {
@@ -137,7 +141,7 @@ test('the tester reads a search as the stash box does', () => {
 
 test('a pasted search is read back into the builder, and what is not known is kept', () => {
   const o = { avoid: ['reflect-phys', 'no-regen'], wantMods: ['blind', 'maim'], yields: { pack: 25, rarity: 60 }, yieldAny: true, quality: { currency: 20 },
-    rarity: { normal: false, magic: true, rare: true }, corruptedOn: true, corruptedMode: 'exclude', unidOn: true, typesOn: true, typeMode: { shaper: 'include' } };
+    rarity: { normal: false, magic: true, rare: true }, corruptedOn: true, corruptedMode: 'exclude', unidOn: true, typeOn: { shaper: true, elder: true }, typeMode: { shaper: 'include' }, wantMatch: 'any' };
   const text = R.mapSearch(R.cleanBuilders({ map: o }).map).text;
   const back = R.readMapSearch(text);
   assert.equal(R.mapSearch(back).text, text); // the same search comes out again

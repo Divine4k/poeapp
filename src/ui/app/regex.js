@@ -89,7 +89,6 @@ function rxMapsHtml() {
 function rxBoxesHtml() {
   const m = rxB.map;
   const short = (path, now) => rxSw(path, now, [['false', 'Exact'], ['true', 'Shorter']]);
-  const [q0, ...qRest] = RX.QUALITY;
   return `<section class="panel rx-box"><div class="rx-bh"><h3>Drops and yield</h3>${short('map.yieldShort', m.yieldShort)}</div>
       <div class="rx-g2">${RX.YIELDS.map((y) => rxNum(`map.yields.${y.id}`, m.yields[y.id], y.label)).join('')}</div>
       ${rxCk('map.yieldAny', m.yieldAny, 'One of these is enough')}</section>
@@ -99,11 +98,10 @@ function rxBoxesHtml() {
       <div class="rx-ln">${rxCk('map.unidOn', m.unidOn, 'Unidentified')}${rxInOut('map.unidMode', m.unidMode, !m.unidOn)}</div>
       <p class="rx-hint">An unidentified map shows no mods, so it passes "Don't want". Exclude them when that matters.</p></section>
     <section class="panel rx-box"><div class="rx-bh"><h3>Quality (Maven chisels)</h3>${short('map.qualShort', m.qualShort)}</div>
-      ${rxNum(`map.quality.${q0.id}`, m.quality[q0.id], q0.label)}
-      <div class="rx-g2">${qRest.map((q) => rxNum(`map.quality.${q.id}`, m.quality[q.id], q.label)).join('')}</div>
+      <div class="rx-g2">${RX.QUALITY.map((q) => rxNum(`map.quality.${q.id}`, m.quality[q.id], q.id === 'any' ? 'Any kind' : q.label)).join('')}</div>
       ${rxCk('map.qualAny', m.qualAny, 'One kind of quality is enough')}</section>
-    <section class="panel rx-box"><div class="rx-bh"><h3>Map types</h3>${rxCk('map.typesOn', m.typesOn, 'Use these')}</div>
-      <div class="rx-types${m.typesOn ? '' : ' off'}">${RX.MAP_TYPES.map((t) => `<div class="rx-tl">${rxCk(`map.typeOn.${t.id}`, m.typeOn[t.id], t.label)}${rxInOut(`map.typeMode.${t.id}`, m.typeMode[t.id], !m.typeOn[t.id])}</div>`).join('')}</div></section>`;
+    <section class="panel rx-box"><div class="rx-bh"><h3>Map types</h3></div>
+      <div class="rx-types">${RX.MAP_TYPES.map((t) => `<div class="rx-tl">${rxCk(`map.typeOn.${t.id}`, m.typeOn[t.id], t.label)}${rxInOut(`map.typeMode.${t.id}`, m.typeMode[t.id], !m.typeOn[t.id])}</div>`).join('')}</div></section>`;
 }
 function rxListPanel(list) {
   const avoid = list === 'avoid';
@@ -140,7 +138,7 @@ function rxListOut(list) {
   setHtml(box, picked.map(row).join('') + (picked.length && rest.length ? '<div class="rx-more">More mods</div>' : '') + rest.map(row).join('')
     || '<p class="rx-empty">No mod matches. Mods not in this list can still be found by their words in My searches.</p>');
   $(`rx-c-${list}`).textContent = m[list].length ? `${m[list].length} picked` : '';
-  if (list === 'wantMods') setHtml($('rx-wantall'), rxSw('map.wantAll', m.wantAll, [['false', 'Any one'], ['true', 'All of them']]).replace(/^<span[^>]*>|<\/span>$/g, ''));
+  if (list === 'wantMods') setHtml($('rx-wantall'), rxSw('map.wantMatch', m.wantMatch, [['any', 'Any one'], ['all', 'All of them']]).replace(/^<span[^>]*>|<\/span>$/g, ''));
 }
 
 // ---- vendor builder ---------------------------------------------------------------------

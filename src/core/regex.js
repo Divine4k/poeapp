@@ -162,12 +162,12 @@ function modsFromRules(rules) {
 const extraParts = (s) => String(s || '').split(',').map((x) => x.trim().replace(/"/g, '')).filter(Boolean);
 
 const MAP_DEFAULT = {
-  avoid: [], wantMods: [], wantAll: false,
+  avoid: [], wantMods: [], wantAll: true,
   yields: {}, yieldAny: false, yieldShort: false,
   quality: {}, qualAny: true, qualShort: false,
   rarity: { normal: true, magic: true, rare: true }, rarityMode: 'include',
   corruptedOn: false, corruptedMode: 'include', unidOn: false, unidMode: 'exclude',
-  typesOn: false, typeOn: {}, typeMode: {},
+  typeOn: {}, typeMode: {}, // a ticked map type is used, with its Include or Exclude
   kept: [], // parts of a pasted search the builder does not know, kept as they were written
 };
 // "Shorter": rounded down to tens, which makes a shorter pattern (as poe.re's Optimized).
@@ -200,8 +200,8 @@ function mapSearch(o) {
   }
   if (o.corruptedOn) parts.push(o.corruptedMode === 'exclude' ? { what: 'not corrupted', text: '!pte' } : { what: 'corrupted', text: 'pte' });
   if (o.unidOn) parts.push(o.unidMode === 'exclude' ? { what: 'identified (mods can be read)', text: '!tified' } : { what: 'unidentified', text: 'tified' });
-  if (o.typesOn) {
-    const on = MAP_TYPES.filter((t) => (o.typeOn && o.typeOn[t.id]) !== false);
+  {
+    const on = MAP_TYPES.filter((t) => o.typeOn && o.typeOn[t.id] === true);
     const out = on.filter((t) => (o.typeMode && o.typeMode[t.id]) !== 'include'), inn = on.filter((t) => (o.typeMode && o.typeMode[t.id]) === 'include');
     if (out.length) parts.push({ what: `not ${out.map((t) => t.label).join(', ')}`, text: `"!${out.map((t) => t.tok).join('|')}"` });
     if (inn.length) parts.push({ what: `${inn.map((t) => t.label).join(' or ')} only`, text: `"${inn.map((t) => t.tok).join('|')}"` });
@@ -260,7 +260,7 @@ function readMapSearch(text) {
     else if (mods.every(Boolean) && !t.neg && (alts.length === 1 ? seen.want !== 'any' : !seen.want)) {
       m.wantMods.push(...mods.map((x) => x.id));
       seen.want = alts.length > 1 ? 'any' : 'all';
-      m.wantAll = seen.want === 'all' && m.wantMods.length > 1;
+      m.wantMatch = seen.want === 'any' ? 'any' : 'all';
     } else if (!t.neg && nums.every(Boolean) && nums.every((x) => x.kind === nums[0].kind) && !seen[nums[0].kind]) {
       const k = nums[0].kind;
       for (const x of nums) m[k][x.id] = x.n;
@@ -276,7 +276,6 @@ function readMapSearch(text) {
     } else if (b === 'pte' || b === 'corrupted') { m.corruptedOn = true; m.corruptedMode = t.neg ? 'exclude' : 'include'; }
     else if (b === 'tified' || b === 'unidentified') { m.unidOn = true; m.unidMode = t.neg ? 'exclude' : 'include'; }
     else if (types.every(Boolean)) {
-      m.typesOn = true;
       for (const x of types) { m.typeOn[x.id] = true; m.typeMode[x.id] = t.neg ? 'exclude' : 'include'; }
       for (const x of MAP_TYPES) if (!(x.id in m.typeOn)) m.typeOn[x.id] = false;
     } else m.kept.push(t.neg ? quoted(`!${t.body}`) : quoted(t.body));
@@ -365,17 +364,20 @@ function cleanBuilders(r) {
   const avoid = ids(m.avoid);
   const inOut = (x, dflt) => (x === 'include' || x === 'exclude' ? x : dflt);
   const typeOn = {}, typeMode = {};
-  for (const t of MAP_TYPES) { typeOn[t.id] = !(m.typeOn && m.typeOn[t.id] === false); typeMode[t.id] = inOut(m.typeMode && m.typeMode[t.id], 'exclude'); }
+  // Before 0.54.2 the types counted only with "Use these" (typesOn) ticked, and every type started ticked.
+  const oldOn = (id) => (m.typesOn === undefined ? m.typeOn && m.typeOn[id] === true : !!m.typesOn && !(m.typeOn && m.typeOn[id] === false));
+  for (const t of MAP_TYPES) { typeOn[t.id] = oldOn(t.id); typeMode[t.id] = inOut(m.typeMode && m.typeMode[t.id], 'exclude'); }
   return {
     map: {
-      avoid, wantMods: ids(m.wantMods).filter((id) => !avoid.includes(id)), wantAll: !!m.wantAll,
+      avoid, wantMods: ids(m.wantMods).filter((id) => !avoid.includes(id)), // 0.54.0 saved wantAll: false for everyone; the choice is kept as wantMatch from 0.54.2, All by default.
+      wantMatch: m.wantMatch === 'any' ? 'any' : 'all', wantAll: m.wantMatch !== 'any',
       yields, yieldAny: !!(m.yieldAny || m.wantAny), yieldShort: !!m.yieldShort,
       quality: nums(QUALITY, m.quality), qualAny: m.qualAny !== false, qualShort: !!m.qualShort,
       rarity: { normal: !(m.rarity && m.rarity.normal === false), magic: !(m.rarity && m.rarity.magic === false), rare: !(m.rarity && m.rarity.rare === false) },
       rarityMode: inOut(m.rarityMode, 'include'),
       corruptedOn: !!m.corruptedOn || m.corrupted === 'only' || m.corrupted === 'not', corruptedMode: m.corrupted === 'not' ? 'exclude' : inOut(m.corruptedMode, 'include'),
       unidOn: !!m.unidOn || m.unidentified === 'not', unidMode: inOut(m.unidMode, 'exclude'),
-      typesOn: !!m.typesOn, typeOn, typeMode,
+      typeOn, typeMode,
       kept: (Array.isArray(m.kept) ? m.kept : []).map((x) => String(x).slice(0, 250)).filter(Boolean).slice(0, 20),
     },
     vendor: {
