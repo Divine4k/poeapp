@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { accountQuery, readUltimatum, valueOf, sortByWorth, tabsOf, scan } = require('../src/core/ultimatum');
+const { accountQuery, readUltimatum, valueOf, searchFor, sortByWorth, tabsOf, scan } = require('../src/core/ultimatum');
 const { TradeClient } = require('../src/core/tradeApi');
 
 // One result as the trade site sends it (the shape of its properties, cut to what matters).
@@ -107,4 +107,10 @@ test('a look-up without an account name or league says what is missing', async (
   const client = new TradeClient({ fetchImpl: async () => { throw new Error('not reached'); } });
   await assert.rejects(scan({ client, league: 'Covens', account: ' ', sleep: async () => {} }), /account name/);
   await assert.rejects(scan({ client, league: '', account: 'A#1', sleep: async () => {} }), /league/);
+});
+
+test('the stash search for one names its sacrifice, level and challenge; a named reward too', () => {
+  assert.equal(searchFor(readUltimatum(raw('a', 'Exalted Orb', 4, 'Doubles sacrificed Currency', 0, 0))), '"Exalted Orb x4" "Level: 83" "Survive"');
+  assert.equal(searchFor(readUltimatum(raw('b', "Atziri's Step", 0, "Atziri's Acuity", 0, 1))), '"Atziri\'s Step" "Atziri\'s Acuity" "Level: 83" "Survive"');
+  assert.equal(searchFor({ sacrifice: null, reward: '', areaLevel: null, challenge: '' }), '');
 });

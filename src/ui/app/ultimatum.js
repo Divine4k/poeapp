@@ -3,7 +3,7 @@
 // the trade site by account name, valued by what it gives and shown where it lies in the tab.
 // Part of the main window script: all files in src/ui/app/ share one scope, loaded in the order of index.html.
 
-const ul = { account: '', keep: 20, last: null, busy: false, progress: null, error: '', asked: false, hot: '' };
+const ul = { account: '', keep: 20, last: null, busy: false, progress: null, error: '', asked: false, hot: '', found: '' };
 // The account name and the light-up value are kept in this window, like the Jewels page's choices.
 try {
   const kept = JSON.parse(localStorage.getItem('ultimatum') || 'null') || {};
@@ -49,13 +49,13 @@ function ulListHtml() {
   const rows = r.items.map((u) => {
     const w = ulWorth(u);
     const small = [u.challenge, u.areaLevel ? `area ${u.areaLevel}` : '', u.mods.length ? `${u.mods.length} mods` : '', u.listed ? `listed for ${u.listed.amount} ${esc(u.listed.currency)}` : ''].filter(Boolean).join(' · ');
-    return `<div class="ul-row${ulKept(u) ? ' keep' : ''}${w === null ? ' blind' : ''}" data-id="${esc(u.id)}" title="${esc([u.value.why, u.mods.join(', ')].filter(Boolean).join('\n'))}">
+    return `<div class="ul-row${ulKept(u) ? ' keep' : ''}${w === null ? ' blind' : ''}${u.id === ul.found ? ' found' : ''}" data-id="${esc(u.id)}" title="${esc([u.value.why, u.mods.join(', '), u.find ? 'Click: light it up in your stash in game (open the stash first)' : ''].filter(Boolean).join('\n'))}">
       <b class="ul-val num">${w === null ? 'no price' : fmtValue(w)}</b>
       <span class="ul-what"><span>${esc(ulWhat(u))}</span><small>${esc(small)}</small></span>
       <span class="ul-where">${esc(ulWhere(u))}</span>
     </div>`;
   }).join('');
-  return `<div class="ul-sum"><b>${r.items.length}</b> Ultimatums <span>worth <b class="num">${fmtValue(sum)}</b> to run</span> <span><b>${kept}</b> at ${fmtValue(ul.keep)} or more</span>${blind ? ` <span><b>${blind}</b> without a price</span>` : ''}</div>${more}<div class="ul-rows">${rows}</div>`;
+  return `<div class="ul-sum"><b>${r.items.length}</b> Ultimatums <span>worth <b class="num">${fmtValue(sum)}</b> to run</span> <span><b>${kept}</b> at ${fmtValue(ul.keep)} or more</span>${blind ? ` <span><b>${blind}</b> without a price</span>` : ''} <span class="ul-tip">Click one to light it up in your stash in game</span></div>${more}<div class="ul-rows">${rows}</div>`;
 }
 
 function ulTabsHtml() {
@@ -131,8 +131,16 @@ function ulHot(id) {
 }
 $('tab-ultimatum').addEventListener('pointerover', (e) => { const el = e.target.closest('[data-id]'); ulHot(el ? el.dataset.id : ''); });
 $('tab-ultimatum').addEventListener('pointerleave', () => ulHot(''));
-$('ul-tabs').addEventListener('click', (e) => {
-  const cell = e.target.closest('i[data-id]');
-  const row = cell && $('ul-list').querySelector(`.ul-row[data-id="${CSS.escape(cell.dataset.id)}"]`);
-  if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+// A click on a row or on its cell lights that Ultimatum up in the game: the app goes to the
+// game and types the search for it into the stash's search box (the stash must be open). The
+// one click is the user's; the row last asked for stays marked on the page.
+$('tab-ultimatum').addEventListener('click', (e) => {
+  const el = e.target.closest('.ul-row[data-id], i[data-id]');
+  const u = el && ul.last && ul.last.items.find((x) => x.id === el.dataset.id);
+  if (!u) return;
+  const row = $('ul-list').querySelector(`.ul-row[data-id="${CSS.escape(u.id)}"]`);
+  if (row && el.tagName === 'I') row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (!u.find) return;
+  ul.found = u.id; ulDraw();
+  act({ type: 'regexSend', text: u.find });
 });

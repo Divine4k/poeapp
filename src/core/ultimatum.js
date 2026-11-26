@@ -77,6 +77,18 @@ function valueOf(u, chaosOf) {
   return { kind: 'unknown', chaos: null, cost, why: u.reward ? `No price for "${u.reward}".` : 'It does not say what it gives.' };
 }
 
+// What to type in the stash's search box so the game lights this one up (and any twin of it:
+// same sacrifice, level and challenge, so worth the same). Words in quotes must all be there.
+function searchFor(u) {
+  const q = (t) => `"${String(t).replace(/"/g, '').trim()}"`;
+  const parts = [];
+  if (u.sacrifice && u.sacrifice.name) parts.push(q(u.sacrifice.count > 1 ? `${u.sacrifice.name} x${u.sacrifice.count}` : u.sacrifice.name));
+  if (u.reward && !/^Doubles sacrificed/i.test(u.reward)) parts.push(q(u.reward));
+  if (u.areaLevel) parts.push(q(`Level: ${u.areaLevel}`));
+  if (u.challenge) parts.push(q(u.challenge));
+  return parts.join(' ');
+}
+
 // Dearest first; those without a value last, in the order they lie in the tab.
 function sortByWorth(list) {
   const v = (u) => (u.value && u.value.chaos !== null ? u.value.chaos : -Infinity);
@@ -126,4 +138,4 @@ async function scan({ client, league, account, sleep, onPart = () => {}, max = M
   return { account: name, league, total: found.total, items };
 }
 
-module.exports = { TYPE, MAX, accountQuery, propLine, readUltimatum, valueOf, sortByWorth, tabsOf, scan };
+module.exports = { TYPE, MAX, accountQuery, propLine, readUltimatum, valueOf, searchFor, sortByWorth, tabsOf, scan };

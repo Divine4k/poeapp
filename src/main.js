@@ -2161,7 +2161,7 @@ async function ultimatumAction(a) {
   try {
     const r = await ultimatum.scan({ client: tradeClient, league: config.league, account: a.account, sleep, onPart: tell });
     const chaosOf = (name) => prices.chaosOf(name);
-    const items = ultimatum.sortByWorth(r.items.map((u) => ({ ...u, value: ultimatum.valueOf(u, chaosOf), listedChaos: u.listed ? chaosOfPrice(u.listed.amount, u.listed.currency) : null })));
+    const items = ultimatum.sortByWorth(r.items.map((u) => ({ ...u, value: ultimatum.valueOf(u, chaosOf), find: ultimatum.searchFor(u), listedChaos: u.listed ? chaosOfPrice(u.listed.amount, u.listed.currency) : null })));
     ultimatumLast = { at: Date.now(), account: r.account, league: r.league, total: r.total, items, tabs: ultimatum.tabsOf(items) };
     const unknown = items.filter((u) => u.value.chaos === null).length;
     if (trouble) trouble.event('ultimatum', { found: r.total, read: items.length, noValue: unknown, tabs: ultimatumLast.tabs.length });

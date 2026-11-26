@@ -191,6 +191,7 @@
         u.value = { kind: 'double', chaos: count * each, cost: count * each, why: `You put in ${count} × ${name} and get twice that back.` };
         if (i === 7) { u.reward = 'Mirrored Rare Item'; u.sacrifice = { name: 'Rare Ring', count: 1 }; u.value = { kind: 'unknown', chaos: null, cost: null, why: 'No price for "Mirrored Rare Item".' }; }
         if (i === 9) { u.reward = "Atziri's Acuity"; u.sacrifice = { name: "Atziri's Step", count: 1 }; u.value = { kind: 'item', chaos: 330, prize: 340, cost: 10, why: "Atziri's Acuity less what you put in." }; }
+        u.find = `"${u.sacrifice.name} x${u.sacrifice.count}" "Level: ${u.areaLevel}"`;
         if (!items.some((o) => o.x === x && o.y === y)) items.push(u);
       }
       items.sort((p, q) => (q.value.chaos === null ? -1 : q.value.chaos) - (p.value.chaos === null ? -1 : p.value.chaos));
