@@ -2401,7 +2401,7 @@ function setupIpc() {
       cols: COLS, rows: ROWS,
       trips: data.trips.map((t) => ({
         trip: t.trip, at: t.at, image: t.image, stale: !!t.stale,
-        cells: t.cells.map((c) => { const each = c.name ? prices.chaosOf(c.name) : 0; return { ...c, packed: undefined, each, total: each * (c.qty || 0) }; }),
+        cells: t.cells.map((c) => { const each = c.name ? prices.chaosOf(c.name) : 0, e = c.name ? prices.get(c.name) : null; return { ...c, packed: undefined, each, total: each * (c.qty || 0), icon: (e && e.icon) || null }; }),
       })),
     };
   });

@@ -212,6 +212,19 @@ function snapTip(c, divine) {
   if (c.status === 'ignored') return 'Ignored by you';
   return 'No stack number, so not counted (gear, gems and other single items)';
 }
+// The kept inventories are drawn from what was read: a recognised item as its own picture with
+// its number, so a tooltip or anything else on screen at that moment never shows. Slots the app
+// is not sure of (not recognised, gear, look-alikes it could not tell apart) keep the picture
+// taken in game. "Photo" shows the pictures as taken, to check a reading. Kept per window.
+let invPhoto = false;
+try { invPhoto = localStorage.getItem('invPhoto') === '1'; } catch (_) { /* storage off: drawn */ }
+function setInvPhoto(on) {
+  invPhoto = !!on;
+  try { localStorage.setItem('invPhoto', invPhoto ? '1' : ''); } catch (_) { /* not kept */ }
+}
+const drawnSlot = (c) => !invPhoto && !!c.icon && (c.status === 'item' || c.status === 'remembered') && c.how !== 'doubt';
+const drawnInner = (c) => `<img src="${esc(c.icon)}" alt="" loading="lazy">${c.qty > 1 ? `<b>${c.qty}</b>` : ''}`;
+
 // One picture per inventory brought out of the map. compact: the small ones beside the timer,
 // newest on top, so the inventory being filled now is always the first one.
 function snapHtml(data, compact, divine) {
@@ -228,10 +241,12 @@ function snapHtml(data, compact, divine) {
       if (c && c.carried && data.runId) {
         // Dimmed: one click counts it as loot after all.
         const what = c.name ? `${c.carriedQty > 1 ? `${c.carriedQty} ` : ''}${c.name}` : 'this item';
-        cells += `<i class="${esc(c.status)} carried fixable" data-act="markLoot" data-id="snap:${t.trip}:${c.cell}" data-run="${esc(data.runId)}" data-confirm="${esc(`Count ${what} as loot from this map?`)}" title="${esc(snapTip(c, divine))}"></i>`;
+        const d = drawnSlot(c);
+        cells += `<i class="${esc(c.status)} carried fixable${d ? ' drawn' : ''}" data-act="markLoot" data-id="snap:${t.trip}:${c.cell}" data-run="${esc(data.runId)}" data-confirm="${esc(`Count ${what} as loot from this map?`)}" title="${esc(snapTip(c, divine))}">${d ? drawnInner(c) : ''}</i>`;
         continue;
       }
-      cells += c ? `<i class="${esc(c.status)}${c.carried ? ' carried' : ''}${fixable ? ' fixable' : ''}"${fixable ? ` data-fix="snap:${t.trip}:${c.cell}" data-run="${esc(data.runId)}"` : ''} title="${esc(snapTip(c, divine))}${fixable ? ' Click to correct.' : ''}"></i>` : '<i></i>';
+      const d = c && drawnSlot(c);
+      cells += c ? `<i class="${esc(c.status)}${c.carried ? ' carried' : ''}${fixable ? ' fixable' : ''}${d ? ' drawn' : ''}"${fixable ? ` data-fix="snap:${t.trip}:${c.cell}" data-run="${esc(data.runId)}"` : ''} title="${esc(snapTip(c, divine))}${fixable ? ' Click to correct.' : ''}">${d ? drawnInner(c) : ''}</i>` : '<i></i>';
     }
     const brought = t.cells.some((c) => c.carried);
     const which = total > 1 ? `Inventory ${n} of ${total}${compact && n === total ? ' (latest)' : ''}, ` : 'Inventory ';
@@ -406,10 +421,12 @@ function invGridHtml(data, trip, run) {
     const tip = esc(snapTip(c, state.summary.divine));
     if (c.carried && run) {
       const what = c.name ? `${c.carriedQty > 1 ? `${c.carriedQty} ` : ''}${c.name}` : 'this item';
-      html += `<i class="sk pic ${pos} carried fixable" data-act="markLoot" data-id="snap:${trip.trip}:${c.cell}" data-run="${esc(run.id)}" data-confirm="${esc(`Count ${what} as loot from this map?`)}" title="${tip}"></i>`;
+      const d = drawnSlot(c);
+      html += `<i class="sk ${d ? 'drawn' : `pic ${pos}`} carried fixable" data-act="markLoot" data-id="snap:${trip.trip}:${c.cell}" data-run="${esc(run.id)}" data-confirm="${esc(`Count ${what} as loot from this map?`)}" title="${tip}">${d ? drawnInner(c) : ''}</i>`;
       continue;
     }
-    html += `<i class="sk pic ${pos} ${esc(c.status)}${fixable ? ' fixable' : ''}"${fixable ? ` data-fix="snap:${trip.trip}:${c.cell}" data-run="${esc(run.id)}"` : ''} title="${tip}${fixable ? ' Click to correct.' : ''}"></i>`;
+    const d = drawnSlot(c);
+    html += `<i class="sk ${d ? 'drawn' : `pic ${pos}`} ${esc(c.status)}${fixable ? ' fixable' : ''}"${fixable ? ` data-fix="snap:${trip.trip}:${c.cell}" data-run="${esc(run.id)}"` : ''} title="${tip}${fixable ? ' Click to correct.' : ''}">${d ? drawnInner(c) : ''}</i>`;
   }
   return html;
 }
@@ -459,14 +476,15 @@ function renderNow() {
   if (invTrip != null && !trips[invTrip]) invTrip = null;
   const ti = invTrip == null ? trips.length - 1 : invTrip;
   const trip = trips[ti];
-  const snapKey = trip ? `${run.id}:${trip.trip}@${trip.at}:${ti}` : `empty:${run ? run.id : ''}`;
+  const snapKey = trip ? `${run.id}:${trip.trip}@${trip.at}:${ti}:${invPhoto ? 'photo' : 'drawn'}` : `empty:${run ? run.id : ''}`;
   const grid = $('now-snap');
   if (grid.dataset.key !== snapKey) {
     grid.dataset.key = snapKey;
     grid.innerHTML = invGridHtml(snap, trip, run);
     grid.style.setProperty('--inv', trip ? `url("${trip.image}")` : 'none');
   }
-  setHtml($('inv-trips'), trips.length > 1 ? trips.map((t, i) => `<button type="button" data-inv-trip="${i}" aria-pressed="${i === ti}" title="Inventory ${i + 1} of ${trips.length}, read at ${clock(t.at)}">${i + 1}</button>`).join('') : '');
+  setHtml($('inv-trips'), (trips.length > 1 ? trips.map((t, i) => `<button type="button" data-inv-trip="${i}" aria-pressed="${i === ti}" title="Inventory ${i + 1} of ${trips.length}, read at ${clock(t.at)}">${i + 1}</button>`).join('') : '')
+    + (trip ? `<button type="button" class="photo" data-inv-photo aria-pressed="${invPhoto}" title="${invPhoto ? 'Showing the pictures as taken in game. Click to show the items as read.' : 'Showing the items as read. Click to see the pictures as taken in game, to check a reading.'}">Photo</button>` : ''));
   setHtml($('now-uncounted'), run ? uncountedLine(run, true) : '');
 
   // The loot: picture, name, how many and what it is worth, most valuable first.

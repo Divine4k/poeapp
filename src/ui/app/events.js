@@ -34,6 +34,7 @@ document.addEventListener('click', (e) => {
   if (e.target.closest('#btn-strategy-edit')) { openStrategy(stratSel); return; }
   const it = e.target.closest('[data-inv-trip]');
   if (it) { invTrip = Number(it.dataset.invTrip); $('now-snap').dataset.key = ''; renderNow(); return; }
+  if (e.target.closest('[data-inv-photo]')) { setInvPhoto(!invPhoto); renderNow(); renderSession(); return; }
   const pick = e.target.closest('[data-session]');
   if (pick) { sessionSel = pick.dataset.session; expanded = null; renderSession(); return; }
   if (e.target.closest('[data-allitems]')) { allItems = !allItems; renderSession(); return; }

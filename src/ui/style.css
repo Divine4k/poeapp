@@ -265,6 +265,8 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .invgrid { --inv: none; display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; margin: 4px 18px 12px; padding: 8px; border-radius: var(--r-md); background: var(--well); box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.55), inset 0 0 0 1px var(--line); }
 .invgrid .sk { position: relative; display: block; aspect-ratio: 1; border-radius: 6px; background: color-mix(in srgb, var(--bone) 2.5%, transparent); }
 .invgrid .sk.pic { background: var(--inv) no-repeat; background-size: 1200% 500%; background-position: calc(var(--cx) * 100% / 11) calc(var(--cy) * 100% / 4); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 8%, transparent), 0 0 10px color-mix(in srgb, var(--gold) 10%, transparent); }
+/* A slot drawn from what was read: the item's own picture and its number, as in game. */
+.invgrid .sk.drawn { position: relative; display: grid; place-items: center; overflow: hidden; background: color-mix(in srgb, var(--bone) 4%, var(--deep)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bone) 8%, transparent), 0 0 10px color-mix(in srgb, var(--gold) 10%, transparent); }
 .invgrid .sk.unknown { box-shadow: inset 0 0 0 1px var(--blood), 0 0 10px color-mix(in srgb, var(--blood) 25%, transparent); }
 .invgrid .sk.remembered { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 65%, transparent); }
 .invgrid .sk.carried { opacity: 0.3; box-shadow: none; }
@@ -277,6 +279,7 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .inv-trips button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--ash); font-size: 12px; }
 .inv-trips button[aria-pressed=true] { background: var(--raise); color: var(--bone); box-shadow: inset 0 0 0 1px var(--line2); }
 .inv-trips:empty + .link { margin-left: auto; }
+.inv-trips button.photo { width: auto; padding: 0 8px; }
 .cur .p-head h2 small b { color: var(--bone); font-weight: 600; }
 
 /* the session's numbers */
@@ -432,6 +435,12 @@ tr.detail b { color: var(--bone); font-weight: 500; }
 /* taken into the map with you, so not loot: the slot is dimmed, with no coloured frame */
 .snap-cells i.carried { box-shadow: inset 0 0 0 1px var(--deep); background: rgba(16, 19, 23, 0.62); }
 .xkey { color: var(--bone); font-weight: 600; }
+.snap-cells i.drawn { position: relative; display: grid; place-items: center; overflow: hidden; background: var(--deep); }
+.snap-cells i.drawn.carried { background: var(--deep); }
+.snap-cells i.drawn.carried img, .snap-cells i.drawn.carried b { opacity: 0.35; }
+.invgrid .sk.drawn img, .snap-cells i.drawn img { width: 84%; height: 84%; object-fit: contain; }
+.invgrid .sk.drawn b, .snap-cells i.drawn b { position: absolute; top: 1px; left: 4px; font-size: 11px; font-weight: 700; line-height: 1.2; color: var(--bone); text-shadow: 0 1px 2px var(--deep), 0 0 3px var(--deep); font-variant-numeric: tabular-nums; }
+.snap-cells i.drawn b { font-size: 10px; left: 3px; }
 .snap figcaption .stale { display: block; color: var(--gold); }
 .snap figcaption { margin-top: 5px; font-size: 11.5px; color: var(--ash); }
 .snaps { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 6px; }
