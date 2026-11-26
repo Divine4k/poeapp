@@ -129,10 +129,11 @@
     if (d.state !== 'done') return `<p class="pc-say">${bulk ? 'Press Search to see what the bulk exchange offers.' : 'Tick what matters, then press Search.'}</p>${ninja || stack ? `<p class="pc-sub">${[ninja, stack].filter(Boolean).join('<i>·</i>')}</p>` : ''}${extrasHtml(d)}`;
     if (!d.total) return `<p class="pc-say">${bulk ? 'Nobody offers it on the bulk exchange right now.' : 'Nothing like it is listed. Switch a stat off or lower a number.'}</p>${ninja ? `<p class="pc-sub">${ninja}</p>` : ''}${extrasHtml(d)}`;
     const sub = [`<b>${d.total.toLocaleString()}</b> ${bulk ? 'offers' : 'listed'}`, ninja, stack, d.searchedAt ? `searched ${ago(d.searchedAt, true)}` : ''].filter(Boolean).join('<i>·</i>');
-    if (s.low === null) return `<p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
+    if (s.low === null && (s.typical === null || s.typical === undefined)) return `<p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
     // one price, more or less: the average of the five cheapest real listings
     const typ = s.typical !== null && s.typical !== undefined ? s.typical : s.low;
-    return `<div class="pc-price" title="The average of the five cheapest listings, bait left out (the cheapest is ${esc(fmtValue(s.low))})"><span class="pc-about-sign">~</span>${priceHtml(typ)}<small>${bulk ? 'each' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
+    const how = s.from === 'ninja' ? `poe.ninja's price, from the game's currency exchange${s.low !== null ? ` (the cheapest real offer here is ${fmtValue(s.low)})` : ''}` : `The average of the five cheapest listings, bait left out (the cheapest is ${fmtValue(s.low)})`;
+    return `<div class="pc-price" title="${esc(how)}"><span class="pc-about-sign">~</span>${priceHtml(typ)}<small>${bulk ? 'each' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
   }
   // The verdict at a glance, beside the price.
   const VERDICT_TIPS = { top: 'Worth a divine or more', sell: 'Worth listing on the trade site', vendor: 'A vendor gives more than it sells for', low: 'Sells for less than a few chaos' };

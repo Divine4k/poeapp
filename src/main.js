@@ -43,7 +43,7 @@ const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyNam
 const { JewelService } = require('./jewels');
 const { readJewelText, tradeQuery: jewelTradeQuery } = require('./core/jewels/timeless');
 const { dustValue } = require('./core/dust');
-const { vendorRecipe, verdict, craftRoom, withCrafts, typicalPrice } = require('./core/worth');
+const { vendorRecipe, verdict, craftRoom, withCrafts, typicalPrice, bulkPrice } = require('./core/worth');
 const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
@@ -1437,7 +1437,8 @@ async function runBulkSearch() {
     tc.listings = offers;
     tc.total = r.total;
     tc.url = r.queryId ? exchangeUrl(config.league, r.queryId) : '';
-    tc.summary = withTypical(summarize(r.total, offers), offers);
+    // poe.ninja's price is the one shown; offers far under it are marked bait (bulkPrice in core/worth.js)
+    tc.summary = { ...summarize(r.total, offers), ...bulkPrice(offers, tc.ninja) };
     tc.state = 'done'; tc.searchedAt = Date.now();
   } catch (e) {
     tc.state = 'error'; tc.error = e.message || String(e);

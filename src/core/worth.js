@@ -95,4 +95,23 @@ function typicalPrice(chaos) {
   return { value: Math.round((top.reduce((a, b) => a + b, 0) / top.length) * 10) / 10, n: known.length };
 }
 
-module.exports = { vendorRecipe, verdict, craftRoom, withCrafts, typicalPrice, WORTH_SELLING };
+// The price of something sold in bulk (currency, catalysts, scarabs...). These have no mods, so
+// one price fits all of them, and poe.ninja takes it from the game's own currency exchange, where
+// most of it is traded now: that is the price shown (from: 'ninja'). The trade site's bulk
+// offers are only listed under it: for a dear one they are few and many are bait (a catalyst
+// worth 144c was offered at 1c, 4c, 10c, 20c... and the five cheapest averaged 12c). An offer
+// under half of poe.ninja's price is marked bait (not for cheap things, where a low price is
+// just a low price). Without a poe.ninja price: the typical price of the offers, as for gear.
+// offers: [{ chaos }], marked in place. Returns { low, typical, from } (low: cheapest real offer).
+const BULK_BAIT = 0.5, BULK_BAIT_FROM = 5;
+function bulkPrice(offers, ninja) {
+  const known = Number(ninja) > 0;
+  for (const o of offers) o.bait = known && ninja >= BULK_BAIT_FROM && o.chaos !== null && isFinite(o.chaos) && o.chaos < ninja * BULK_BAIT;
+  const real = offers.filter((o) => !o.bait).map((o) => o.chaos).filter((c) => c !== null && isFinite(c)).sort((a, b) => a - b);
+  const low = real.length ? real[0] : null;
+  if (known) return { low, typical: ninja, from: 'ninja' };
+  const t = typicalPrice(real).value;
+  return { low, typical: t !== null ? t : low, from: 'offers' };
+}
+
+module.exports = { vendorRecipe, verdict, craftRoom, withCrafts, typicalPrice, bulkPrice, WORTH_SELLING };

@@ -762,3 +762,21 @@ test('worth: vendor recipes, the verdict at a glance, and room for a bench craft
   const loose = [5, 6, 8, 9, 12, 15, 40], strict = [8, 12, 40, 41];
   assert.ok(typicalPrice(strict).value >= typicalPrice(loose).value);
 });
+
+test('bulk exchange: poe.ninja prices it, offers far under that are bait', () => {
+  const { bulkPrice } = require('../src/core/worth');
+  // RaQner's Dextral Catalyst (tracker #79): poe.ninja 144.2, the five cheapest averaged 12
+  const offers = [1, 4, 10, 20, 25, 35, 40, 50, 80, 150].map((chaos) => ({ chaos }));
+  assert.deepEqual(bulkPrice(offers, 144.2), { low: 80, typical: 144.2, from: 'ninja' });
+  assert.deepEqual(offers.map((o) => o.bait), [true, true, true, true, true, true, true, true, false, false]);
+  // plenty of honest offers: still poe.ninja's price, the offers are only listed
+  const some = [1, 130, 140, 145, 150, 160, 200].map((chaos) => ({ chaos }));
+  assert.deepEqual(bulkPrice(some, 144.2), { low: 130, typical: 144.2, from: 'ninja' });
+  // a cheap thing: a low price is just a low price
+  const cheap = [0.1, 0.5, 1, 1, 1].map((chaos) => ({ chaos }));
+  assert.deepEqual(bulkPrice(cheap, 1), { low: 0.1, typical: 1, from: 'ninja' });
+  assert.ok(cheap.every((o) => !o.bait));
+  // no poe.ninja price: the offers as they are
+  assert.deepEqual(bulkPrice([10, 12, 11, 30, 50].map((chaos) => ({ chaos })), null), { low: 10, typical: 22.6, from: 'offers' });
+  assert.deepEqual(bulkPrice([{ chaos: 3 }, { chaos: 4 }], null), { low: 3, typical: 3, from: 'offers' });
+});
