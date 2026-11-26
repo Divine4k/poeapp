@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('api', {
   runSnapshot: (runId) => ipcRenderer.invoke('run-snapshot', runId),
   itemsList: () => ipcRenderer.invoke('items-list'),
   tradeBook: () => ipcRenderer.invoke('trade-book'),
+  // the Trade page's Search: { op: 'get' | 'items' | 'stats' | 'search' | 'more' | 'whisper' | 'travel' | 'want' | 'open' | 'save' | 'unsave' | 'signin' | 'signout' }
+  tradeFind: (a) => ipcRenderer.invoke('trade-find', a),
+  onTradeFindNews: (cb) => ipcRenderer.on('trade-find-news', () => cb()),
   savedSession: (id) => ipcRenderer.invoke('saved-session', id),
   priceCategories: () => ipcRenderer.invoke('price-categories'),
   priceList: (a) => ipcRenderer.invoke('price-list', a),

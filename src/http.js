@@ -10,8 +10,11 @@ async function webFetch(url, options = {}) {
   const { name, path } = webName(url);
   const done = diag.start(name);
   const what = `${(options && options.method) || 'GET'} ${path}`;
+  // session: one of Electron's sessions to ask through (the trade site's signed-in one), so
+  // its cookies go along. Without it, the app's plain network stack.
+  const { session, ...init } = options || {};
   try {
-    const res = await net.fetch(url, options);
+    const res = await (session ? session.fetch(url, init) : net.fetch(url, init));
     // With the answer's size and, for the trade site, how close its limits are.
     const h = res.headers, size = Number(h.get('content-length')) || 0;
     const limit = h.get('x-rate-limit-ip-state') || h.get('x-rate-limit-account-state') || '';

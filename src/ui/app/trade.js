@@ -82,7 +82,7 @@ function renderSales(t) {
 
 
 // ---- which part is open ------------------------------------------------------------
-const TRADE_PARTS = { offers: 'trade-offers', history: 'trade-ledger', numbers: 'trade-numbers', people: 'trade-people', buying: 'trade-buying' };
+const TRADE_PARTS = { offers: 'trade-offers', history: 'trade-ledger', numbers: 'trade-numbers', people: 'trade-people', buying: 'trade-buying', search: 'trade-find' };
 // Each part's drawing is timed for Under the hood, only when it really drew.
 const tradeTimed = (part, fn) => (window.Hood ? window.Hood.run(`drawing the Trade page, ${part}`, fn) : fn());
 const tradeKept = (k, d) => { try { return localStorage.getItem(k) || d; } catch (_) { return d; } };
@@ -508,6 +508,7 @@ function renderTrade() {
   else if (tradeTab === 'history') renderLedger(t);
   else if (tradeTab === 'numbers') renderNumbers(t);
   else if (tradeTab === 'people') renderPeople(t);
+  else if (tradeTab === 'search') renderFind(); // app/tradefind.js
   else renderBuying(t);
 }
 function openTradePart(name) { tradeTab = name; tradeKeep('tradeTab', name); renderTrade(); }

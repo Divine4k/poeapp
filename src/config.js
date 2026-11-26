@@ -29,6 +29,7 @@ const DEFAULT_CONFIG = {
   activeStrategy: 'default',
   // Saved stash searches, [{ name, text }]: a click in their menu puts the text in the game's stash search box.
   stashSearches: [],
+  tradeSearches: [], // the Trade page's saved searches, [{ name, form }] (core/tradeFind.js)
   // The Regex page's map and vendor builders, as last set (cleanBuilders in src/core/regex.js).
   regex: { map: {}, vendor: {} },
   customPrices: {}, // name -> chaos, for items poe.ninja does not list

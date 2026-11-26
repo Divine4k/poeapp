@@ -181,7 +181,7 @@
   <div class="trade">
     <div class="trade-head">
       <h2 class="pagetitle">Trade</h2>
-      <div class="strat-tabs" id="trade-tabs" role="tablist" aria-label="Trade"><button type="button" role="tab" data-tt="offers" aria-selected="true">Offers<span class="tx-count" id="trade-count" hidden></span></button><button type="button" role="tab" data-tt="history" aria-selected="false">History</button><button type="button" role="tab" data-tt="numbers" aria-selected="false">Numbers</button><button type="button" role="tab" data-tt="people" aria-selected="false">People</button><button type="button" role="tab" data-tt="buying" aria-selected="false">Buying<span class="tx-count" id="want-count" hidden></span></button></div>
+      <div class="strat-tabs" id="trade-tabs" role="tablist" aria-label="Trade"><button type="button" role="tab" data-tt="offers" aria-selected="true">Offers<span class="tx-count" id="trade-count" hidden></span></button><button type="button" role="tab" data-tt="history" aria-selected="false">History</button><button type="button" role="tab" data-tt="numbers" aria-selected="false">Numbers</button><button type="button" role="tab" data-tt="people" aria-selected="false">People</button><button type="button" role="tab" data-tt="buying" aria-selected="false">Buying<span class="tx-count" id="want-count" hidden></span></button><button type="button" role="tab" data-tt="search" aria-selected="false">Search</button></div>
       <span class="row"><button type="button" id="btn-trade-clear" data-act="tradeClear" data-confirm="Dismiss every open offer?">Dismiss all</button><button type="button" data-settings="trade">Trade settings</button></span>
     </div>
     <p class="notice bad" id="trade-warn" hidden></p>
@@ -195,6 +195,44 @@
         <div class="tp-list" id="tw-list"></div>
       </section>
       <section class="panel td" id="tw-detail" aria-label="The picked item"></section>
+    </div>
+    <div class="tx-view tx-people tf" id="trade-find" hidden>
+      <section class="panel tf-form" aria-label="What to search for">
+        <form id="tf-form" autocomplete="off">
+          <div class="tf-box">
+            <span class="tx-label">Item</span>
+            <div class="tf-pick" id="tf-picked" hidden></div>
+            <input type="search" id="tf-item" placeholder="Name of an item, or leave empty" aria-label="Name of an item" spellcheck="false">
+            <div class="tf-sug" id="tf-sug" role="listbox" aria-label="Items that match" hidden></div>
+          </div>
+          <div class="tf-pair">
+            <label><span class="tx-label">Kind</span><select id="tf-cat" data-tf="category"></select></label>
+            <label><span class="tx-label">Rarity</span><select id="tf-rar" data-tf="rarity"></select></label>
+          </div>
+          <div class="tf-box">
+            <span class="tx-label">Stats it must have</span>
+            <div id="tf-stats"></div>
+            <input type="search" id="tf-stat" placeholder="Add a stat: type a few words, like max life" aria-label="Add a stat" spellcheck="false">
+            <div class="tf-sug" id="tf-ssug" role="listbox" aria-label="Stats that match" hidden></div>
+          </div>
+          <div class="tf-nums">
+            <label><span class="tx-label">Links</span><input data-tf="links" inputmode="numeric" placeholder="any"></label>
+            <label><span class="tx-label">Sockets</span><input data-tf="sockets" inputmode="numeric" placeholder="any"></label>
+            <label><span class="tx-label">Item level</span><input data-tf="ilvlMin" inputmode="numeric" placeholder="from"></label>
+            <label><span class="tx-label">Quality</span><input data-tf="quality" inputmode="numeric" placeholder="from"></label>
+            <label><span class="tx-label">Gem level</span><input data-tf="gemLevel" inputmode="numeric" placeholder="from"></label>
+            <label><span class="tx-label">Corrupted</span><select data-tf="corrupted"><option value="">Either</option><option value="no">No</option><option value="yes">Yes</option></select></label>
+          </div>
+          <div class="tf-pair">
+            <label><span class="tx-label">Price up to</span><span class="tf-price"><input data-tf="priceMax" inputmode="decimal" placeholder="any"><select data-tf="currency" aria-label="Currency of the price"><option value="">chaos or the same in another</option><option value="chaos">chaos only</option><option value="divine">divine only</option></select></span></label>
+            <label><span class="tx-label">Sold by</span><select id="tf-sel" data-tf="seller"></select></label>
+          </div>
+          <div class="tf-go"><button type="submit" class="primary" id="tf-search">Search</button><button type="button" id="tf-save">Save this search</button><button type="button" id="tf-reset">Start over</button></div>
+        </form>
+        <div class="tf-saved" id="tf-saved"></div>
+        <div class="tf-site" id="tf-site"></div>
+      </section>
+      <section class="panel td" id="tf-results" aria-label="What the trade site has" aria-live="polite"></section>
     </div>
     <div class="tx-view panel tx-ledger" id="trade-ledger" hidden>
       <div class="tx-bar">
@@ -916,6 +954,7 @@
 <script src="app/tools.js"></script>
 <script src="app/inventory.js"></script>
 <script src="app/trade.js"></script>
+<script src="app/tradefind.js"></script>
 <script src="app/render.js"></script>
 <script src="app/boot.js"></script>
 <script src="app/events.js"></script>

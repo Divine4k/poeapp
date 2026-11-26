@@ -2,7 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
-const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, safeStorage, session: webSessions } = require('electron');
 const APP_VERSION = require('../package.json').version;
 
 // Settings and saved sessions always live in the same folder, however the app was started
@@ -43,7 +43,8 @@ const { placeWindow } = require('./core/windowPlace');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, gemType, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
 const ultimatum = require('./core/ultimatum');
-const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
+const { TradeClient, readListing, readOffer, tokensOf, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
+const tradeFind = require('./core/tradeFind');
 const { JewelService } = require('./jewels');
 const { readJewelText, tradeQuery: jewelTradeQuery } = require('./core/jewels/timeless');
 const { dustValue } = require('./core/dust');
@@ -126,7 +127,8 @@ let priceCheck = null;
 let tradeCheck = null;
 let tradeRev = 0;
 let statIndex = null; // modifier wording -> trade site id, read from disk on first use
-const tradeClient = new TradeClient({ fetchImpl: webFetch });
+// Signed in to the trade site (Trade page, Search), its requests go through that session.
+const tradeClient = new TradeClient({ fetchImpl: (url, init) => webFetch(url, tradeSite.in ? { ...init, session: tradeSession() } : init) });
 
 // ---- files ----------------------------------------------------------------
 const dataFile = (name) => path.join(app.getPath('userData'), name);
@@ -2143,6 +2145,202 @@ function syncOverlay() {
   });
 }
 
+// ---- the Trade page's Search (a search of the trade site from nothing) ---------------------
+// Tracker #85. The form of the page becomes a search (core/tradeFind.js); the answer is kept
+// here and the page asks for it. Works without a login. Signed in to the trade site (below),
+// searches count against the account's own limits and an instant buyout's "Travel to Hideout"
+// works from the page.
+let findItemList = null; // the site's items to pick from, read once per run
+let findStatList = null; // the stat list, searchable by words
+let findLast = null;     // { form, name, queryId, ids, total, shown, tokens, asked, url, at, unknown }
+let findBusy = false;
+
+// The sign-in. The app never sees a password: a window shows pathofexile.com's own login page
+// in a session of its own (kept by Chromium in <userData>/Partitions, cookies encrypted by
+// Windows), and the app only asks through that session afterwards. Nothing of it is in the
+// settings, the state, Under the hood or a recording.
+const tradeSite = { in: false, name: '', checked: false };
+let tradeLoginWin = null;
+const tradeSession = () => webSessions.fromPartition('persist:tradesite');
+async function tradeSiteCheck() {
+  const done = diag.start('price check: is the trade site signed in');
+  let state = 'no';
+  try {
+    const ses = tradeSession();
+    const cookies = await ses.cookies.get({ url: 'https://www.pathofexile.com', name: 'POESESSID' });
+    if (cookies.length) {
+      // The account page sends a visitor to the login page; an account gets the page itself.
+      try {
+        const res = await ses.fetch('https://www.pathofexile.com/my-account', { headers: { Accept: 'text/html' } });
+        const html = res.ok ? await res.text() : '';
+        const out = /\/login/.test(res.url || '') || /name="password"/.test(html);
+        if (res.ok && !out) { state = 'yes'; const m = /\/account\/view-profile\/([^"'\/?#]+)/.exec(html); tradeSite.name = m ? decodeURIComponent(m[1]).replace(/-(\d{4})$/, '#$1').slice(0, 60) : ''; }
+        else if (!res.ok) state = `not known (the account page answered ${res.status})`;
+      } catch (e) { state = `not known (${e.message || e})`; }
+    }
+    // When the site could not say, the last answer stands; a first ask counts as not signed in.
+    if (state === 'yes' || state === 'no') tradeSite.in = state === 'yes';
+    if (!tradeSite.in) tradeSite.name = '';
+  } catch (e) { state = `failed: ${e.message || e}`; }
+  tradeSite.checked = true;
+  done(`signed in: ${state}`, false, /^failed/.test(state));
+  return tradeSite.in;
+}
+function tradeSignIn() {
+  if (tradeLoginWin) { tradeLoginWin.focus(); return; }
+  if (trouble) trouble.event('tradeSite', { what: 'sign-in window opened' });
+  tradeLoginWin = new BrowserWindow({
+    width: 560, height: 780, parent: win || undefined, title: 'Sign in to pathofexile.com', autoHideMenuBar: true, backgroundColor: '#0c0c0e',
+    webPreferences: { partition: 'persist:tradesite', contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  const w = tradeLoginWin;
+  // Never in a screen capture or a troubleshooting recording.
+  try { w.setContentProtection(true); } catch (_) { /* not on this system */ }
+  w.setMenuBarVisibility(false);
+  // A sign-in through Steam or another service opens that service in this same window.
+  w.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) w.loadURL(url); return { action: 'deny' }; });
+  let asking = false;
+  const look = async () => {
+    if (asking || w.isDestroyed()) return;
+    let host = '', page = '';
+    try { const u = new URL(w.webContents.getURL()); host = u.host; page = u.pathname; } catch (_) { return; }
+    if (!/(^|\.)pathofexile\.com$/.test(host) || /^\/login/.test(page)) return;
+    asking = true;
+    try { if (await tradeSiteCheck() && !w.isDestroyed()) w.close(); } finally { asking = false; }
+  };
+  w.webContents.on('did-navigate', look);
+  w.on('closed', async () => {
+    tradeLoginWin = null;
+    await tradeSiteCheck();
+    if (trouble) trouble.event('tradeSite', { what: 'sign-in window closed', signedIn: tradeSite.in });
+    if (tradeSite.in) say(`Signed in to the trade site${tradeSite.name ? ` as ${tradeSite.name}` : ''}.`);
+    if (win && !win.isDestroyed()) win.webContents.send('trade-find-news');
+  });
+  w.loadURL('https://www.pathofexile.com/login');
+}
+async function tradeSignOut() {
+  if (tradeLoginWin) tradeLoginWin.close();
+  await tradeSession().clearStorageData();
+  tradeSite.in = false; tradeSite.name = ''; tradeSite.checked = true;
+  if (findLast) findLast.tokens.clear();
+  if (trouble) trouble.event('tradeSite', { what: 'signed out' });
+}
+
+// What the page gets of the last search: listings as they are shown, never a token.
+function findView() {
+  const l = findLast;
+  return {
+    league: config.league, busy: findBusy, saved: config.tradeSearches || [],
+    site: { in: tradeSite.in, name: tradeSite.name, window: !!tradeLoginWin },
+    canType: !!hook && watch.running,
+    last: l ? {
+      form: l.form, name: l.name, total: l.total, at: l.at, url: l.url, unknown: l.unknown, left: Math.max(0, l.ids.length - l.shown.length), error: l.error || '',
+      listings: l.shown.map((x) => ({ ...x, asked: l.asked[x.id] || 0, travel: tradeSite.in && !!(l.tokens.get(x.id) || {}).hideout })),
+    } : null,
+  };
+}
+// Waits its turn behind a price check, and for the pause the site asks for (up to 20 s).
+async function findTurn() {
+  for (let i = 0; i < 50 && tradeClient.busy; i++) await sleep(100);
+  const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
+  if (wait > 20000) throw new Error(`The trade site asked for a pause. It allows another search in ${Math.ceil(wait / 1000)} s.`);
+  if (wait > 0) await sleep(wait + 150);
+}
+function findTake(l, raws) {
+  const read = raws.map((r) => { l.tokens.set(r.id, tokensOf(r)); return readListing(r, chaosOfPrice); });
+  l.shown = markBait(l.shown.concat(read));
+}
+async function findSearch(form) {
+  const f = tradeFind.cleanForm(form);
+  if (tradeFind.isEmpty(f)) { diag.count('trade search: not done, nothing filled in'); throw new Error('Pick an item, type a name, choose a kind of item or add a stat first.'); }
+  if (!config.league) throw new Error('Choose a league in Settings first.');
+  if (findBusy) { diag.count('trade search: not done, one is already running'); throw new Error('A search is already running.'); }
+  findBusy = true;
+  const timed = diag.start('price check: search from the Trade page (waiting included)');
+  try {
+    statIndex = statIndex || StatIndex.load();
+    const { body, unknown } = tradeFind.buildFind(f, statIndex);
+    if (!tradeSite.checked) await tradeSiteCheck();
+    await findTurn();
+    const r = await tradeClient.search(config.league, body);
+    const l = { form: f, name: tradeFind.nameOf(f), body, queryId: r.queryId, ids: r.ids, total: r.total, shown: [], tokens: new Map(), asked: {}, url: r.queryId ? searchUrl(config.league, r.queryId) : '', at: Date.now(), unknown, error: '' };
+    if (r.ids.length) { await findTurn(); findTake(l, await tradeClient.fetchItems(r.ids.slice(0, 10), r.queryId)); }
+    findLast = l;
+    timed(`${r.total} listed for "${l.name}", ${l.shown.length} read${tradeSite.in ? ', signed in' : ''}${unknown.length ? `, ${unknown.length} stats not known` : ''}`);
+    if (trouble) trouble.event('tradeFind', { search: l.name, total: r.total, read: l.shown.length, signedIn: tradeSite.in, stats: f.stats.length, unknown: unknown.length || undefined });
+  } catch (e) {
+    timed(`failed: ${e.message || e}`, false, true);
+    if (trouble) trouble.event('tradeFind', { failed: String(e && e.message) });
+    throw e;
+  } finally { findBusy = false; }
+}
+async function findMore() {
+  const l = findLast;
+  if (!l || l.shown.length >= l.ids.length) { diag.count('trade search: no more results to read'); return; }
+  if (findBusy) throw new Error('A search is already running.');
+  findBusy = true;
+  const timed = diag.start('price check: ten more results on the Trade page (waiting included)');
+  try {
+    await findTurn();
+    findTake(l, await tradeClient.fetchItems(l.ids.slice(l.shown.length, l.shown.length + 10), l.queryId));
+    timed(`${l.shown.length} of ${l.ids.length} read`);
+  } catch (e) { timed(`failed: ${e.message || e}`, false, true); throw e; } finally { findBusy = false; }
+}
+async function findAction(a) {
+  a = a || {};
+  const l = findLast, row = l && a.id ? l.shown.find((x) => x.id === String(a.id)) : null;
+  switch (a.op) {
+    case 'get': if (!tradeSite.checked) await tradeSiteCheck(); break;
+    case 'lists': return { categories: tradeFind.CATEGORIES, rarities: tradeFind.RARITIES, sellers: tradeFind.SELLERS, kinds: tradeFind.KIND_WORDS };
+    case 'items': {
+      if (!findItemList) { const groups = await tradeClient.itemList(); if (groups.length) findItemList = tradeFind.readItems({ result: groups }); }
+      if (!findItemList) { diag.count('trade search: the site gave no item list'); return { items: [], problem: 'The trade site did not give its list of items. Type the name and search by it instead.' }; }
+      return { items: tradeFind.findItems(findItemList, String(a.text || '')) };
+    }
+    case 'stats': {
+      if (!findStatList) { statIndex = statIndex || StatIndex.load(); findStatList = tradeFind.statList(statIndex); }
+      return { stats: tradeFind.findStats(findStatList, String(a.text || '')) };
+    }
+    case 'search': await findSearch(a.form); break;
+    case 'more': await findMore(); break;
+    // One whisper per click: the line the trade site gives for that listing, typed in the game.
+    case 'whisper': {
+      const text = row ? String(row.whisper || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 500) : '';
+      if (!/^@\S+ \S/.test(text)) { diag.count('trade search: seller not whispered (no whisper line for that listing)'); throw new Error('That listing has no whisper line. Open the search on the trade site.'); }
+      if (await sendChat(text)) l.asked[row.id] = Date.now();
+      break;
+    }
+    // One trip per click: the site's own "Travel to Hideout" for that listing.
+    case 'travel': {
+      const token = row ? (l.tokens.get(row.id) || {}).hideout : '';
+      if (!tradeSite.in || !token) { diag.count(`trade search: no hideout trip (${tradeSite.in ? 'the listing has none' : 'not signed in'})`); throw new Error(tradeSite.in ? 'That listing cannot be travelled to. Search again: the site gives each listing a fresh pass.' : 'Sign in to the trade site first.'); }
+      const timed = diag.start('price check: travel to a seller\'s hideout through the trade site');
+      try { await tradeClient.act(token); l.asked[row.id] = Date.now(); timed('the site accepted it'); if (trouble) trouble.event('tradeFind', { travel: row.name || row.base }); } catch (e) { timed(`failed: ${e.message || e}`, false, true); throw e; }
+      break;
+    }
+    case 'want': {
+      if (!l) { diag.count('trade search: nothing to put on the buying list'); break; }
+      const first = l.shown.find((x) => x.icon);
+      book.addWant({ name: l.name, icon: first ? first.icon : null, body: l.body, url: l.url, listings: l.shown.slice(0, 10).map(slimListing) });
+      saveTradesSoon(); say(`${l.name} is on the buying list.`); push();
+      break;
+    }
+    case 'open': if (l && /^https:\/\/www\.pathofexile\.com\/trade\//.test(l.url)) shell.openExternal(l.url); break;
+    case 'save': {
+      const form = tradeFind.cleanForm(a.form);
+      if (tradeFind.isEmpty(form)) throw new Error('There is nothing in this search to save yet.');
+      const name = String(a.name || '').trim().slice(0, 80) || tradeFind.nameOf(form);
+      applyConfig({ tradeSearches: [{ name, form }].concat((config.tradeSearches || []).filter((x) => x.name !== name)) });
+      break;
+    }
+    case 'unsave': applyConfig({ tradeSearches: (config.tradeSearches || []).filter((x) => x.name !== String(a.name || '')) }); break;
+    case 'signin': tradeSignIn(); break;
+    case 'signout': await tradeSignOut(); break;
+    default: return null;
+  }
+  return findView();
+}
+
 // ---- stash searches ------------------------------------------------------------
 // The menu of saved searches, at the mouse, over the game. Its key opens and closes it.
 function toggleSearchMenu() {
@@ -2418,6 +2616,7 @@ function hoodSizes() {
   return {
     'Maps in this session': session.summary(prices).runs.length, 'Items named on this PC': learned.length, 'Shared item pictures': index.shared.length, 'Item pictures from poe.ninja': index.art.length,
     'Prices known': prices.size || status.prices.count, 'Items waiting for a name': backlog.items.length, 'Trade offers kept': book.offers.length, 'Finished trades kept': book.history.length, 'Missed offers kept': book.missed.length, 'Things on the buying list': book.wants.length,
+    'Results of the last trade search': findLast ? findLast.shown.length : 0, 'Items of the trade site kept': findItemList ? findItemList.length : 0,
     'Advanced price searches kept for a minute': advKept.size, 'Marks on advanced prices': Array.isArray(advMarks) ? advMarks.length : 0,
     'Slots in the last reading': lastInventory.cells.length, 'Saved sessions': archive ? archive.list().length : 0, 'Files waiting to be written': savesWaiting.size + savesRunning.size,
   };
@@ -2425,6 +2624,7 @@ function hoodSizes() {
 function applyConfig(patch) {
   if (trouble) trouble.event('setting', patch);
   if (patch.stashSearches) patch = { ...patch, stashSearches: cleanSearches(patch.stashSearches) };
+  if (patch.tradeSearches) patch = { ...patch, tradeSearches: tradeFind.cleanSaved(patch.tradeSearches) };
   if (patch.regex) patch = { ...patch, regex: cleanBuilders(patch.regex) };
   const leagueBefore = config.league, logBefore = config.logPath, hookBefore = hookSetup();
   if (patch.trade) patch = { ...patch, trade: mergeTrade(config.trade, patch.trade) };
@@ -2845,6 +3045,7 @@ function setupIpc() {
   });
   handle('jewels', (_e, a) => jewelAction(a), kind);
   handle('ultimatum', (_e, a) => ultimatumAction(a), kind);
+  handle('trade-find', (_e, a) => findAction(a), kind);
   handle('items-list', () => itemDatabase());
   handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
   handle('price-categories', () => {

@@ -182,6 +182,26 @@
       return body.result;
     },
     onJewelProgress: () => {},
+    // The Trade page's Search: made-up items, stats and listings, so the page can be looked at in a browser.
+    onTradeFindNews: () => {},
+    tradeFind: async (a) => {
+      const F = window.demoFind = window.demoFind || { saved: [{ name: 'Rare Boots, +90 to maximum Life +1', form: { item: null, text: '', category: 'armour.boots', rarity: 'rare', seller: 'available', priceMax: 2, currency: 'divine', links: '', sockets: '', ilvlMin: 84, quality: '', gemLevel: '', corrupted: '', stats: [{ ref: '+# to maximum Life', kind: 'any', kinds: ['explicit', 'crafted'], min: 90, max: '' }, { ref: '#% increased Movement Speed', kind: 'explicit', kinds: ['explicit', 'implicit'], min: 30, max: '' }] } }], last: null, site: false };
+      const sellers = ['Pell_Arrow', 'Sable_Wick', 'Dunmoor', 'Marrow_Finch', 'Ilse_Thorn', 'Corvin_Ash', 'Hale_Brook', 'Osric_Vane', 'Tamsin_Reed', 'Wren_Calder'];
+      const make = (n, from) => Array.from({ length: n }, (_, k) => { const i = from + k, instant = i % 3 === 1; return { id: `f${i}`, price: { amount: i ? 0.8 + i * 0.3 : 0.2, currency: 'divine' }, chaos: (i ? 0.8 + i * 0.3 : 0.2) * 212, seller: sellers[i % sellers.length], status: instant ? 'instant' : i % 5 === 4 ? 'afk' : 'online', listedAt: now - (i + 1) * 2700000, itemLevel: 84 + (i % 3), corrupted: i % 6 === 5, name: `${['Dusk Spur', 'Gale Trail', 'Rune Stride', 'Viper Road'][i % 4]}, Two-Toned Boots`, icon: dot(['#8a7f6a', '#6f8aa0', '#9a7a8f'][i % 3]), base: 'Two-Toned Boots', w: 2, h: 2, sockets: 'R-G-B B', cmp: null, bait: i === 0, whisper: instant ? '' : `@${sellers[i % sellers.length]} Hi, I would like to buy your boots`, asked: 0, travel: instant && F.site,
+        detail: { name: 'Dusk Spur', base: 'Two-Toned Boots', rarity: 'rare', ilvl: 84 + (i % 3), corrupted: i % 6 === 5, mirrored: false, split: false, props: [['Quality', '+20%'], ['Armour', '236'], ['Evasion Rating', '241']], mods: [{ text: '+12% to Fire and Cold Resistances', kind: 'implicit' }, { text: `+${92 + i} to maximum Life`, kind: 'explicit' }, { text: '30% increased Movement Speed', kind: 'explicit' }, { text: '+41% to Lightning Resistance', kind: 'explicit' }, { text: '+38% to Cold Resistance', kind: 'crafted' }] } }; });
+      const view = () => ({ league: 'Keepers', busy: false, saved: F.saved, site: { in: F.site, name: F.site ? 'Exile#1234' : '', window: false }, canType: true, last: F.last && { ...F.last, listings: F.last.listings.map((l) => ({ ...l, travel: l.status === 'instant' && F.site })) } });
+      if (a.op === 'lists') return { categories: [['', 'Any kind'], ['armour.boots', 'Boots'], ['armour.chest', 'Body armour'], ['accessory.ring', 'Ring'], ['jewel', 'Any jewel']], rarities: [['', 'Any rarity'], ['rare', 'Rare'], ['unique', 'Unique']], sellers: [['available', 'Instant buyout and in person'], ['securable', 'Instant buyout only'], ['online', 'In person, online'], ['any', 'Anyone, offline too']], kinds: { explicit: 'Explicit', implicit: 'Implicit', crafted: 'Crafted', fractured: 'Fractured', enchant: 'Enchant', pseudo: 'Total' } };
+      if (a.op === 'items') return { items: [['Tabula Rasa Simple Robe', 'Tabula Rasa', 'Simple Robe', true, 'Armour'], ['Two-Toned Boots', '', 'Two-Toned Boots', false, 'Armour'], ['Headhunter Leather Belt', 'Headhunter', 'Leather Belt', true, 'Accessories']].filter((x) => x[0].toLowerCase().includes(String(a.text).toLowerCase().trim())).map(([label, name, type, unique, group]) => ({ label, name, type, disc: '', unique, group })) };
+      if (a.op === 'stats') return { stats: [['+# to maximum Life', ['explicit', 'implicit', 'crafted', 'fractured']], ['#% increased Movement Speed', ['explicit', 'implicit']], ['+#% to Cold Resistance', ['explicit', 'crafted']], ['+# to maximum Life per 10 Dexterity', ['explicit']]].filter((x) => String(a.text).toLowerCase().split(/\s+/).filter(Boolean).every((w) => x[0].toLowerCase().includes(w))).map(([ref, kinds]) => ({ ref, kinds })) };
+      if (a.op === 'search') { await new Promise((r) => setTimeout(r, 500)); const f = a.form; F.last = { form: f, name: f.item ? f.item.label : f.text || 'Rare Boots, +90 to maximum Life +1', total: 1284, at: Date.now(), url: 'https://www.pathofexile.com/trade/search/Demo/abc', unknown: [], left: 90, error: '', listings: make(10, 0) }; }
+      if (a.op === 'more' && F.last) { await new Promise((r) => setTimeout(r, 400)); F.last.listings = F.last.listings.concat(make(10, F.last.listings.length)); F.last.left -= 10; }
+      if ((a.op === 'whisper' || a.op === 'travel') && F.last) F.last.listings.find((l) => l.id === a.id).asked = Date.now();
+      if (a.op === 'save') F.saved = [{ name: a.form.item ? a.form.item.label : a.form.text || 'Search', form: a.form }].concat(F.saved);
+      if (a.op === 'unsave') F.saved = F.saved.filter((s) => s.name !== a.name);
+      if (a.op === 'signin') F.site = true;
+      if (a.op === 'signout') F.site = false;
+      return view();
+    },
     // The Ultimatum page: a made-up public tab, so the page can be looked at in a browser.
     onUltimatumProgress: () => {},
     ultimatum: async (a) => {

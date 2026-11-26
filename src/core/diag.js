@@ -61,6 +61,11 @@ const LIMITS = [
   ['button: troubleToggle', 5000],
   ['button: applyUpdate', 120000],
   ['button:', 300],
+  // The Trade page's Search: a search, more results and a hideout trip wait for the trade site.
+  ['asked by the window: trade-find search', 8000],
+  ['asked by the window: trade-find more', 8000],
+  ['asked by the window: trade-find travel', 8000],
+  ['asked by the window: trade-find sign', 4000],
   ['asked by the window: tracker', 4000],
   ['asked by the window: dev', 4000],
   ['asked by the window: account', 4000],

@@ -159,6 +159,20 @@ class TradeClient {
     return this.items;
   }
 
+  // What the site's own buttons on a listing do, for a signed-in account that is in the game:
+  // the token of "Travel to Hideout" (an instant buyout) or of "Direct Whisper" is handed back
+  // to the site, which then acts in the game. One request, never repeated by itself.
+  async act(token) {
+    if (!token) throw new TradeError('That listing has no such button on the trade site.');
+    const res = await this.fetchImpl(`${SITE}/api/trade/whisper`, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, body: JSON.stringify({ token }) });
+    let json = null;
+    try { json = await res.json(); } catch (_) { /* not JSON */ }
+    if (json && json.error) throw new TradeError(`The trade site said: ${json.error.message || 'it was not accepted'}`);
+    if (res.status === 401 || res.status === 403) throw new TradeError('The trade site wants you signed in for that. Sign in again under Search.');
+    if (!res.ok) throw new TradeError(`The trade site did not accept it (${res.status}).`);
+    return true;
+  }
+
   // The bulk exchange (currency and other stackables): offers selling `want` for `have`, as the
   // site sends them in one request. Returns { queryId, total, offers: [...] }.
   async exchange(league, want, have) {
@@ -246,6 +260,14 @@ function readListing(raw, chaosOf = () => null, compare = null) {
   };
 }
 
+// The tokens of the site's own buttons on a listing (Travel to Hideout, Direct Whisper), as a
+// signed-in account gets them. Kept apart from readListing on purpose: what that returns goes
+// to windows and reports, and these must stay in the main process.
+function tokensOf(raw) {
+  const l = (raw && raw.listing) || {};
+  return { hideout: typeof l.hideout_token === 'string' ? l.hideout_token : '', whisper: typeof l.whisper_token === 'string' ? l.whisper_token : '' };
+}
+
 // A modifier as the site sends it: usually a line of text, but some answers carry an object
 // with the line in one of its fields. Whatever the shape, the line of text in it.
 function modText(t) {
@@ -315,4 +337,4 @@ const currencyName = (id) => CURRENCIES[id] || '';
 const exchangeUrl = (league, queryId) => `${SITE}/trade/exchange/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 const searchUrl = (league, queryId) => `${SITE}/trade/search/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 
-module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, itemDetail, socketText, searchUrl, exchangeUrl, currencyName };
+module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, tokensOf, itemDetail, socketText, searchUrl, exchangeUrl, currencyName };
