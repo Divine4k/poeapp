@@ -142,4 +142,5 @@ The app runs beside the game and must stay smooth. Rules for every change (owner
 - Nothing is typed into the game without the user's own key press or click (see README "Rules and risk"); keep it that way.
 
 ## Related
+- `.claude/skills/impeccable/`: the Impeccable design skill (pbakaus/impeccable 4.11.1, Apache 2.0), unchanged copy of its `SKILL.md` and `reference/` only. Use it for UI work on the app's windows (the app is its **Operate** mode), together with the Look rules under Conventions, which win. Its `scripts/` folder (the launcher and the program it downloads) is left out on purpose, because everything on `main` is copied into every user's app folder by the updater: so every `scripts/impeccable ...` command fails here, and the skill's own "Launcher unavailable" path applies (read PRODUCT.md and DESIGN.md directly if they exist). Do not add the scripts back without the owner's say.
 - `Divine4k/poeappitemdata`: the old shared item list. The server copied it once and now serves the list itself; the repo is no longer written to by the app.
