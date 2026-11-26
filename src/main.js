@@ -2792,39 +2792,59 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   if (!firstCopy) return;
   diagnose.start({ dir: path.join(app.getPath('userData'), 'diagnostics'), sizes: hoodSizes, sampled: (u) => { if (trouble && trouble.recording) trouble.event('usage', { cpu: Math.round(u.cpu * 10) / 10, mem: Math.round(u.mem), pcCpu: u.pcCpu == null ? null : Math.round(u.pcCpu), pcFree: Math.round(u.pcFree) }); } });
-  loadConfig();
-  prices.setCustom(config.customPrices);
-  session.restore(readJson('session.json', null));
-  ledger.restore(readJson('ledger.json', null));
-  loadLearned();
-  snapshots = new SnapshotStore(dataFile('snapshots'));
-  try {
-    const c = readJson('carried.json', null);
-    if (c && Array.isArray(c.cells)) carriedIn = { ...c, cells: c.cells.map((x) => ({ ...x, print: x.print ? decodePrint(x.print) : null })) };
-  } catch (_) { carriedIn = null; }
-  archive = new SessionArchive(dataFile('sessions'));
-  book.restore(readJson('trades.json', null));
-  overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
-  toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
-  searchMenu = new SearchMenu({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'search.html') });
-  checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; }, onKeys: (on) => typingKeys(on) });
+  // Every step of the start is timed by name (Under the hood, "start step: ..."): on the owner's
+  // PC the app stood still for 2 to 6 seconds here and nothing said in which step.
+  diag.time('start step: Electron ready', process.uptime() * 1000, 'from the program starting to here');
+  const step = (name, fn) => diag.run(`start step: ${name}`, fn);
+  step('settings', () => {
+    loadConfig();
+    prices.setCustom(config.customPrices);
+  });
+  step('session and loot from disk', () => {
+    session.restore(readJson('session.json', null));
+    ledger.restore(readJson('ledger.json', null));
+  });
+  step('named items from disk', () => {
+    loadLearned();
+  });
+  step('map pictures, saved sessions and trades from disk', () => {
+    snapshots = new SnapshotStore(dataFile('snapshots'));
+    try {
+      const c = readJson('carried.json', null);
+      if (c && Array.isArray(c.cells)) carriedIn = { ...c, cells: c.cells.map((x) => ({ ...x, print: x.print ? decodePrint(x.print) : null })) };
+    } catch (_) { carriedIn = null; }
+    archive = new SessionArchive(dataFile('sessions'));
+    book.restore(readJson('trades.json', null));
+  });
+  step('windows over the game made', () => {
+    overlay = new Overlay({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'overlay.html') });
+    toast = new Toast({ page: path.join(__dirname, 'ui', 'toast.html') });
+    searchMenu = new SearchMenu({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'search.html') });
+    checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; }, onKeys: (on) => typingKeys(on) });
+  });
   watch.on('change', syncOverlay);
   watch.on('change', () => { if (trouble) trouble.event('front', { game: watch.gameInFront(), own: watch.ownInFront(), name: watch.name || '' }); });
   // Away from the game nothing is drawn over the screen.
   watch.on('change', () => { if (checkPanel.visible && !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; } });
   watch.on('change', () => { if (searchMenu && searchMenu.visible && !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) closeSearchMenu('game left the front'); });
   watch.on('change', () => { if (watch.gameInFront() !== gameKeysOn) { registerHotkeys(); push(); } });
-  watch.start();
+  step('front-window helper started', () => {
+    watch.start();
+  });
   // One of the app's windows over the game showing? Then captures go the old way, which leaves them out.
   const onScreen = (w) => !!(w && !w.isDestroyed() && w.isVisible());
   watchOwnWindows(() => [overlay, toast, checkPanel, searchMenu].some((o) => o && onScreen(o.win)) || onScreen(layoutWin));
   setTimeout(warmUpCapture, 6000);
-  const cached = PriceTable.fromJSON(readJson('prices.json', null));
-  if (cached.size > 1) { setPrices(cached); syncArt(); }
+  step('prices and item pictures from disk', () => {
+    const cached = PriceTable.fromJSON(readJson('prices.json', null));
+    if (cached.size > 1) { setPrices(cached); syncArt(); }
+  });
 
-  setupIpc();
-  createWindow();
-  registerHotkeys();
+  step('main window made, keys taken', () => {
+    setupIpc();
+    createWindow();
+    registerHotkeys();
+  });
   // A copy left behind by an earlier restart still holds the hotkeys: close it, then take them.
   // The program file alone identifies the app when it is the installed one, or the Electron that
   // lives inside this app's own folder; only a shared Electron needs the folder checked as well.
@@ -2835,11 +2855,17 @@ app.whenReady().then(() => {
     say(`Closed ${n} leftover ${n === 1 ? 'copy' : 'copies'} of the app that ${n === 1 ? 'was' : 'were'} still running without a window and holding the hotkeys.`);
     push();
   });
-  startLog();
-  syncKeyHook();
-  syncTimedWatch();
-  refreshPrices();
-  setInterval(refreshPrices, PRICE_REFRESH_MS);
+  step('game log opened', () => {
+    startLog();
+  });
+  step('key and mouse helper started', () => {
+    syncKeyHook();
+    syncTimedWatch();
+  });
+  step('prices asked for', () => {
+    refreshPrices();
+    setInterval(refreshPrices, PRICE_REFRESH_MS);
+  });
   setInterval(() => {
     const sec = Number(config.trade.auto.closeBoughtSec) || 0;
     if (sec > 0 && book.closeBought(sec * 1000)) saveTradesSoon();
@@ -2847,21 +2873,27 @@ app.whenReady().then(() => {
     push();
   }, 5000);
 
-  loadCloud();
-  setupTrouble();
-  registerHotkeys(); // the record key goes with the role kept from the last login
+  step('account and troubleshooting set up', () => {
+    loadCloud();
+    setupTrouble();
+    registerHotkeys(); // the record key goes with the role kept from the last login
+  });
   // The role may have been given or taken since the last start.
   cloud.refresh().then((moved) => { if (moved) { registerHotkeys(); push(); } }, () => {});
-  shared = new SharedItems({ cloud });
-  loadShared();
+  step('shared items asked for', () => {
+    shared = new SharedItems({ cloud });
+    loadShared();
+  });
   setInterval(loadShared, SHARED_REFRESH_MS);
   setTimeout(syncCloud, 5000);
   setInterval(syncCloud, CLOUD_RETRY_MS);
 
-  updater = new Updater(app.getAppPath(), webFetch);
-  status.update.current = updater.current;
-  if (updater.current && updater.current.sha) trouble.version = updater.current.sha;
-  checkUpdate();
+  step('update looked for', () => {
+    updater = new Updater(app.getAppPath(), webFetch);
+    status.update.current = updater.current;
+    if (updater.current && updater.current.sha) trouble.version = updater.current.sha;
+    checkUpdate();
+  });
   setInterval(checkUpdate, UPDATE_CHECK_MS);
 });
 

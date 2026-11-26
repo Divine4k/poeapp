@@ -4,6 +4,7 @@
 // every picture is downloaded once.
 const fs = require('fs');
 const { nativeImage } = require('electron');
+const { diag } = require('./diagnose');
 const { CANON } = require('./core/inventory/grid');
 const { fingerprint, sharpPrint, compositeOnCell, encodePrint, decodePrint, packPrint, unpackPrint } = require('./core/inventory/icons');
 
@@ -44,6 +45,7 @@ class ArtLoader {
     if (this.running) return;
     this.running = true;
     try {
+      const t0 = performance.now();
       index.clearArt();
       const missing = [];
       for (const e of entries) {
@@ -53,6 +55,8 @@ class ArtLoader {
         if (c === 'skip') continue;
         if (c && c.p && c.s) index.addArt(e.name, decodePrint(c.p), unpackPrint(c.s)); else missing.push(e);
       }
+      // This part runs in one go on the main process, at start and after each price refresh.
+      diag.time('item pictures: made ready from the kept ones', performance.now() - t0, `${entries.length} items, ${missing.length} to fetch`);
       let done = 0, failed = 0;
       const total = missing.length;
       onProgress({ done, total, failed });
