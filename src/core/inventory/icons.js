@@ -328,4 +328,18 @@ function unpackPrint(text) {
   return out;
 }
 
-module.exports = { sharpPrint, sharpShifts, printPixels, fingerprint, similarity, IconIndex, compositeOnCell, encodePrint, decodePrint, packPrint, unpackPrint, CELL_BACKGROUND, SIDE };
+// How many slots an item takes, read from its picture's address on web.poecdn.com: the part
+// after /image/ is base64 JSON like [25,14,{"f":"2DItems/...","w":2,"h":2,"scale":1}].
+// An address that cannot be read counts as one slot (the picture is still checked as before).
+function slotsOf(url) {
+  const m = /\/image\/([^/]+)\//.exec(String(url || ''));
+  if (!m) return null;
+  try {
+    const parts = JSON.parse(Buffer.from(m[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    const d = Array.isArray(parts) ? parts.find((x) => x && typeof x === 'object') : null;
+    return d ? { w: Number(d.w) || 1, h: Number(d.h) || 1 } : null;
+  } catch (_) { return null; }
+}
+const oneSlot = (url) => { const s = slotsOf(url); return !s || (s.w === 1 && s.h === 1); };
+
+module.exports = { slotsOf, oneSlot, sharpPrint, sharpShifts, printPixels, fingerprint, similarity, IconIndex, compositeOnCell, encodePrint, decodePrint, packPrint, unpackPrint, CELL_BACKGROUND, SIDE };

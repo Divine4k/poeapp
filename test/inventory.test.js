@@ -496,3 +496,13 @@ test('reader: a slot whose picture did not change is not matched again, until th
   fresh.memory = again.memory.slice(); fresh.prints = again.prints.slice();
   assert.equal(brief(again.read(frames.inv_hideout)), brief(fresh.read(frames.inv_hideout)));
 });
+
+test('item pictures: only one-slot items are used for matching (a 2x2 picture shrunk to a slot matched dark slots)', () => {
+  const { slotsOf, oneSlot } = require('../src/core/inventory/icons');
+  const big = 'https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvVmlzY2VyYS9BY3Q4L1Zpc2NlcmFTY2FyZWNyb3dQaXRjaGZvcmsiLCJ3IjoyLCJoIjoyLCJzY2FsZSI6MX1d/ee5071e830/VisceraScarecrowPitchfork.png';
+  const one = 'https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQ3VycmVuY3kvQ2hheXVsYS9CcmVhY2hGcnVpdDUiLCJ3IjoxLCJoIjoxLCJzY2FsZSI6MX1d/cc341e020c/BreachFruit5.png';
+  assert.deepEqual(slotsOf(big), { w: 2, h: 2 });
+  assert.equal(oneSlot(big), false);
+  assert.equal(oneSlot(one), true);
+  assert.equal(oneSlot('https://example.com/odd.png'), true); // unreadable: checked as before
+});

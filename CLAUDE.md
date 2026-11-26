@@ -75,7 +75,7 @@ The whole suite is fast, so `npm run t` after any change is fine. Tests cover `s
 | `src/core/recording.js` | Event list (times in ms from the video's first frame, to 0.1 ms), state summary, the short version for the page (`summarise`), the README of a recording. Pure; also loaded by index.html as `window.Recording` |
 | `src/updater.js` | In-app updates from `main` of this repo |
 | `src/capturehelper.js` | The helper process that takes the screen's picture without freezing the app (`CaptureHelper`, `AnswerReader`, `slotsSame`); see "Performance". Tests: `test/capture.test.js` (in `test:inventory`) |
-| `src/overlay.js`, `capture.js`, `chat.js`, `gamewin.js`, `http.js`, `art.js`, `leftovers.js` | Overlay windows, screen capture, typing chat lines and the copy key (`copyItem`), which window is in front, web requests, item pictures, closing stray copies |
+| `src/overlay.js`, `capture.js`, `chat.js`, `gamewin.js`, `http.js`, `art.js`, `leftovers.js` | Overlay windows, screen capture, typing chat lines and the copy key (`copyItem`), which window is in front, web requests, item pictures (only one-slot items: `oneSlot` in core/inventory/icons.js reads the size from the picture's address; 2x2 pictures shrunk to a slot gave false matches), closing stray copies |
 | `server/` | Cloudflare Worker + D1 schema. Deployed by pasting `worker.js` into the dashboard (see server/README.md); a push does not deploy it |
 | `test/*.test.js` | node:test unit tests; `test/server.js` fake server; `test/fixtures/` captures |
 
