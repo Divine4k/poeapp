@@ -24,9 +24,11 @@ const NOBODY_PAYS = [
   /Stun Duration on Enemies/,
   /Stun Threshold/,
 ];
-// On a piece of armour these change its own armour, evasion or energy shield, which the window
-// has as lines of their own (the numbers under "Stats"). Ticked as modifiers they would only
-// ask for the same roll twice.
+// On a piece of armour these change its own armour, evasion or energy shield. They are worth a
+// lot (an energy shield chest is bought for its energy shield), but what a buyer looks at is the
+// item's total, which the window has as a line of its own (the numbers under "Stats"): that
+// total is ticked in their place (`raised`), and weighed like any other line. The modifiers
+// themselves would ask for the same roll twice, and miss items that reach it another way.
 const OWN_DEFENCE = /^(\+\d+ to (Armour|Evasion Rating|maximum Energy Shield|Ward)|\d+% increased (Armour|Evasion Rating|Energy Shield|Ward|Armour and Evasion|Armour and Energy Shield|Evasion and Energy Shield|Armour, Evasion and Energy Shield))$/;
 const ARMOUR = new Set(['Helmet', 'Body Armour', 'Gloves', 'Boots', 'Shield']);
 
@@ -44,6 +46,15 @@ function classOf(stat, armour) {
   return 'weak';
 }
 
+// Which of the item's own defences its modifiers raise: { ar, ev, es, ward } as found.
+const DEFENCE_WORDS = [['ar', /Armour/], ['ev', /Evasion/], ['es', /Energy Shield/], ['ward', /Ward/]];
+function raised(filters) {
+  const out = new Set();
+  for (const st of filters.stats) if (OWN_DEFENCE.test(String(st.text || ''))) for (const [key, word] of DEFENCE_WORDS) if (word.test(st.text)) out.add(key);
+  return out;
+}
+const propKey = (x) => `prop:${x.key}`;
+
 // filters: from buildFilters, as the standard check ticked them. Returns the sets of ticks to
 // try, strictest first, each { id, ticks: { <stat key>: bool }, lines }:
 //   'all'     every line that is not junk: items that are nearly the same
@@ -58,17 +69,23 @@ function rungs(filters) {
   if (label === 'Cluster Jewel' || !filters.stats.length) return [];
   const armour = ARMOUR.has(label);
   const kinds = filters.stats.map((s) => classOf(s, armour));
-  const set = (id, on) => {
+  // The item's own defence totals that its modifiers raise: ticked with the real lines, and
+  // weighed like them. A total no modifier raises is only its base type and quality: asking for
+  // it would shut out the same item on another base (the owner's gloves: nine nearly the same,
+  // on nine different bases).
+  const lift = armour ? raised(filters) : new Set();
+  const set = (id, on, props = false) => {
     const ticks = {};
     filters.stats.forEach((s, i) => { ticks[s.key] = !!on(s, kinds[i]); });
+    for (const x of filters.props || []) ticks[propKey(x)] = !!x.enabled || (props && lift.has(x.key));
     return { id, ticks, lines: Object.values(ticks).filter(Boolean).length };
   };
   const all = [
-    set('all', (s, k) => k !== 'junk'),
-    set('strong', (s, k) => k === 'strong'),
+    set('all', (s, k) => k !== 'junk', true),
+    set('strong', (s, k) => k === 'strong', true),
     set('usual', (s) => s.enabled),
   ];
-  const same = (a, b) => filters.stats.every((s) => a.ticks[s.key] === b.ticks[s.key]);
+  const same = (a, b) => Object.keys(a.ticks).every((k) => a.ticks[k] === b.ticks[k]);
   const out = all.filter((r, i) => !all.slice(i + 1).some((later) => same(r, later)));
   // only the usual ticks: nothing for the advanced check to add
   return out.length > 1 ? out : [];
@@ -77,7 +94,8 @@ function rungs(filters) {
 // The filters with one set's lines ticked. Everything else (numbers, flags, the kind of item)
 // stays as it was.
 function applyRung(filters, rung) {
-  return { ...filters, stats: filters.stats.map((s) => (rung.ticks[s.key] === undefined || rung.ticks[s.key] === s.enabled ? s : { ...s, enabled: rung.ticks[s.key] })) };
+  const put = (x, key) => (rung.ticks[key] === undefined || rung.ticks[key] === x.enabled ? x : { ...x, enabled: rung.ticks[key] });
+  return { ...filters, stats: filters.stats.map((s) => put(s, s.key)), props: (filters.props || []).map((x) => put(x, propKey(x))) };
 }
 
 // ---- which lines carry the price ----
@@ -101,16 +119,21 @@ const WIDE_ENOUGH = 10; // with this many nearly the same listed, nothing needs 
 // what the item is). What a buyer can add himself comes first, then the weaker tiers, the
 // standard check's own ticks last; at most MAX_PROBES. Each { key, text }.
 function probeLines(filters, rung, usual) {
-  const rank = (s) => (usual && usual.ticks[s.key] ? 40 : s.kind === 'crafted' || s.kind === 'implicit' ? 0 : 20 - Math.min(19, (s.tiers && s.tiers[0]) || 9));
-  return filters.stats
+  const rank = (s) => (usual && usual.ticks[s.key] ? 40 : s.kind === 'prop' ? 10 : s.kind === 'crafted' || s.kind === 'implicit' ? 0 : 20 - Math.min(19, (s.tiers && s.tiers[0]) || 9));
+  const lines = [...filters.stats, ...(filters.props || []).map((x) => ({ key: propKey(x), text: `${x.label}: ${x.value}`, kind: 'prop' }))];
+  return lines
     .filter((s) => rung.ticks[s.key] && s.kind !== 'fractured' && !String(s.key).startsWith('influence:'))
     .sort((a, b) => rank(a) - rank(b))
     .slice(0, MAX_PROBES)
     .map((s) => ({ key: s.key, text: s.text }));
 }
 
-// The filters with one line unticked.
-const withoutLine = (filters, key) => ({ ...filters, stats: filters.stats.map((s) => (s.key === key && s.enabled ? { ...s, enabled: false } : s)) });
+// The filters with one line unticked (a stat by its key, a defence or damage total as prop:<key>).
+const withoutLine = (filters, key) => ({
+  ...filters,
+  stats: filters.stats.map((s) => (s.key === key && s.enabled ? { ...s, enabled: false } : s)),
+  props: (filters.props || []).map((x) => (propKey(x) === key && x.enabled ? { ...x, enabled: false } : x)),
+});
 
 // tried: what each search without one line found, [{ key, text, total, price }] (price: what
 // they ask, in chaos: where the cheap end of them lies; null when none has a price). Returns the one to leave out when too few have
@@ -151,7 +174,11 @@ function weighLines(base, tried) {
 }
 
 // The filters with what was found written on each line (the window shows it beside the line).
-const markLines = (filters, marks) => ({ ...filters, stats: filters.stats.map((s) => (marks[s.key] ? { ...s, mark: marks[s.key] } : s)) });
+const markLines = (filters, marks) => ({
+  ...filters,
+  stats: filters.stats.map((s) => (marks[s.key] ? { ...s, mark: marks[s.key] } : s)),
+  props: (filters.props || []).map((x) => (marks[propKey(x)] ? { ...x, mark: marks[propKey(x)] } : x)),
+});
 
 // The set of ticks after leaving lines out of a set. floor: what its items must still ask
 // (chaos) for it to stand; below that, leaving them all out together cost too much.
@@ -162,4 +189,4 @@ function dropRung(rung, lines, floor = null) {
   return { id: 'most', ticks, lines: Object.values(ticks).filter(Boolean).length, dropped: list.map((l) => l.text).join('; '), floor };
 }
 
-module.exports = { rungs, applyRung, classOf, probeLines, withoutLine, judgeLines, weighLines, markLines, dropRung, NEAR_ENOUGH, WIDE_ENOUGH, NOBODY_PAYS, MAX_PROBES };
+module.exports = { rungs, applyRung, classOf, raised, probeLines, withoutLine, judgeLines, weighLines, markLines, dropRung, NEAR_ENOUGH, WIDE_ENOUGH, NOBODY_PAYS, MAX_PROBES };

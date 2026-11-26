@@ -47,7 +47,7 @@
     if (f.type) out.push({ tc: 'type', pk: 'type', chip: true, label: f.type.value, title: 'Only this base type', enabled: f.type.enabled });
     for (const x of f.flags) out.push({ tc: 'flag', pk: `flag:${x.key}`, chip: true, key: x.key, label: x.label, enabled: x.enabled });
     out.push({ tc: 'offline', chip: true, label: 'Offline sellers too', enabled: f.offline });
-    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}${x.unit || ''}`, enabled: x.enabled, bound: 'min', num: x.min === null ? mineFor(x.value, stepFor(x.value)) : x.min, mine: mineFor(x.value, stepFor(x.value)), step: stepFor(x.value) });
+    for (const x of f.props) out.push({ tc: 'prop', pk: `prop:${x.key}`, key: x.key, label: `${x.label}: ${x.value}${x.unit || ''}`, mark: x.mark || null, enabled: x.enabled, bound: 'min', num: x.min === null ? mineFor(x.value, stepFor(x.value)) : x.min, mine: mineFor(x.value, stepFor(x.value)), step: stepFor(x.value) });
     for (const x of f.stats) {
       // The number shown is the one the search asks for: a lowest value for most stats, a
       // highest where less is better. A "reduced" stat is kept below zero by the trade site;

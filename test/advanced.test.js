@@ -380,7 +380,7 @@ test('the lowest value asked for keeps whole numbers whole and never asks for no
 
 // ---- its own ticks (ticks.js) ----
 const { buildFilters, buildQuery } = require('../src/core/tradeQuery');
-const { rungs, applyRung, classOf, probeLines, withoutLine, judgeLines, weighLines, markLines, dropRung } = require('../src/core/advanced/ticks');
+const { rungs, applyRung, classOf, raised, probeLines, withoutLine, judgeLines, weighLines, markLines, dropRung } = require('../src/core/advanced/ticks');
 // The owner's gloves of 2026-11-26: 5 chaos by the usual ticks, about 30 divine with every real
 // modifier ticked (9 listed). What he ticked by hand is what the advanced check must tick.
 const GLOVES = `Item Class: Gloves
@@ -468,6 +468,29 @@ test('its own ticks: what is never ticked, and what it is not for', () => {
   const chest = rungs(buildFilters(parseItemText(CHEST), index));
   assert.deepEqual(chest.map((x) => x.id), ['strong', 'usual']);
   assert.ok(chest[0].lines > chest[1].lines);
+});
+
+test('armour: the modifiers that raise its own defence give way to its total, which is ticked and weighed', () => {
+  const f = buildFilters(parseItemText(ES_CHEST), index);
+  assert.deepEqual([...raised(f)], ['es']);
+  const r = rungs(f);
+  // every set but the usual ticks asks for its energy shield (a tenth below its 612), not for the two modifiers
+  assert.deepEqual(r.map((x) => [x.id, x.ticks['prop:es']]), [['all', true], ['strong', true], ['usual', false]]);
+  assert.ok(Object.keys(r[0].ticks).filter((k) => r[0].ticks[k] && /Energy Shield/.test((f.stats.find((s) => s.key === k) || {}).text || '')).length === 0);
+  const all = applyRung(f, r[0]);
+  assert.deepEqual(buildQuery(all).query.filters.armour_filters, { filters: { es: { min: 551 } } });
+  // weighed like a line: searched without it, and marked
+  const lines = probeLines(all, r[0], r[r.length - 1]);
+  assert.ok(lines.some((l) => l.key === 'prop:es' && l.text === 'Energy Shield: 612'));
+  assert.equal(withoutLine(all, 'prop:es').props.find((x) => x.key === 'es').enabled, false);
+  const marked = markLines(all, { 'prop:es': { verdict: 'carries', total: 400, price: 20, ref: 300 } });
+  assert.equal(marked.props.find((x) => x.key === 'es').mark.verdict, 'carries');
+  // gloves raise none of their own: their evasion and energy shield are only the base, and stay as they were
+  // (asking for them would shut out the same gloves on another base)
+  const g = rungs(buildFilters(parseItemText(GLOVES), index));
+  assert.ok(g.every((x) => !x.ticks['prop:ev'] && !x.ticks['prop:es']));
+  // a ring has no defence of its own to tick
+  assert.ok(rungs(buildFilters(parseItemText(RING), index)).every((x) => !Object.keys(x.ticks).some((k) => /^prop:(ar|ev|es)$/.test(k) && x.ticks[k])));
 });
 
 test('every line is weighed: what items ask without it says what it is worth', () => {
