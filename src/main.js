@@ -34,6 +34,7 @@ const { TradeBook, chatCommand, nextAction, autoSteps, overlayAllowed, overlayBo
 const { focusGame, typeChat, typeSearch, copyItem } = require('./chat');
 const { Overlay, Toast, CheckPanel, SearchMenu, guard, hideFromCapture } = require('./overlay');
 const { cleanSearches, menuEntries } = require('./core/stashSearch');
+const { cleanBuilders, GAME_LIMIT: SEARCH_LIMIT } = require('./core/regex');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
@@ -215,6 +216,7 @@ function loadConfig() {
     config.autoCopyOn = true;
   }
   config.stashSearches = cleanSearches(config.stashSearches);
+  config.regex = cleanBuilders(config.regex);
   if (!Array.isArray(config.strategies) || !config.strategies.length) config.strategies = DEFAULT_CONFIG.strategies;
   if (!config.strategies.some((x) => x.id === config.activeStrategy)) config.activeStrategy = config.strategies[0].id;
   // Keep the user's rule choices but pick up rules added in newer versions.
@@ -2100,6 +2102,7 @@ function createWindow() {
 function applyConfig(patch) {
   if (trouble) trouble.event('setting', patch);
   if (patch.stashSearches) patch = { ...patch, stashSearches: cleanSearches(patch.stashSearches) };
+  if (patch.regex) patch = { ...patch, regex: cleanBuilders(patch.regex) };
   const leagueBefore = config.league, logBefore = config.logPath, hookBefore = hookSetup();
   if (patch.trade) patch = { ...patch, trade: mergeTrade(config.trade, patch.trade) };
   config = {
@@ -2128,6 +2131,14 @@ function applyConfig(patch) {
 
 const actions = {
   stashSearch: (a) => pickSearch(a.i),
+  // The Regex page: copy a search, or put it in the game's stash search box (one click, one search).
+  regexCopy: (a) => {
+    const text = String(a.text || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 500);
+    if (!text) return;
+    clipboard.writeText(text);
+    say(text.length > SEARCH_LIMIT ? `Copied, but it is ${text.length} characters: the game keeps only the first ${SEARCH_LIMIT}.` : 'Copied. In game, press Ctrl+F over your stash or a vendor and paste it with Ctrl+V.');
+  },
+  regexSend: (a) => { const text = String(a.text || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 500); return text ? sendChat(text, { search: true }) : false; },
   startRun: (a) => { session.startRun({ name: a.name || 'Manual run', loadout: config.loadout }); syncLedger(); },
   endRun: () => { session.endRun(); syncLedger(); },
   // The session clock's buttons: pause, resume, stop, start.

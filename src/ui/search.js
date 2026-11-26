@@ -18,7 +18,7 @@
         + (entries.length
           ? `<div class="ss-list">${entries.map((s) => `<button type="button" class="ss-pick" data-i="${s.i}" title="${esc(s.long ? `${s.text}\n\nLonger than the game's 250 characters: the end is cut off in game.` : s.text)}">
               <span class="ss-name">${esc(s.name)}</span>${s.name !== s.text ? `<span class="ss-text${s.long ? ' ss-long' : ''}">${esc(s.text)}</span>` : ''}</button>`).join('')}</div>`
-          : '<p class="ss-empty">No searches saved yet. Add them in Map Companion: <b>Settings, Stash searches</b>.</p>');
+          : '<p class="ss-empty">No searches saved yet. Add them in Map Companion, on the <b>Regex</b> page.</p>');
     }
     // Measured without the limit to the window's height: the window starts 10 pixels tall, and
     // measured inside it the menu would ask for those 10 pixels and stay a thin line.

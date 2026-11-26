@@ -38,6 +38,7 @@
     <button type="button" class="navi" role="tab" data-tab="costs" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M14.5 9.5a6 6 0 1 1-5 5"/></svg><span class="lbl">Costs</span></button>
     <button type="button" class="navi" role="tab" data-tab="prices" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/></svg><span class="lbl">Prices</span></button>
     <button type="button" class="navi" role="tab" data-tab="jewels" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 4v10l-7 4-7-4V7z"/><path d="M12 8l3.5 2v4L12 16l-3.5-2v-4z"/></svg><span class="lbl">Jewels</span></button>
+    <button type="button" class="navi" role="tab" data-tab="regex" aria-selected="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3v10"/><path d="M12.7 5.5l8.6 5"/><path d="M12.7 10.5l8.6-5"/><rect x="3" y="15" width="6" height="6" rx="1"/></svg><span class="lbl">Regex</span></button>
     <button type="button" class="navi" role="tab" data-tab="devtools" aria-selected="false" id="nav-dev" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg><span class="lbl">Developer tools</span><span class="navdot rec" id="trouble-dot" hidden></span></button>
   </nav>
   <div class="side-foot">
@@ -317,6 +318,14 @@
   </section>
 </main>
 
+<main class="view rx" id="tab-regex" role="tabpanel" hidden>
+  <div class="rx-top">
+    <h2 class="pagetitle">Regex</h2>
+    <div class="strat-tabs" id="rx-tabs" role="tablist" aria-label="Regex"><button type="button" role="tab" data-rx="saved" aria-selected="true">My searches</button><button type="button" role="tab" data-rx="maps" aria-selected="false">Maps</button><button type="button" role="tab" data-rx="vendor" aria-selected="false">Vendor</button><button type="button" role="tab" data-rx="test" aria-selected="false">Test</button></div>
+  </div>
+  <div id="rx-body"></div>
+</main>
+
 <main class="view" id="tab-trouble" role="tabpanel" hidden>
   <div class="trouble">
     <section class="tr-side" aria-label="Record and check">
@@ -576,10 +585,8 @@
 
       <section class="set-sec" id="set-searches" aria-label="Stash searches" hidden>
         <h2>Stash searches</h2>
-        <p class="set-lead">Searches you use often, such as regex from poe.re, kept under a name. In game, press <span class="keyname" data-keyname="hotkeys.stashSearch"></span> to open them at the mouse and click one: it goes into the stash search box (the app presses Ctrl+F, pastes it and presses Enter, once per click). <button type="button" class="link" data-settings="keys">Change the key</button></p>
-        <div class="set-list ss-rows" id="ss-rows"></div>
-        <p class="set-foot"><button type="button" id="ss-add">Add a search</button></p>
-        <p class="set-foot">The game's search box takes 250 characters at most; a longer search is cut off there.</p>
+        <p class="set-lead">Searches you use often, such as regex for maps or vendors, kept under a name. In game, press <span class="keyname" data-keyname="hotkeys.stashSearch"></span> to open them at the mouse and click one: it goes into the stash search box (the app presses Ctrl+F, pastes it and presses Enter, once per click). <button type="button" class="link" data-settings="keys">Change the key</button></p>
+        <p class="set-foot">Your searches, the map and vendor builders and a tester are on the Regex page. <button type="button" data-tab="regex">Open the Regex page</button></p>
       </section>
 
       <section class="set-sec" id="set-trade" aria-label="Trade" hidden>
@@ -824,6 +831,7 @@
 <script src="../core/recording.js"></script>
 <script src="../core/diag.js"></script>
 <script src="steps.js"></script>
+<script src="../core/regex.js"></script>
 <script src="tradecard.js"></script>
 <script src="app/core.js"></script>
 <script src="app/mapping.js"></script>
@@ -843,6 +851,7 @@
 <script src="app/jewels.js"></script>
 <script src="app/strategy-dialog.js"></script>
 <script src="app/settings.js"></script>
+<script src="app/regex.js"></script>
 <script src="app/devtools.js"></script>
 <script src="app/tracker.js"></script>
 <script src="app/account.js"></script>

@@ -18,7 +18,7 @@ function render() {
   renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderHood(); renderDev(); renderTracker(); renderSettings(); renderRefresh();
   clockStart();
 }
-const TABS = ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'trouble', 'hood', 'tracker', 'settings'];
+const TABS = ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'regex', 'trouble', 'hood', 'tracker', 'settings'];
 const openTab = () => TABS.find((id) => !$(`tab-${id}`).hidden) || 'mapping';
 // What a page needs drawn from the state. Pages not listed draw themselves when shown (showTab).
 function drawPage(name) {
@@ -29,6 +29,7 @@ function drawPage(name) {
   else if (name === 'costs') renderCosts();
   else if (name === 'prices') { renderPriceCheck(); renderTradeCheck(); }
   else if (name === 'items') renderItems();
+  else if (name === 'regex') renderRegex();
 }
 
 // The map card's clock with its thousandths: every screen refresh, but only while a map runs
@@ -180,6 +181,7 @@ function showTab(name) {
   if (name === 'items') { refreshKnown(); renderKnown(); }
   if (name === 'prices') renderPrices(true);
   if (name === 'jewels') jewelsShown();
+  if (name === 'regex') regexShown();
   if (name === 'trouble') troubleShown();
   if (name === 'tracker') trackerShown();
   if (name === 'hood') hoodShown();
