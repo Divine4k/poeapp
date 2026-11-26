@@ -28,6 +28,7 @@ class InventoryReader {
     // Slots seen clearly at least once (empty or not). A covered slot never seen clearly is
     // "blind": what is in it is not known at all.
     this.known = new Array(COLS * ROWS).fill(false);
+    this.warm = false; // a reading with nothing covered has been made since the app started
   }
 
   // The kept answers for slot k, started afresh when its picture changed.
@@ -63,7 +64,8 @@ class InventoryReader {
   // { counts: Map(name -> qty), recognised, unknown: [{ cell, qty, print, rgb }], empties: [cell],
   //   cells: [{ cell, rgb, print, status, name, qty, score, source }] }
   // hidden: how many slots may be covered. blind: covered slots never seen clearly, so nothing
-  // at all is known about them.
+  // at all is known about them. warm: whether a reading with nothing covered came before this one
+  // (until then a blind slot is most likely just not looked at yet).
   // status: 'item' recognised now, 'remembered' covered but known from before,
   //         'unknown' has a stack number but no match, 'skipped' no stack number, 'ignored'.
   read(frame, { cursor = null } = {}) {
@@ -75,6 +77,8 @@ class InventoryReader {
     const cells = [];
     const empties = [];
     const blind = [];
+    const warm = this.warm;
+    if (!hidden.size) this.warm = true;
     for (let k = 0; k < COLS * ROWS; k++) {
       if (!hidden.has(k)) this.known[k] = true;
       else if (!this.known[k] && !this.memory[k]) blind.push(k);
@@ -181,7 +185,7 @@ class InventoryReader {
       }
     }
     this.cleanUp(cells, hidden);
-    return { counts, recognised, unknown, cells, empties, hidden: hidden.size, blind };
+    return { counts, recognised, unknown, cells, empties, hidden: hidden.size, blind, warm };
   }
 
   // A slot read clearly keeps its picture as the clean one. A slot that may be covered and still

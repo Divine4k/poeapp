@@ -809,7 +809,7 @@ function trackBlind(result) {
   if (!ledger.pendingArrival) { blindSlots.clear(); blindTold = false; return; }
   for (const k of result.blind) if (!ledger.arrival.has(k)) blindSlots.add(k);
   let lost = 0;
-  for (const k of result.empties) if (blindSlots.delete(k)) lost++;
+  for (const k of result.empties) if (blindSlots.delete(k) && result.warm) lost++;
   for (const c of result.cells) if (c.status !== 'covered') blindSlots.delete(c.cell);
   if (lost && session.current) session.addHidden(session.currentId, lost);
 }
