@@ -17,6 +17,8 @@ const { COLS, ROWS } = require('./core/inventory/grid');
 const helper = new CaptureHelper();
 const TRUST_AFTER = 3;   // readings in a row whose slots matched
 const SAME_SLOTS = 56;   // of 60: a tooltip or the mouse may move between the two pictures
+const CHECK_EVERY = 30;  // once trusted, every so many pictures both are taken and compared again
+let quickShots = 0;
 const quick = { state: process.platform === 'win32' ? 'trial' : 'off', good: 0, bad: 0, why: '' };
 let ownWindowsShown = () => false; // set by main.js: is one of the app's windows over the game?
 function quickFact() {
@@ -38,25 +40,36 @@ async function quickShot(display, width, height) {
   const rect = realRect(display, width, height);
   if (!rect) return null;
   const done = diag.start('inventory: the quick picture of the screen', `${width}x${height}`);
-  const data = await helper.shot(rect);
+  let data = await helper.shot(rect);
+  // One colour from corner to corner is no picture of a game (a screen that cannot be copied
+  // this way, the game in exclusive full screen): the old way is asked.
+  if (data && blank(data)) { diag.count('inventory: the quick picture was blank'); data = null; }
   done(data ? `${width}x${height}, ${Math.round(data.length / 1048576)} MB` : 'none came back', false, !data);
   return data ? { data, width, height, bgr: true, display, quick: true } : null;
+}
+
+function blank(data) {
+  const step = Math.max(4, Math.floor(data.length / 4 / 997) * 4);
+  for (let i = step; i + 2 < data.length; i += step) if (data[i] !== data[0] || data[i + 1] !== data[1] || data[i + 2] !== data[2]) return false;
+  return true;
 }
 
 // After a reading that found the inventory open: compare the old picture with its twin from
 // the helper, slot by slot. Called by main.js with the frame and the grid's rectangle.
 function judge(frame, rect) {
   const twin = frame && frame.twin;
-  if (!twin || quick.state !== 'trial') return;
+  if (!twin || quick.state === 'off') return;
   frame.twin = null;
   const same = slotsSame(frame, twin, rect);
   diag.note('capture', `Quick picture compared with the old one: ${same} of ${COLS * ROWS} slots the same`);
   if (same >= SAME_SLOTS) {
     quick.good++; quick.bad = 0;
-    if (quick.good >= TRUST_AFTER) { quick.state = 'trusted'; diag.note('capture', 'Screen capture now the quick way: its pictures matched'); }
+    if (quick.state === 'trial' && quick.good >= TRUST_AFTER) { quick.state = 'trusted'; diag.note('capture', 'Screen capture now the quick way: its pictures matched'); }
   } else {
     quick.good = 0; quick.bad++;
     diag.count('inventory: the quick picture differed from the old one');
+    // Trusted and now different: back on trial at once, the old way until it has matched again.
+    if (quick.state === 'trusted') { quick.state = 'trial'; diag.note('capture', `Screen capture back to the old way for now: a later comparison differed, ${same} of ${COLS * ROWS} slots the same`); }
     if (quick.bad >= 2) { quickOff(`its pictures differed, ${same} of ${COLS * ROWS} slots the same`); return; }
   }
   quickFact();
@@ -76,7 +89,10 @@ async function captureFrame(displayId) {
   // The app's own windows are left out of the old way's pictures (see guard in overlay.js);
   // whether the helper's copy leaves them out too is not known, so with one of them showing
   // the old way is used.
-  if (quick.state === 'trusted') {
+  // Trusted is not for ever: every so often both pictures are taken again and compared (judge),
+  // so a change on the PC in the middle of a session (HDR, a colour filter) is caught.
+  const again = quick.state === 'trusted' && ++quickShots % CHECK_EVERY === 0 && !ownWindowsShown();
+  if (quick.state === 'trusted' && !again) {
     if (ownWindowsShown()) diag.count('inventory: old way of capture, a window of the app was showing');
     else {
       const frame = await quickShot(display, width, height);
@@ -98,7 +114,7 @@ async function captureFrame(displayId) {
   made(`${size.width}x${size.height}, ${Math.round(data.length / 1048576)} MB`);
   const frame = { data, width: size.width, height: size.height, bgr: true, display };
   // While the quick way is on trial, its picture is taken right after, for judge().
-  if (quick.state === 'trial' && !ownWindowsShown() && size.width === width && size.height === height) {
+  if ((quick.state === 'trial' || again) && !ownWindowsShown() && size.width === width && size.height === height) {
     frame.twin = await quickShot(display, width, height);
     if (!frame.twin) { quick.bad++; if (quick.bad >= 3) quickOff('the helper gave no picture'); }
   }
