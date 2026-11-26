@@ -641,6 +641,7 @@ function tkMapDraw() {
   for (const c of kids.get('root') || []) if (auto[c]) placeAt(c, [0, 0]);
   for (const k of Object.keys(auto)) if (!(k in tkPos)) tkPos[k] = auto[k];
   for (const el of els.values()) tkPlace(el);
+  tkMeasureView();
   tkLinesNow();
 }
 
@@ -674,17 +675,22 @@ function tkBox(key) {
   return p && z ? { x: p[0], y: p[1], w: z[0], h: z[1] } : null;
 }
 let tkCanvasSize = '';
+let tkMapView = [0, 0]; // the map's size on screen: [width, height]
+function tkMeasureView() { const m = $('tk-map'); tkMapView = [m.clientWidth, m.clientHeight]; }
+window.addEventListener('resize', () => { if (!$('tab-tracker').hidden && tkView === 'map' && tkLoaded) { tkMeasureView(); tkLinesSoon(); } });
 function tkLines(temp) {
   let maxX = 0, maxY = 0;
   for (const k of tkSize.keys()) { const b = tkBox(k); if (b) { maxX = Math.max(maxX, b.x + b.w); maxY = Math.max(maxY, b.y + b.h); } }
   const canvas = $('tk-canvas'), svg = $('tk-lines');
-  const size = `${maxX + 240}x${maxY + 160}`;
+  // At least as big as the map on screen, so the tab's rail runs from top to bottom however
+  // few boxes there are (tkMapView is measured once per draw and on resizing, never here).
+  const width = Math.max(maxX + 240, tkMapView[0]), height = Math.max(maxY + 160, tkMapView[1]);
+  const size = `${width}x${height}`;
   if (size !== tkCanvasSize) {
     tkCanvasSize = size;
-    canvas.style.width = `${maxX + 240}px`; canvas.style.height = `${maxY + 160}px`;
-    svg.setAttribute('width', maxX + 240); svg.setAttribute('height', maxY + 160);
+    canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+    svg.setAttribute('width', width); svg.setAttribute('height', height);
   }
-  const height = maxY + 160;
   const paths = [`<path class="tk-rail" d="M${TK_EDGE},0 V${height}"/>`], dots = [];
   for (const k of tkSize.keys()) {
     const i = tkFind(k), b = tkBox(k);
