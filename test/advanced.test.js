@@ -378,12 +378,104 @@ test('the lowest value asked for keeps whole numbers whole and never asks for no
   assert.equal(lowest(11.5, 0.9), 10.4);
 });
 
+// ---- its own ticks (ticks.js) ----
+const { buildFilters, buildQuery } = require('../src/core/tradeQuery');
+const { rungs, applyRung, classOf } = require('../src/core/advanced/ticks');
+// The owner's gloves of 2026-11-26: 5 chaos by the usual ticks, about 30 divine with every real
+// modifier ticked (9 listed). What he ticked by hand is what the advanced check must tick.
+const GLOVES = `Item Class: Gloves
+Rarity: Rare
+Morbid Hold
+Assassin's Mitts
+--------
+Quality: +20% (augmented)
+Evasion Rating: 127 (augmented)
+Energy Shield: 26 (augmented)
+--------
+Requirements:
+Level: 58
+Dex: 45
+Int: 45
+--------
+Sockets: G-B-G-B 
+--------
+Item Level: 85
+--------
+{ Searing Exarch Implicit Modifier (Lesser) }
+Freezes you inflict spread to other Enemies within 1.1 metres (implicit)
+{ Eater of Worlds Implicit Modifier (Lesser) }
+Projectiles Pierce an additional Target (implicit)
+--------
+{ Fractured Prefix Modifier "Frost-touched" (Tier: 1) — Physical Damage, Elemental Damage, Cold }
+30(28-30)% of Physical Damage Converted to Cold Damage (fractured)
+{ Prefix Modifier "Pirate's" (Tier: 2) }
++9(8-12)% to Item Rarity
+{ Master Crafted Prefix Modifier "Upgraded" — Physical Damage, Elemental Damage, Lightning }
+25(21-25)% of Physical Damage Converted to Lightning Damage (crafted)
+{ Suffix Modifier "of the Maelstrom" (Tier: 6) — Elemental, Lightning, Resistance }
++40(36-41)% to Lightning Resistance
+{ Suffix Modifier "of Bameth" (Tier: 2) — Chaos, Resistance }
++27(26-30)% to Chaos Resistance
+{ Suffix Modifier "of Recovery" (Tier: 3) }
+14(14-16)% increased Stun and Block Recovery
+--------
+Fractured Item
+`;
+
+test('its own ticks: every real modifier first, then the strong ones, then the usual', () => {
+  const f = buildFilters(parseItemText(GLOVES), index);
+  const r = rungs(f);
+  assert.deepEqual(r.map((x) => [x.id, x.lines]), [['all', 7], ['strong', 4], ['usual', 2]]);
+  const texts = (rung) => f.stats.filter((s) => rung.ticks[s.key]).map((s) => s.text.replace(/^\+?\d+% (of |to |total )?/, ''));
+  // what the owner ticked by hand: the implicits and the crafted modifier too; stun recovery is nobody's reason to buy
+  assert.deepEqual(texts(r[0]), ['Elemental Resistance', 'Freezes you inflict spread to other Enemies within 1.1 metres', 'Projectiles Pierce an additional Target', 'Physical Damage Converted to Cold Damage', 'Item Rarity', 'Physical Damage Converted to Lightning Damage', 'Chaos Resistance']);
+  // fractured, tier 2 and what the standard check ticks; not the implicits or the crafted one, which a buyer can add himself
+  assert.deepEqual(texts(r[1]), ['Elemental Resistance', 'Physical Damage Converted to Cold Damage', 'Item Rarity', 'Chaos Resistance']);
+  assert.deepEqual(texts(r[2]), ['Elemental Resistance', 'Physical Damage Converted to Cold Damage']);
+  // the first search, as the live trade site took it on 2026-11-26: 9 listed, from 25 divine (the usual ticks: 759, from 5 chaos)
+  const all = applyRung(f, r[0]);
+  assert.deepEqual(buildQuery(all).query.stats, [{ type: 'and', filters: [
+    { id: 'pseudo.pseudo_total_elemental_resistance', value: { min: 36 } }, { id: 'implicit.stat_1623640288', value: { min: 1 } }, { id: 'implicit.stat_2067062068', value: { min: 1 } },
+    { id: 'fractured.stat_2133341901', value: { min: 27 } }, { id: 'explicit.stat_3917489142', value: { min: 8 } }, { id: 'crafted.stat_3240769289', value: { min: 23 } }, { id: 'explicit.stat_2923486259', value: { min: 24 } },
+  ] }]);
+  assert.ok(costOf(buildQuery(all)) <= MAX_COST);
+  // only the ticks change
+  assert.deepEqual([all.flags, all.category, all.props, all.stats.map((s) => s.min)], [f.flags, f.category, f.props, f.stats.map((s) => s.min)]);
+  assert.equal(f.stats.find((s) => /Item Rarity/.test(s.text)).enabled, false); // the filters handed in are left as they were
+});
+
+test('its own ticks: what is never ticked, and what it is not for', () => {
+  const line = (text, more = {}) => ({ key: 'stat:0', text, kind: 'explicit', enabled: false, tiers: [1], ...more });
+  for (const junk of ['17% increased Stun and Block Recovery', 'Reflects 22 Physical Damage to Melee Attackers', '15% increased Light Radius', 'Gain 14 Life per Enemy Killed', '18% reduced Attribute Requirements']) assert.equal(classOf(line(junk), false), 'junk', junk);
+  // a chest's own evasion is one of the window's number lines already; on a ring energy shield is a modifier like any other
+  assert.equal(classOf(line('+225 to Evasion Rating'), true), 'junk');
+  assert.equal(classOf(line('105% increased Evasion and Energy Shield'), true), 'junk');
+  assert.equal(classOf(line('+44 to maximum Energy Shield'), false), 'strong');
+  assert.equal(classOf(line('+44 to maximum Energy Shield', { tiers: [4] }), false), 'weak');
+  assert.equal(classOf(line('+31% to Cold Resistance', { kind: 'crafted', tiers: [] }), false), 'weak');
+  assert.equal(classOf(line('+12% to Fire Resistance', { kind: 'fractured', tiers: [7] }), false), 'strong');
+  assert.equal(classOf(line('Shaper influence', { key: 'influence:Shaper', kind: 'pseudo', tiers: [] }), false), 'strong');
+  // a plain copy names no tiers: nothing is taken for strong that is not known to be
+  assert.equal(classOf(line('+70 to maximum Mana', { tiers: [] }), false), 'weak');
+  // uniques, gems and cluster jewels keep the ticks they have; so does an item with nothing more to tick
+  const unique = buildFilters(parseItemText('Item Class: Rings\nRarity: Unique\nKaom\'s Sign\nCoral Ring\n--------\nItem Level: 70\n--------\n+25 to maximum Life (implicit)\n--------\n+18 to Strength\n'), index);
+  assert.deepEqual(rungs(unique), []);
+  assert.deepEqual(rungs(buildFilters(parseItemText(CLUSTER), index)), []);
+  assert.deepEqual(rungs({ ok: false }), []);
+  const bare = buildFilters(parseItemText('Item Class: Rings\nRarity: Rare\nA B\nCoral Ring\n--------\nItem Level: 70\n--------\n+62 to maximum Life\n+30% to Fire Resistance\n'), index);
+  assert.deepEqual(rungs(bare), []); // life and resistance are the usual ticks already
+  // the test chest has no weak lines: two sets, each given once, the usual ticks last
+  const chest = rungs(buildFilters(parseItemText(CHEST), index));
+  assert.deepEqual(chest.map((x) => x.id), ['strong', 'usual']);
+  assert.ok(chest[0].lines > chest[1].lines);
+});
+
 const NOW = 1_800_000_000_000;
 const listed = (chaos, days, extra = {}) => ({ chaos, listedAt: NOW - days * DAY, ...extra });
 
 test('range from listings: fresh ones count most, bait counts for nothing', () => {
   const e = estimate({ now: NOW, total: 46, listings: [listed(2, 0.1, { bait: true }), listed(30, 0.2), listed(32, 0.1), listed(35, 0.5), listed(36, 0.3), listed(40, 0.4), listed(45, 0.2), listed(50, 0.6), listed(60, 0.1), listed(70, 0.2)] });
-  assert.deepEqual([e.low, e.typical, e.high], [35, 40, 50]);
+  assert.deepEqual([e.low, e.typical, e.high], [30, 35, 40]); // the cheap end: about the cheapest, a third of the way up, the middle
   assert.equal(e.sure, 'sure');
   assert.equal(e.speed, 'fast');
   assert.deepEqual([e.seen, e.fresh, e.total], [9, 9, 46]);
@@ -394,6 +486,24 @@ test('range from listings: fresh ones count most, bait counts for nothing', () =
   assert.equal(old.speed, 'slow');
   assert.equal(old.high, old.typical); // the upper end is not being paid
   assert.equal(old.sure, 'fair');
+});
+
+test('an instant buyout that has stood for a day caps the price; hundreds listed is not "sells fast"', () => {
+  // anyone could have bought the 40c one at any hour for three days, and nobody did
+  const stood = estimate({ now: NOW, total: 30, listings: [listed(30, 0.2), listed(35, 0.3), listed(40, 3, { status: 'instant' }), listed(60, 0.1), listed(80, 0.2), listed(90, 0.1), listed(95, 0.1)] });
+  assert.deepEqual(stood.capped, { chaos: 40, days: 3 });
+  assert.ok(stood.high <= 40 && stood.typical <= 40);
+  assert.match(stood.why.join('; '), /an instant buyout has stood unsold for 3 days/);
+  assert.notEqual(stood.sure, 'sure');
+  assert.notEqual(stood.speed, 'fast');
+  // a fresh instant buyout says nothing yet
+  assert.equal(estimate({ now: NOW, total: 30, listings: [listed(30, 0.2, { status: 'instant' }), listed(35, 0.3), listed(40, 0.1), listed(60, 0.1), listed(80, 0.2), listed(90, 0.1)] }).capped, null);
+  // 759 listed and the cheapest are young: new ones keep coming, which is not the same as selling
+  const ten = Array.from({ length: 10 }, (_, i) => listed(5 + i, 0.3));
+  const crowd = estimate({ now: NOW, total: 759, listings: ten });
+  assert.equal(crowd.speed, 'crowded');
+  assert.equal(crowd.high, crowd.typical); // the upper end is not being paid
+  assert.equal(estimate({ now: NOW, total: 80, listings: ten }).speed, 'fast');
 });
 
 test('how sure: few listings, a widened search and prices far apart are all said', () => {
@@ -429,6 +539,8 @@ test('the outcome in a few words, for Under the hood', () => {
   assert.equal(advanced.describe(plan(CHEST)), 'life builds, 316 points, asks for spell suppression 19+, looks for life, spell suppression, resistances');
   assert.equal(advanced.outcome({ state: 'done', source: 'score', step: 1, total: 46, seen: 6, looked: 20, low: 30, high: 45.25, sure: 'fair', speed: 'fast' }), '30 to 45.3 chaos, fair, sells fast, from its own search (step 2 of 3, 6 of the 20 looked at count, 46 like it)');
   assert.equal(advanced.outcome({ state: 'none', why: 'nothing listed' }), 'none: nothing listed');
+  assert.equal(advanced.outcome({ state: 'done', source: 'near', near: { id: 'all', lines: 7 }, total: 9, low: 4100, high: 6560, sure: 'fair', speed: 'fast' }), '4100 to 6560 chaos, fair, sells fast, from the 9 listed with all 7 of its lines');
+  assert.match(advanced.outcome({ state: 'done', source: 'standard', total: 759, low: 5, high: 5, sure: 'fair', speed: 'crowded' }), /fair, many listed, from the usual search \(759 found\)/);
 });
 
 // ---- sending the searches (run.js), against a stand-in for the trade client ----

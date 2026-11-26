@@ -133,7 +133,7 @@
     // one price, more or less: the average of the five cheapest real listings
     const typ = s.typical !== null && s.typical !== undefined ? s.typical : s.low;
     const how = s.from === 'ninja' ? `poe.ninja's price, from the game's currency exchange${s.low !== null ? ` (the cheapest real offer here is ${fmtValue(s.low)})` : ''}` : `The average of the five cheapest listings, bait left out (the cheapest is ${fmtValue(s.low)})`;
-    return `<div class="pc-price" title="${esc(how)}"><span class="pc-about-sign">~</span>${priceHtml(typ)}<small>${bulk ? 'each' : d.adv ? 'standard' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
+    return `<div class="pc-price" title="${esc(how)}"><span class="pc-about-sign">~</span>${priceHtml(typ)}<small>${bulk ? 'each' : d.adv ? (d.adv.near ? 'as ticked' : 'standard') : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
   }
   // The verdict at a glance, beside the price.
   const VERDICT_TIPS = { top: 'Worth a divine or more', sell: 'Worth listing on the trade site', vendor: 'A vendor gives more than it sells for', low: 'Sells for less than a few chaos' };
@@ -323,7 +323,7 @@
   // whatever it says, so the window does not change height when its answer comes a moment after
   // the standard one.
   const SURE = { sure: ['sure', 'Plenty of fresh listings like it, close in price'], fair: ['fairly sure', 'Take it as a good guide, not to the chaos'], guess: ['a guess', 'Too little to go by: look at the listings yourself'] };
-  const SPEED = { fast: ['sells fast', 'The cheapest listings like it are fresh: cheap ones get bought within a day'], steady: ['sells', 'The cheapest listings like it are a few days old'], slow: ['slow to sell', 'The cheapest listings like it have sat for days: expect to wait, or to go lower'] };
+  const SPEED = { fast: ['sells fast', 'The cheapest listings like it are fresh: cheap ones get bought within a day'], steady: ['sells', 'The cheapest listings like it are a few days old'], slow: ['slow to sell', 'The cheapest listings like it have sat for days: expect to wait, or to go lower'], crowded: ['many listed', 'Hundreds like it are listed: buyers take the cheapest, so expect to wait at this price or to go lower'] };
   const STEP_WORDS = ['', 'search widened once', 'search widened twice'];
   // The same range in the other currency, once it is worth half a divine: both are quoted in trade.
   function otherUnit(lo, hi) {
@@ -348,15 +348,24 @@
     else top = `<span class="pa-wait${a.state === 'error' ? ' pa-bad' : ''}" title="${esc(a.why || '')}">${esc(a.state === 'none' ? (a.why || 'Nothing to go by.') : a.state === 'later' ? (a.why || 'The trade site asked for a pause.') : `It could not be worked out: ${a.why || ''}`)}</span>`;
     // who it fits and what carries it (known at once, before any search)
     let fits;
-    if (a.kind === 'score' && a.worth) fits = dots([a.fits.length ? `Fits <b>${esc(a.fits.join(' and '))}</b>` : '', ...a.parts.map((p) => `<span title="How much of its worth comes from this">${esc(p.as)} <b>${p.share}%</b></span>`)]);
-    else if (a.kind === 'score') fits = `Nothing on it that buyers search for (<b>${a.score}</b> points): read from the standard search.`;
+    const lines = a.near ? `<b>${a.near.lines}</b>` : '';
+    // its own ticks: which lines it is being compared by (they are the ticked ones below)
+    if (a.near && a.near.id !== 'usual') fits = done || a.state === 'none'
+      ? (a.near.id === 'all' ? `Compared with items that have all ${lines} of its modifiers (ticked below).` : `Compared by its ${lines} strongest modifiers (ticked below); too few have them all.`)
+      : (a.near.id === 'all' ? `Looking for items with all ${lines} of its modifiers…` : `Too few have them all: looking by its ${lines} strongest…`);
+    else if (a.touched) fits = 'Read from the lines you ticked.';
+    else if (a.kind === 'score' && a.worth) fits = dots([a.fits.length ? `Fits <b>${esc(a.fits.join(' and '))}</b>` : '', ...a.parts.map((p) => `<span title="How much of its worth comes from this">${esc(p.as)} <b>${p.share}%</b></span>`)]);
+    else if (a.kind === 'score') fits = 'Nothing closer is listed: read from the usual search.';
     else if (a.kind === 'exact') fits = 'Searched with exactly its number of passives.';
-    else fits = 'No search of its own for this kind of item: read from the standard search.';
+    else fits = 'Read from the usual search.';
     if (a.unknown && a.unknown.length) fits += `<i>·</i><span class="pa-warn" title="A top-tier modifier the advanced check gives no points for. If it is what the item is bought for, the price is too low: press Too low.">not weighed: ${esc(a.unknown.join('; '))}</span>`;
     // what the price stands on
+    const c = a.closer;
     const how = dots([
+      // a stricter set of lines found one or two: the closest there is, so it is said first
+      done && c ? `<span class="pa-warn" title="With ${c.id === 'all' ? 'every modifier' : 'its strongest modifiers'} ticked, only ${c.total} ${c.total === 1 ? 'is' : 'are'} listed. Too few to price by, but the closest there is: if this is far above the price here, tick those lines and look.">only ${c.total} with ${c.id === 'all' ? 'everything' : 'its strongest'}: <b>${esc(fmtValue(c.low))}${c.high > c.low ? `–${esc(fmtValue(c.high))}` : ''}</b></span>` : '',
       ...(done ? (a.facts || []).map(esc) : []),
-      done && a.source !== 'standard' && a.step > 0 ? STEP_WORDS[a.step] || '' : '',
+      done && a.source === 'score' && a.step > 0 ? STEP_WORDS[a.step] || '' : '',
       a.base ? `<span title="poe.ninja's price for ${esc(a.base.what)}, whatever is rolled on it">base alone ≈ <b>${esc(fmtValue(a.base.chaos))}</b></span>` : '',
       a.trend ? `<span title="How poe.ninja's price for it moved over the last week">${a.trend > 0 ? 'up' : 'down'} <b>${Math.abs(a.trend)}%</b> this week</span>` : '',
     ]);

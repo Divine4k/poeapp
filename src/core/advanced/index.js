@@ -1,5 +1,7 @@
 'use strict';
-// The advanced price check (its own key). The standard check is left as it is and runs first;
+// The advanced price check (its own key). The standard check is left as it is; with the
+// advanced key the same window starts from every line of the item that could matter and lets
+// go of lines only when too few are listed (ticks.js). When it comes down to the usual ticks,
 // this adds, for the same item:
 //   - for a rare, a comparison by score: a search for items with most of what carries its score,
 //     whose results are scored here (score.js, with the value table in values.js);
@@ -11,6 +13,7 @@
 const { plan, describe, scoreListing, STEPS } = require('./score');
 const { estimate } = require('./estimate');
 const { run, ENOUGH } = require('./run');
+const { rungs, applyRung, NEAR_ENOUGH } = require('./ticks');
 const { PROFILES, WORTH_FROM } = require('./values');
 
 // What the base alone is worth: poe.ninja prices base types by item level (82 to 86) and
@@ -39,7 +42,11 @@ function outcome(adv) {
   if (!adv) return 'nothing';
   if (adv.state !== 'done') return `${adv.state}${adv.why ? `: ${adv.why}` : ''}`;
   const r = (c) => (c >= 100 ? Math.round(c) : Math.round(c * 10) / 10);
-  return `${r(adv.low)} to ${r(adv.high)} chaos, ${adv.sure}${adv.speed ? `, sells ${adv.speed}` : ''}, from ${adv.source === 'score' ? `its own search (step ${adv.step + 1} of ${STEPS.length}, ${adv.seen} of the ${adv.looked} looked at count, ${adv.total} like it)` : adv.source === 'exact' ? `the exact search (${adv.total} found)` : `the standard search (${adv.total} found)`}`;
+  const speed = !adv.speed ? '' : adv.speed === 'crowded' ? ', many listed' : `, sells ${adv.speed}`;
+  const from = adv.source === 'near' ? `the ${adv.total} listed with ${adv.near && adv.near.id === 'all' ? 'all' : 'the strongest'} ${adv.near ? adv.near.lines : ''} of its lines`
+    : adv.source === 'score' ? `its own search (step ${adv.step + 1} of ${STEPS.length}, ${adv.seen} of the ${adv.looked} looked at count, ${adv.total} like it)`
+      : adv.source === 'exact' ? `the exact search (${adv.total} found)` : `the usual search (${adv.total} found)`;
+  return `${r(adv.low)} to ${r(adv.high)} chaos, ${adv.sure}${speed}, from ${from}`;
 }
 
-module.exports = { plan, describe, scoreListing, run, estimate, baseValue, outcome, ENOUGH, STEPS, PROFILES, WORTH_FROM };
+module.exports = { plan, describe, scoreListing, run, estimate, rungs, applyRung, NEAR_ENOUGH, baseValue, outcome, ENOUGH, STEPS, PROFILES, WORTH_FROM };

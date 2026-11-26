@@ -1698,6 +1698,7 @@ async function runTradeSearch(announce) {
   keyAnswered();
   tc.rev = ++tradeRev;
   if (tradeCheck !== tc) return; // another item was checked meanwhile
+  if (advancedLoosen(tc, announce)) return; // too few with the advanced check's ticks: it searches again with fewer
   if (announce && !tc.inGame) showToast(tradeMessage(tc, prices.divine)); // the window in game says it itself
   push();
   const crafts = () => { if (tradeCheck === tc && tc.state === 'done' && tc.craft) runCrafts(tc, tc.craftEdits ? applyEdits(tc.filters, tc.craftEdits) : tc.filters).catch(() => {}); };
@@ -1929,7 +1930,36 @@ function advancedBegin(tc, item) {
     fits: own ? plan.fits : [], parts: own ? plan.parts : [], score: own ? plan.score : null, unknown: own ? plan.unknown : [],
     base: base && base.chaos >= 3 ? base : null, trend, said: '',
   };
-  if (trouble) trouble.event('advanced plan', { item: tc.filters.title, plan: advanced.describe(plan), base: base ? `${base.chaos}c for ${base.what}` : undefined });
+  // Its own ticks (core/advanced/ticks.js): every line that could matter to begin with, so the
+  // first search is for items that are nearly the same; advancedLoosen lets go of lines when
+  // too few are listed. The window shows the ticks, and a change made there ends this.
+  const rungs = advanced.rungs(tc.filters);
+  if (rungs.length) {
+    tc.advRungs = rungs; tc.advRung = 0; tc.advFound = []; tc.advTouched = false;
+    tc.filters = advanced.applyRung(tc.filters, rungs[0]);
+    tc.adv.near = { id: rungs[0].id, lines: rungs[0].lines };
+  } else diag.count('price check: advanced keeps the usual ticks (not a rare or magic item, or nothing more to tick)');
+  if (trouble) trouble.event('advanced plan', { item: tc.filters.title, plan: advanced.describe(plan), ticks: rungs.map((r) => `${r.id}: ${r.lines} lines`).join(', ') || undefined, base: base ? `${base.chaos}c for ${base.what}` : undefined });
+}
+
+// After a search with the advanced check's own ticks: when fewer than NEAR_ENOUGH are listed it
+// lets go of lines (the next set of tc.advRungs: all that could matter, the strong ones, the
+// usual ticks) and searches again. true: another search is on its way.
+function advancedLoosen(tc, announce) {
+  if (!tc.adv || !tc.advRungs || tc.advTouched || tc.state !== 'done') return false;
+  const rung = tc.advRungs[tc.advRung];
+  const real = tc.listings.filter((l) => !l.bait && l.chaos > 0).map((l) => l.chaos).sort((a, b) => a - b);
+  tc.advFound[tc.advRung] = { id: rung.id, lines: rung.lines, total: tc.total, low: real.length ? real[0] : null, high: real.length ? real[real.length - 1] : null };
+  if (tc.total >= advanced.NEAR_ENOUGH || tc.advRung >= tc.advRungs.length - 1) return false;
+  const next = tc.advRungs[tc.advRung + 1];
+  tc.advRung += 1;
+  tc.filters = advanced.applyRung(tc.filters, next);
+  tc.filtersRev += 1; // the window draws the ticks again
+  tc.adv.near = { id: next.id, lines: next.lines };
+  diag.count(`price check: advanced let go of lines (too few listed with ${rung.id === 'all' ? 'every line' : 'the strong lines'})`);
+  if (trouble) trouble.event('advanced loosened', { item: tc.filters.title, from: `${rung.id}: ${rung.lines} lines, ${tc.total} listed`, to: `${next.id}: ${next.lines} lines` });
+  runTradeSearch(announce);
+  return true;
 }
 
 // After each standard search of the item: the advanced answer for it. One search for most
@@ -1943,9 +1973,29 @@ async function runAdvanced(tc) {
   tc.adv.run = run;
   const stale = () => tradeCheck !== tc || tc.adv.run !== run || tc.state === 'searching';
   const show = (patch) => { Object.assign(tc.adv, patch); tc.rev = ++tradeRev; push(); };
-  const read = (est, more) => { const { why: facts, ...rest } = est; return { state: 'done', why: '', facts, ...rest, ...more }; };
+  const read = (est, more) => {
+    const { why: facts, ...rest } = est;
+    // the one or two that have more of its lines ask far more than this: the price here is of lesser items
+    const c = tc.adv.closer;
+    if (c && c.low > rest.high * 2) rest.sure = 'guess';
+    return { state: 'done', why: '', facts, ...rest, ...more };
+  };
   const said = (text) => { if (trouble) trouble.event('advanced check', { item: tc.filters.title, outcome: text }); };
   const { plan } = held;
+  // Its own ticks found enough (or the user's ticks are being read): the price comes from
+  // these listings, which are the ones in the window.
+  const rung = tc.advRungs && !tc.advTouched ? tc.advRungs[tc.advRung] : null;
+  // a stricter set that found only one or two: said beside the price, as they are the closest there is
+  tc.adv.closer = rung ? (tc.advFound || []).find((f) => f.id !== rung.id && f.total > 0 && f.low) || null : null;
+  if ((rung && rung.id !== 'usual') || tc.advTouched) {
+    const near = rung ? { id: rung.id, lines: rung.lines } : null;
+    const est = advanced.estimate({ listings: tc.listings, total: tc.total });
+    show(est ? read(est, { source: near ? 'near' : 'standard', near, touched: !near, step: 0, url: tc.url }) : { state: 'none', source: near ? 'near' : 'standard', near, touched: !near, why: tc.total ? 'None of the listings has a price the app can read.' : 'Nothing like it is listed.' });
+    diag.count(`price check: advanced read from ${near ? `its own ticks (${rung.id})` : 'the ticks set in the window'}`);
+    said(advanced.outcome(tc.adv));
+    return;
+  }
+  tc.adv.near = null;
   // Nothing of its own to search: the standard search's listings, read the honest way.
   if (!plan.ok || !plan.steps) {
     const est = advanced.estimate({ listings: tc.listings, total: tc.total });
@@ -2979,6 +3029,7 @@ const actions = {
     if (tradeCheck && tradeCheck.kind === 'bulk') { await runBulkSearch(); return; }
     if (!tradeCheck || !tradeCheck.filters.ok || tradeCheck.state === 'searching') return;
     tradeCheck.filters = applyEdits(tradeCheck.filters, a.edits);
+    tradeCheck.advTouched = true; // the ticks are the user's own from here: the advanced check no longer changes them
     tradeCheck.craftEdits = null; // the choices searched are now the item's own: the crafts follow them
     if (a.edits && Array.isArray(a.edits.crafts) && tradeCheck.craft) tradeCheck.craftOn = a.edits.crafts.filter((k) => tradeCheck.craft.ideas.some((i) => i.stat === k && i.priced));
     tradeCheck.filtersRev += 1; // the other window showing this item redraws its tick boxes

@@ -1,6 +1,6 @@
 'use strict';
 // What a handful of comparable listings says an item is worth: a range rather than one number,
-// how sure that is, and whether items like it sell fast. Everything comes from the listings of
+// how sure that is, and whether items like it sell. Everything comes from the listings of
 // one search (their prices, how long each has been listed, how many there are), so it works the
 // same with one user as with a thousand. Plain logic, no Electron.
 //
@@ -19,42 +19,57 @@ function weighted(list, q) {
   return list[list.length - 1].chaos;
 }
 
-// listings: [{ chaos, listedAt, bait }] as readListing and markBait give them. total: how many
-// like it are listed in all (about: worked out, not counted). step: how far the search had to
-// be widened (0: not at all).
+// As many listed as make a crowded market: buyers take the cheapest, the rest sit.
+const CROWDED = 150;
+
+// listings: [{ chaos, listedAt, bait, status }] as readListing and markBait give them. total:
+// how many like it are listed in all (about: worked out, not counted). step: how far the search
+// had to be widened (0: not at all).
 // Returns null when no listing has a price, else
-// { low, typical, high, sure: 'sure' | 'fair' | 'guess', why: [..], speed: 'fast' | 'steady' | 'slow' | null, seen, fresh, total }.
+// { low, typical, high, sure: 'sure' | 'fair' | 'guess', why: [..], speed: 'fast' | 'steady' | 'slow' | 'crowded' | null, seen, fresh, total, capped }.
+//
+// The range is the cheap end of the listings, not their middle: a listing is a price nobody has
+// paid yet, and a buyer takes the cheapest that will do. low: about the cheapest real one;
+// typical: where a third of them lie below; high: about the middle, what a patient seller asks.
 function estimate({ listings, total = 0, about = false, step = 0, now = Date.now() }) {
   const seen = (listings || [])
     .filter((l) => l && !l.bait && l.chaos !== null && l.chaos !== undefined && isFinite(l.chaos) && l.chaos > 0)
-    .map((l) => ({ chaos: l.chaos, age: l.listedAt ? Math.max(0, now - l.listedAt) : null }))
+    .map((l) => ({ chaos: l.chaos, age: l.listedAt ? Math.max(0, now - l.listedAt) : null, instant: l.status === 'instant' }))
     .sort((a, b) => a.chaos - b.chaos);
   if (!seen.length) return null;
   for (const l of seen) l.w = freshness(l.age);
-  const low = weighted(seen, 0.25), typical = weighted(seen, 0.5);
-  let high = weighted(seen, 0.75);
-  // How fast: the cheapest are bought first, so where items like it sell, the cheapest listings
-  // are young; where the cheapest have sat for days, nobody is buying.
-  const ages = seen.slice(0, 5).map((l) => l.age).filter((a) => a !== null).sort((a, b) => a - b);
-  const mid = ages.length >= 3 ? ages[Math.floor((ages.length - 1) / 2)] : null;
-  const speed = mid === null ? null : mid <= DAY ? 'fast' : mid <= 4 * DAY ? 'steady' : 'slow';
-  if (speed === 'slow') high = typical; // the upper end is not being paid
+  let low = weighted(seen, 0.1), typical = weighted(seen, 0.3), high = weighted(seen, 0.55);
   const fresh = seen.filter((l) => l.age !== null && l.age <= DAY).length;
   const count = Math.max(total, seen.length);
+  // An instant buyout can be bought at any hour without its seller. One that has stood for a
+  // day or more is a price buyers have seen and passed: what sells lies below it.
+  const stood = seen.filter((l) => l.instant && l.age !== null && l.age > DAY);
+  const capped = stood.length ? { chaos: stood[0].chaos, days: Math.floor(stood[0].age / DAY) } : null;
+  if (capped) { high = Math.min(high, capped.chaos); typical = Math.min(typical, capped.chaos); low = Math.min(low, capped.chaos); }
+  // How fast: the cheapest are bought first, so where items like it sell, the cheapest listings
+  // are young; where the cheapest have sat for days, nobody is buying. With hundreds listed,
+  // young cheap listings only mean that new ones keep coming: that says nothing of selling.
+  const ages = seen.slice(0, 5).map((l) => l.age).filter((a) => a !== null).sort((a, b) => a - b);
+  const mid = ages.length >= 3 ? ages[Math.floor((ages.length - 1) / 2)] : null;
+  let speed = mid === null ? null : mid <= DAY ? 'fast' : mid <= 4 * DAY ? 'steady' : 'slow';
+  if (count >= CROWDED && speed !== 'slow') speed = 'crowded';
+  if (capped && speed === 'fast') speed = 'steady';
+  if (speed === 'slow' || speed === 'crowded') high = typical; // the upper end is not being paid
 
   const doubts = [];
   if (step >= 2) doubts.push([2, 'nothing close is listed, so weaker items were compared']);
   else if (step === 1) doubts.push([1, 'few close matches, so the search was widened']);
   if (seen.length < 3 || count < 4) doubts.push([2, `only ${count} listed`]);
   else if (seen.length < 6 || count < 12) doubts.push([1, `only ${count} listed`]);
-  if (low > 0 && high / low > 3) doubts.push([1, 'their prices are far apart']);
+  if (low > 0 && weighted(seen, 0.75) / low > 3) doubts.push([1, 'their prices are far apart']);
   if (mid !== null && mid > 7 * DAY) doubts.push([1, 'the cheapest have been listed for over a week']);
+  if (capped) doubts.push([1, `an instant buyout has stood unsold for ${capped.days} day${capped.days === 1 ? '' : 's'}`]);
   const worst = doubts.reduce((n, d) => Math.max(n, d[0]), 0);
   const why = [];
   if (!doubts.some((d) => /^only /.test(d[1]))) why.push(`${about ? 'about ' : ''}${count.toLocaleString('en-US')} like it listed`);
   if (ages.length) why.push(`${fresh} of the ${seen.length} seen listed within a day`);
   for (const d of doubts) why.push(d[1]);
-  return { low, typical, high, sure: worst >= 2 ? 'guess' : worst === 1 ? 'fair' : 'sure', why, speed, seen: seen.length, fresh, total: count };
+  return { low, typical, high, sure: worst >= 2 ? 'guess' : worst === 1 ? 'fair' : 'sure', why, speed, seen: seen.length, fresh, total: count, capped };
 }
 
-module.exports = { estimate, weighted, freshness, DAY };
+module.exports = { estimate, weighted, freshness, DAY, CROWDED };
