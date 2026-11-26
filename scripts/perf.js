@@ -13,7 +13,7 @@ const { Session } = require('../src/core/session');
 const LIMITS = {
   redrawMapping: [8, 'one state update, Mapping page open, 60 maps'],
   redrawOther: [1.5, 'one state update, another page open'],
-  trackerDraw: [30, 'drawing the Tracker map, 150 items, 40 on screen'],
+  trackerDraw: [30, 'drawing the Tracker map, 150 items on four tabs, about 40 on screen'],
   trackerDragMove: [5, 'one pointer movement while dragging a Tracker box'],
   trackerFilterKey: [30, 'one key in the Tracker search'],
   summary: [25, 'main process: summary of a 100 map session'],
@@ -35,13 +35,13 @@ const inPage = async () => {
   out.redrawMapping = time(40, () => setState(fresh())) - time(40, fresh);
   showTab('costs'); await sleep(100);
   out.redrawOther = time(40, () => setState(fresh())) - time(40, fresh);
-  // A big tracker: 150 items, 40 of them straight under the app.
+  // A big tracker: 150 items on four tabs, about 40 on the tab shown (Main).
   const body = 'Notes about this item.\n\n- [x] first step\n- [ ] second step\n- [ ] third step';
   window.demoTracker = Array.from({ length: 150 }, (_, k) => {
     const i = k + 1;
-    return { number: i, parent: i <= 40 ? null : 1 + ((i * 7) % 40), title: `Tracker item number ${i} with a title`, body, status: ['idea', 'todo', 'doing', 'done'][i % 4], priority: ['normal', 'high', 'low'][i % 3], dropped: false, labels: [], progress: window.Steps.progress(body), url: '#', by: 'perf', created: 0, updated: 0, closed: 0 };
+    return { number: i, parent: i <= 40 ? null : 1 + ((i * 7) % 40), tab: i <= 40 ? ['', 'Jewels', 'Trade', 'Regex'][i % 4] : '', title: `Tracker item number ${i} with a title`, body, status: ['idea', 'todo', 'doing', 'done'][i % 4], priority: ['normal', 'high', 'low'][i % 3], dropped: false, labels: [], progress: window.Steps.progress(body), url: '#', by: 'perf', created: 0, updated: 0, closed: 0 };
   });
-  tkLoaded = false; tkFocus = 'root'; tkView = 'map';
+  tkLoaded = false; tkTab = 'Main'; tkHideDone = false; tkView = 'map';
   showTab('tracker');
   while (!tkLoaded) await sleep(50);
   await sleep(200);
@@ -50,7 +50,7 @@ const inPage = async () => {
   out.trackerFilterKey = time(10, () => { filter.value = filter.value ? '' : 'item number 7'; tkDraw(); });
   filter.value = ''; tkDraw();
   // Dragging: the gesture is set up by hand (a made-up pointer cannot be captured), then moved.
-  const key = tkKids('root')[0].number, map = $('tk-map');
+  const key = [...tkShown][0], map = $('tk-map');
   tkGesture = { kind: 'move', key, x0: 0, y0: 0, moved: false, start: { [key]: tkPos[key].slice() } };
   const r = $('tk-canvas').getBoundingClientRect();
   let n = 0;

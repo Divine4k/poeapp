@@ -1,6 +1,7 @@
 'use strict';
-// Tracker page: ideas, things to make, work in progress and what is done. Two views: a map
-// (boxes branching out from the app, moved by hand, joined by lines) and a board (columns).
+// Tracker page: ideas, things to make, work in progress and what is done, split over tabs the
+// owner makes (listed on the left). Two views of a tab: a map (all its boxes, moved by hand,
+// joined by lines) and a board (columns). Right-click on a box for quick changes.
 // Only admins see it (state.trouble.admin). The items are GitHub issues (src/tracker.js), so
 // Claude works from the same list; the lines are GitHub sub-issues, the box positions are kept
 // in config.trackerLayout. Steps are the "- [ ]" lines of an issue (src/ui/steps.js).
@@ -25,10 +26,16 @@ let tkPos = {};       // where each box sits on the map right now: number or 'ro
 let tkMoved = {};     // moved here and sent to the settings, until the settings come back with it
 let tkView = 'map';
 try { tkView = localStorage.getItem('trackerView') === 'board' ? 'board' : 'map'; } catch (_) { /* storage off: the map */ }
-// The map shows one layer at a time: the box you went into and what hangs straight under it.
-// A box with items under it has an "N inside" button to go in; the path above the map goes back.
-let tkFocus = 'root';
-try { const f = Number(localStorage.getItem('trackerFocus')); if (f > 0) tkFocus = f; } catch (_) { /* start at the top */ }
+// Tabs (owner's wish in 0.55): the boxes are split over tabs the owner makes himself (Main,
+// Jewels, Trading...), listed down the left of the map. A tab shows all its boxes at once, flat,
+// joined by lines; no boxes inside boxes. A box's tab is its own label "tab: <name>"
+// (src/tracker.js), or its parent's tab when it has none, or Main.
+let tkTab = 'Main';
+try { tkTab = localStorage.getItem('trackerTab') || 'Main'; } catch (_) { /* start on Main */ }
+let tkHideDone = false;
+try { tkHideDone = localStorage.getItem('trackerHideDone') === '1'; } catch (_) { /* show everything */ }
+let tkShown = new Set(); // the boxes on the tab shown right now (numbers)
+let tkTabEdit = null;    // a tab being named: { mode: 'new' } or { mode: 'rename', name }
 
 // An update from GitHub. Its parent is only taken when GitHub said it (src/tracker.js).
 function tkMerge(it, item) {
@@ -37,23 +44,33 @@ function tkMerge(it, item) {
   if (parent !== undefined) it.parent = parent;
   tkChanged();
 }
-// Look-ups by number and by parent. Built once after the list changes (tkChanged) and used by
-// every draw, search and drag, so none of them scans the whole list for each box.
+// Look-ups by number, and each item's tab. Built once after the list changes (tkChanged) and
+// used by every draw, search and drag, so none of them scans the whole list for each box.
 let tkIdx = null;
 function tkIndex() {
   if (tkIdx && tkIdx.list === tkItems && tkIdx.size === tkItems.length) return tkIdx;
-  const by = new Map(tkItems.map((i) => [i.number, i])), kids = new Map();
-  for (const i of tkItems) {
-    const k = i.parent != null && by.has(i.parent) ? i.parent : 'root';
-    if (kids.has(k)) kids.get(k).push(i); else kids.set(k, [i]);
-  }
-  return (tkIdx = { list: tkItems, size: tkItems.length, by, kids });
+  const by = new Map(tkItems.map((i) => [i.number, i])), tabs = new Map();
+  const tabOf = (i, seen) => {
+    if (tabs.has(i.number)) return tabs.get(i.number);
+    let t = i.tab || '';
+    if (!t) {
+      const p = i.parent != null ? by.get(i.parent) : null;
+      seen.add(i.number);
+      t = p && !seen.has(p.number) ? tabOf(p, seen) : 'Main';
+    }
+    tabs.set(i.number, t);
+    return t;
+  };
+  for (const i of tkItems) tabOf(i, new Set());
+  return (tkIdx = { list: tkItems, size: tkItems.length, by, tabs });
 }
-// Call after an item's parent changes or the list is replaced.
+// Call after an item's parent or tab changes or the list is replaced.
 function tkChanged() { tkIdx = null; }
 const tkFind = (n) => tkIndex().by.get(n);
-// The item's parent, if that one is in the list; otherwise it hangs straight under the app.
-const tkParentKey = (i) => (i.parent != null && tkFind(i.parent) ? i.parent : 'root');
+const tkTabOf = (i) => tkIndex().tabs.get(i.number) || 'Main';
+// The box a line comes from on the tab shown: the item's parent when that is on the tab too,
+// otherwise the tab's own box on the left.
+const tkParentKey = (i) => (i.parent != null && tkShown.has(i.parent) ? i.parent : 'root');
 // Is item a under item b (at any depth)?
 function tkUnderOf(a, b) {
   const seen = new Set();
@@ -63,31 +80,21 @@ function tkUnderOf(a, b) {
   }
   return false;
 }
-// What hangs straight under a box ('root': under the app).
-const tkKids = (key) => (tkIndex().kids.get(key) || []).slice();
-// The layer being shown; back to the top when its item is gone.
-function tkLayer() {
-  if (tkFocus !== 'root' && !tkFind(tkFocus)) tkFocus = 'root';
-  return tkFocus;
+// Every tab: Main, then the ones made here in their order, then any found on the boxes only.
+function tkTabs() {
+  const out = ['Main'];
+  for (const t of state.config.trackerTabs || []) if (t && !out.includes(t)) out.push(t);
+  for (const t of tkIndex().tabs.values()) if (!out.includes(t)) out.push(t);
+  return out;
 }
-function tkGo(key) {
-  tkFocus = key;
+// A tab name as GitHub labels take it (the same rule as cleanTab in src/tracker.js).
+const tkCleanTab = (name) => String(name || '').replace(/[\r\n,]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+function tkGoTab(name) {
+  tkTab = name;
   tkUnder = null;
-  try { localStorage.setItem('trackerFocus', String(key)); } catch (_) { /* not kept */ }
+  try { localStorage.setItem('trackerTab', name); } catch (_) { /* not kept */ }
   $('tk-map').scrollTo(0, 0);
   tkDraw();
-}
-// The way from the top to the layer shown: ['root', ..., focus].
-function tkTrail() {
-  const out = [], seen = new Set();
-  for (let k = tkLayer(); k !== 'root' && !seen.has(k); k = tkParentKey(tkFind(k))) { seen.add(k); out.unshift(k); }
-  return ['root', ...out];
-}
-// Does the item, or anything under it, match the search? Keeps a box with a match inside lit.
-function tkMatchDeep(i, q, seen = new Set()) {
-  if (!q || tkMatch(i, q)) return true;
-  seen.add(i.number);
-  return tkKids(i.number).some((c) => !seen.has(c.number) && tkMatchDeep(c, q, seen));
 }
 
 function renderTracker() {
@@ -106,7 +113,10 @@ function trackerShown() { if (tkLoaded) tkDraw(); else tkLoad(); }
 async function trackerOpenItem(number) {
   showTab('tracker');
   if (!tkLoaded) await tkLoad();
-  if (tkFind(number)) tkOpenItem(number);
+  const it = tkFind(number);
+  if (!it) return;
+  if (tkTabOf(it) !== tkTab) tkGoTab(tkTabOf(it));
+  tkOpenItem(number);
 }
 
 function tkError(text) { $('tk-error').textContent = text || ''; $('tk-error').hidden = !text; }
@@ -154,19 +164,38 @@ const tkMatch = (i, q) => !q || `#${i.number} ${i.title} ${i.body} ${i.labels.jo
 function tkDraw() {
   const map = tkView === 'map';
   for (const b of $('tk-views').querySelectorAll('[data-view]')) b.setAttribute('aria-pressed', String(b.dataset.view === tkView));
-  $('tk-map').hidden = !map; $('tk-hint-map').hidden = !map; $('tk-crumbs').hidden = !map || !tkLoaded;
+  $('tk-hidedone').setAttribute('aria-pressed', String(tkHideDone));
+  $('tk-map').hidden = !map; $('tk-hint-map').hidden = !map;
   $('tk-board').hidden = map; $('tk-hint-board').hidden = map;
   tkUnderLine();
   if (!tkLoaded) return;
+  if (!tkTabs().includes(tkTab)) tkTab = 'Main';
   const link = $('tk-repo');
   link.textContent = tkRepo; link.href = `https://github.com/${tkRepo}/issues`;
+  tkTabsDraw();
   if (map) tkMapDraw(); else tkBoardDraw();
+}
+
+// The list of tabs down the left: each with how many open boxes it has; + New tab at the end.
+function tkTabsDraw() {
+  const open = new Map();
+  for (const i of tkItems) if (!tkClosed(i)) { const t = tkTabOf(i); open.set(t, (open.get(t) || 0) + 1); }
+  const edit = tkTabEdit;
+  const input = (value) => `<input class="tk-tabinput" id="tk-tabinput" maxlength="40" value="${esc(value)}" placeholder="Tab name" aria-label="Tab name" spellcheck="false" autocomplete="off">`;
+  setHtml($('tk-tabs'), tkTabs().map((t) => (edit && edit.mode === 'rename' && edit.name === t
+    ? input(t)
+    : `<div class="tk-tab${t === tkTab ? ' on' : ''}" data-tabname="${esc(t)}" role="button" tabindex="0" aria-current="${t === tkTab}"${t === 'Main' ? '' : ' title="Double-click to rename. Drop a box here to move it to this tab."'}>
+      <span class="tk-tabname">${esc(t === 'Main' ? 'Main' : t)}</span><span class="tk-tabcount num">${open.get(t) || ''}</span>${t === 'Main' ? '' : `<button type="button" class="tk-tabx" data-tabdel="${esc(t)}" title="Remove this tab (its boxes go back to Main)" aria-label="Remove the tab ${esc(t)}">×</button>`}
+    </div>`)).join('') + (edit && edit.mode === 'new' ? input('') : '<button type="button" class="tk-newtab" id="tk-newtab">+ New tab</button>'));
+  const inp = $('tk-tabinput');
+  if (inp && document.activeElement !== inp) { inp.focus(); inp.select(); }
 }
 
 function tkBoardDraw() {
   const q = $('tk-filter').value.trim().toLowerCase();
-  const shown = tkItems.filter((i) => tkMatch(i, q));
-  setHtml($('tk-board'), TK_COLS.map(([col, label, has]) => {
+  const shown = tkItems.filter((i) => tkTabOf(i) === tkTab && tkMatch(i, q));
+  const cols = tkHideDone ? TK_COLS.filter((c) => c[0] !== 'done') : TK_COLS;
+  setHtml($('tk-board'), cols.map(([col, label, has]) => {
     const list = shown.filter((i) => has.includes(i.status)).sort(tkSort(col));
     return `<section class="tk-col panel" data-col="${col}" aria-label="${label}">
       <header class="tk-chead"><b>${label}</b><span class="tk-count num">${list.length}</span></header>
@@ -175,11 +204,12 @@ function tkBoardDraw() {
   }).join(''));
 }
 
-// Moves an item to another column at once; GitHub is told behind it.
-async function tkMove(number, status) {
-  const it = tkItems.find((i) => i.number === number);
-  const col = TK_COLS.find((c) => c[0] === status);
-  if (!it || it.status === status || (col && col[2].includes(it.status))) return; // already in that column
+// Moves an item to another column (or, with exact, to that very status) at once; GitHub is
+// told behind it.
+async function tkMove(number, status, exact = false) {
+  const it = tkFind(number);
+  const col = !exact && TK_COLS.find((c) => c[0] === status);
+  if (!it || it.status === status || (col && col[2].includes(it.status))) return; // already there
   const was = { status: it.status, closed: it.closed, dropped: it.dropped };
   Object.assign(it, { status, dropped: status === 'dropped', closed: status === 'done' || status === 'dropped' ? Date.now() : 0 });
   tkDraw();
@@ -187,6 +217,39 @@ async function tkMove(number, status) {
   if (r.error) { Object.assign(it, was); tkDraw(); tkError(r.error); return; }
   tkError('');
   tkMerge(it, r.item);
+  tkDraw();
+}
+async function tkSetPriority(number, priority) {
+  const it = tkFind(number);
+  if (!it || it.priority === priority) return;
+  const was = it.priority;
+  it.priority = priority;
+  tkDraw();
+  const r = await api.tracker({ type: 'update', number, patch: { priority } });
+  if (r.error) { it.priority = was; tkDraw(); tkError(r.error); return; }
+  tkError('');
+  tkMerge(it, r.item);
+  tkDraw();
+}
+// Puts a box (and what hangs under it without a tab of its own) on another tab. Going to Main
+// while its parent stays on another tab also takes it off that parent, or it would follow it back.
+async function tkSetTab(number, tab) {
+  const it = tkFind(number);
+  if (!it || tkTabOf(it) === tab) return;
+  const was = { tab: it.tab, parent: it.parent };
+  const p = it.parent != null ? tkFind(it.parent) : null;
+  const detach = tab === 'Main' && p && tkTabOf(p) !== 'Main';
+  it.tab = tab === 'Main' ? '' : tab;
+  if (detach) it.parent = null;
+  tkChanged();
+  tkDraw();
+  const r = await api.tracker({ type: 'update', number, patch: { tab } });
+  const r2 = !r.error && detach ? await api.tracker({ type: 'parent', number, parent: null }) : null;
+  const error = r.error || (r2 && r2.error);
+  if (error) { Object.assign(it, was); tkChanged(); tkDraw(); tkError(error); return; }
+  tkError('');
+  tkMerge(it, r.item);
+  if (r2) tkMerge(it, r2.item);
   tkDraw();
 }
 
@@ -212,7 +275,9 @@ function tkOpenItem(number) {
   f.elements.notes.value = parts.notes;
   // Part of: anything but itself and what already hangs under it.
   const opts = tkItems.filter((i) => i.number !== number && !tkUnderOf(i.number, number)).sort((a, b) => a.number - b.number);
-  f.elements.parent.innerHTML = `<option value="">Nothing: straight under the app</option>${opts.map((i) => `<option value="${i.number}">#${i.number} ${esc(i.title)}</option>`).join('')}`;
+  f.elements.tab.innerHTML = tkTabs().map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  f.elements.tab.value = tkTabOf(it);
+  f.elements.parent.innerHTML = `<option value="">Nothing: straight under the tab</option>${opts.map((i) => `<option value="${i.number}">#${i.number} ${esc(i.title)}</option>`).join('')}`;
   f.elements.parent.value = it.parent != null && tkFind(it.parent) ? String(it.parent) : '';
   tkSteps = parts.steps;
   // The recordings connected to it, each opened on the Troubleshooting page.
@@ -260,23 +325,30 @@ $('tk-form').addEventListener('submit', async (e) => {
   if (p) tkMerge(it, p.item);
   $('tk-dialog').close();
   tkDraw();
+  if (it && f.elements.tab.value && f.elements.tab.value !== tkTabOf(it)) tkSetTab(it.number, f.elements.tab.value);
 });
 $('tk-cancel').addEventListener('click', () => $('tk-dialog').close());
 // Delete for good (GitHub needs admin rights on the token for this; src/tracker.js deleteItem).
-$('tk-delete').addEventListener('click', async () => {
-  const it = tkFind(tkOpen);
-  if (!it) return;
-  const inside = tkKids(it.number).length;
-  if (!window.confirm(`Delete #${it.number} "${it.title}" for good? It cannot be brought back.${inside ? ` The ${inside} item${inside === 1 ? '' : 's'} under it move to the top of the map.` : ''}\n\nTo keep it but put it aside, set it to Dropped instead.`)) return;
-  $('tk-delete').disabled = true;
+// Asks first. Returns an error text, or '' when it went (or the question was answered No).
+async function tkDeleteItem(number) {
+  const it = tkFind(number);
+  if (!it) return '';
+  const inside = tkItems.filter((c) => c.parent === it.number).length;
+  if (!window.confirm(`Delete #${it.number} "${it.title}" for good? It cannot be brought back.${inside ? ` The ${inside} item${inside === 1 ? '' : 's'} under it stay, no longer connected to it.` : ''}\n\nTo keep it but put it aside, set it to Dropped instead.`)) return '';
   const r = await api.tracker({ type: 'delete', number: it.number });
-  $('tk-delete').disabled = false;
-  if (r.error) { $('tk-derror').textContent = r.error; $('tk-derror').hidden = false; return; }
-  for (const c of tkItems) if (c.parent === it.number) c.parent = null;
+  if (r.error) return r.error;
+  for (const c of tkItems) if (c.parent === it.number) { c.parent = null; if (!c.tab && tkTabOf(it) !== 'Main') c.tab = tkTabOf(it); }
   tkItems = tkItems.filter((i) => i !== it);
   tkChanged();
-  $('tk-dialog').close();
   tkDraw();
+  return '';
+}
+$('tk-delete').addEventListener('click', async () => {
+  $('tk-delete').disabled = true;
+  const error = await tkDeleteItem(tkOpen);
+  $('tk-delete').disabled = false;
+  if (error) { $('tk-derror').textContent = error; $('tk-derror').hidden = false; return; }
+  if (!tkFind(tkOpen)) $('tk-dialog').close();
 });
 $('tk-stepbtn').addEventListener('click', tkAddStep);
 $('tk-stepnew').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tkAddStep(); } });
@@ -301,8 +373,11 @@ $('tk-add').addEventListener('submit', async (e) => {
   if (!title) return;
   const btn = f.querySelector('button[type=submit]');
   btn.disabled = true;
-  const parent = tkUnder != null ? tkUnder : tkView === 'map' && tkLayer() !== 'root' ? tkLayer() : null;
-  const r = await api.tracker({ type: 'add', title, status: f.elements.status.value, parent });
+  // On the tab shown: under the box whose + was pressed (it takes that box's tab), or straight
+  // under the tab with the tab's label.
+  const parent = tkUnder;
+  const tab = parent == null && tkTab !== 'Main' ? tkTab : undefined;
+  const r = await api.tracker({ type: 'add', title, status: f.elements.status.value, parent, tab });
   btn.disabled = false;
   if (r.error) { tkError(r.error); return; }
   tkError('');
@@ -359,91 +434,82 @@ $('tk-board').addEventListener('dragend', () => {
   for (const c of $('tk-board').querySelectorAll('.drop, .dragging')) c.classList.remove('drop', 'dragging');
 });
 
-// ---- the map: boxes branching out from the app, joined by lines ----
-// Where the new item goes, shown in front of the add field.
+// ---- the map: one tab at a time, every box on it, joined by lines ----
+// Where the new item goes, shown in front of the add field (after + on a box).
 function tkUnderLine() {
   const it = tkUnder != null && tkFind(tkUnder);
   if (tkUnder != null && !it) tkUnder = null;
-  // Inside a layer, new items go into it unless + on a box said otherwise.
-  const layer = !it && tkView === 'map' && tkLoaded && tkLayer() !== 'root' && tkFind(tkLayer());
-  const shown = it || layer;
-  $('tk-under').hidden = !shown;
-  $('tk-under-name').textContent = shown ? `#${shown.number} ${shown.title}` : '';
-  $('tk-under-clear').hidden = !it;
+  $('tk-under').hidden = !it;
+  $('tk-under-name').textContent = it ? `#${it.number} ${it.title}` : '';
 }
 
-// The path above the map: every layer from the top down to the one shown, each one a button.
-function tkCrumbs() {
-  const trail = tkTrail();
-  setHtml($('tk-crumbs'), trail.map((k, n) => {
-    const name = k === 'root' ? 'Map Companion' : tkFind(k).title;
-    return n === trail.length - 1
-      ? `<b aria-current="page">${esc(name)}</b>`
-      : `<button type="button" class="link" data-crumb="${k}">${esc(name)}</button><span class="tk-sep" aria-hidden="true">›</span>`;
-  }).join(''));
-}
+// Positions are kept per tab ("<tab>/<box>"); Main uses "root/", as the top layer did before 0.55,
+// so boxes placed there by hand keep their place.
+const tkLayoutKey = (key) => `${tkTab === 'Main' ? 'root' : `tab:${tkTab}`}/${key}`;
 
-// Positions are kept per layer ("layer/box"), so a box can sit elsewhere in each layer.
-const tkLayoutKey = (key) => `${tkLayer()}/${key}`;
-
-// Boxes not moved by hand yet: the layer's own box on the left, what hangs under it in columns
-// of up to 8 on the right (open items first), so a big layer fits without scrolling far; the
-// layer's box halfway along the first column.
-function tkAutoLayout(height, focus, kids) {
-  const pos = {};
-  const per = Math.ceil(kids.length / Math.ceil(kids.length / 8 || 1));
-  let y = 40, bottom = 40;
-  kids.forEach((c, n) => {
-    if (n % per === 0) y = 40;
-    pos[c.number] = [380 + Math.floor(n / per) * 270, y];
-    y += height(c.number) + 14;
-    if (n < per) bottom = y;
-  });
-  const mid = kids.length ? (40 + bottom - 14) / 2 : 40 + height(focus) / 2;
-  pos[focus] = [40, Math.max(40, Math.round(mid - height(focus) / 2))];
+// Boxes not moved by hand yet are laid out as a tree: one column per level, each parent
+// halfway along its children (open ones first). height(key): the box's drawn height.
+function tkAutoLayout(height, list) {
+  const kids = new Map();
+  for (const i of list) { const k = tkParentKey(i); if (kids.has(k)) kids.get(k).push(i); else kids.set(k, [i]); }
+  for (const l of kids.values()) l.sort((a, b) => tkClosed(a) - tkClosed(b) || a.number - b.number);
+  const pos = {}, seen = new Set();
+  let next = 40;
+  const place = (key, depth) => {
+    seen.add(key);
+    const h = height(key);
+    const ch = (kids.get(key) || []).filter((c) => !seen.has(c.number));
+    let mid;
+    if (!ch.length) { mid = next + h / 2; next += h + 14; } else { const ms = ch.map((c) => place(c.number, depth + 1)); mid = (ms[0] + ms[ms.length - 1]) / 2; next = Math.max(next, mid + h / 2 + 14); }
+    pos[key] = [40 + depth * 300, Math.round(mid - h / 2)];
+    return mid;
+  };
+  place('root', 0);
   return pos;
 }
 
 function tkMapDraw() {
   const q = $('tk-filter').value.trim().toLowerCase();
-  const focus = tkLayer();
   const saved = { ...(state.config.trackerLayout || {}), ...tkMoved };
-  const kids = tkKids(focus).sort((a, b) => tkClosed(a) - tkClosed(b) || a.number - b.number);
-  const node = (i, own) => {
-    const p = i.progress, inside = tkKids(i.number), open = inside.filter((c) => !tkClosed(c)).length;
-    return `<div class="tk-node st-${i.status} pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}${own ? ' focus' : ''}${own || tkMatchDeep(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
+  const list = tkItems.filter((i) => tkTabOf(i) === tkTab && !(tkHideDone && tkClosed(i)));
+  tkShown = new Set(list.map((i) => i.number));
+  const node = (i) => {
+    const p = i.progress;
+    return `<div class="tk-node st-${i.status} pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}${tkMatch(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
       <span class="tk-ntitle">${esc(i.title)}</span>
       <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${TK_STATUS[i.status]}</span>${tkRecTag(i)}${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
       ${p.total ? `<progress max="${p.total}" value="${p.done}"></progress>` : ''}
-      ${!own && inside.length ? `<button type="button" class="tk-into" data-into="${i.number}" title="Open what hangs under this">${inside.length} inside${open < inside.length ? `, ${inside.length - open} finished` : ''} <span aria-hidden="true">›</span></button>` : ''}
       <button type="button" class="tk-plus" data-plus="${i.number}" title="Add something under this" aria-label="Add something under #${i.number}">+</button>
-      <span class="tk-plug" data-plug="${i.number}" title="Drag onto another box to hang it under this one"></span>
+      <span class="tk-plug" data-plug="${i.number}" title="Drag onto another box to connect it under this one"></span>
     </div>`;
   };
-  const all = tkItems.filter((i) => !tkClosed(i)).length;
-  const head = focus === 'root'
-    ? `<div class="tk-node root" data-node="root" tabindex="0" role="button" aria-label="Map Companion">
-      <span class="tk-ntitle">Map Companion</span>
-      <span class="tk-nmeta">${all} open, ${tkItems.length - all} done</span>
-      <button type="button" class="tk-plus" data-plus="root" title="Add something straight under the app" aria-label="Add something straight under the app">+</button>
-      <span class="tk-plug" data-plug="root" title="Drag onto a box to hang it straight under the app"></span>
-    </div>`
-    : node(tkFind(focus), true);
-  setHtml($('tk-nodes'), head + kids.map((i) => node(i, false)).join('') + (kids.length ? '' : '<p class="empty tk-loading tk-nothing">Nothing under this yet. Use + or the field above to add something.</p>'));
-  tkCrumbs();
+  const all = tkItems.filter((i) => tkTabOf(i) === tkTab), open = all.filter((i) => !tkClosed(i)).length;
+  const head = `<div class="tk-node root" data-node="root" tabindex="0" role="button" aria-label="${esc(tkTab)}">
+      <span class="tk-ntitle">${esc(tkTab === 'Main' ? 'Map Companion' : tkTab)}</span>
+      <span class="tk-nmeta">${open} open, ${all.length - open} done${tkHideDone && all.length > open ? ' (hidden)' : ''}</span>
+      <button type="button" class="tk-plus" data-plus="root" title="Add something to this tab" aria-label="Add something to this tab">+</button>
+      <span class="tk-plug" data-plug="root" title="Drag onto a box to hang it straight under the tab"></span>
+    </div>`;
+  setHtml($('tk-nodes'), head + list.map(node).join('') + (list.length ? '' : `<p class="empty tk-loading tk-nothing">${all.length ? 'Everything on this tab is finished (Hide finished is on).' : 'Nothing on this tab yet. Add something with the field above, or drag a box onto this tab from another one.'}</p>`));
   tkUnderLine();
   // Laid out once the boxes are drawn, so each one's real height is known.
   const els = tkEls = new Map([...$('tk-nodes').querySelectorAll('[data-node]')].map((el) => [tkKey(el.dataset.node), el]));
   // Measured once per draw (the only time a box changes size); moving boxes never measures.
   tkSize = new Map([...els].map(([k, el]) => [k, [el.offsetWidth, el.offsetHeight]]));
-  const auto = tkAutoLayout((k) => (tkSize.has(k) ? tkSize.get(k)[1] : 60), focus, kids);
-  // A box moved by hand keeps its place; one never moved sits where the layout puts it,
-  // shifted as far as the layer's own box was moved, so the layer stays together.
+  const auto = tkAutoLayout((k) => (tkSize.has(k) ? tkSize.get(k)[1] : 60), list);
+  // A box moved by hand keeps its place; one never moved sits where the tree puts it, shifted as
+  // far as its parent was moved, so a branch stays together under a moved box.
   const own = (k) => (Array.isArray(saved[tkLayoutKey(k)]) ? saved[tkLayoutKey(k)].slice(0, 2) : null);
   tkPos = {};
-  tkPos[focus] = own(focus) || auto[focus];
-  const shift = [tkPos[focus][0] - auto[focus][0], tkPos[focus][1] - auto[focus][1]];
-  for (const c of kids) tkPos[c.number] = own(c.number) || [auto[c.number][0] + shift[0], Math.max(0, auto[c.number][1] + shift[1])];
+  const kids = new Map();
+  for (const i of list) { const k = tkParentKey(i); if (kids.has(k)) kids.get(k).push(i.number); else kids.set(k, [i.number]); }
+  const placeAt = (key, shift) => {
+    tkPos[key] = own(key) || [Math.max(0, auto[key][0] + shift[0]), Math.max(0, auto[key][1] + shift[1])];
+    const next = [tkPos[key][0] - auto[key][0], tkPos[key][1] - auto[key][1]];
+    for (const c of kids.get(key) || []) if (!(c in tkPos) && auto[c]) placeAt(c, next);
+  };
+  placeAt('root', [0, 0]);
+  for (const k of Object.keys(auto)) if (!(k in tkPos)) tkPos[k] = auto[k];
   for (const el of els.values()) tkPlace(el);
   tkLinesNow();
 }
@@ -488,7 +554,6 @@ function tkLines(temp) {
     canvas.style.width = `${maxX + 240}px`; canvas.style.height = `${maxY + 160}px`;
     svg.setAttribute('width', maxX + 240); svg.setAttribute('height', maxY + 160);
   }
-  // Only the boxes of the layer shown have lines; the rest of the list is not on the map.
   const paths = [];
   for (const k of tkSize.keys()) {
     const i = k === 'root' ? null : tkFind(k);
@@ -496,8 +561,9 @@ function tkLines(temp) {
     const a = tkBox(tkParentKey(i)), b = tkBox(k);
     if (!a || !b) continue;
     const d = tkBranchPath(a.x + a.w, a.y + a.h / 2, b.x, b.y + b.h / 2);
-    // A wide see-through line under the drawn one, so it is easy to click.
-    paths.push(`<path class="tk-hit" data-line="${i.number}" d="${d}"><title>Click to take #${i.number} off here</title></path><path class="tk-line st-${i.status}" d="${d}"/>`);
+    // A line from the tab's own box is just "on this tab": it has nothing to take off.
+    const hit = tkParentKey(i) === 'root' ? '' : `<path class="tk-hit" data-line="${i.number}" d="${d}"><title>Click to take #${i.number} off here</title></path>`;
+    paths.push(`${hit}<path class="tk-line st-${i.status}" d="${d}"/>`);
   }
   svg.innerHTML = paths.join('') + (temp ? `<path class="tk-line temp" d="${temp}"/>` : '');
 }
@@ -511,26 +577,42 @@ function tkLinesSoon(temp) {
 function tkLinesNow(temp) { if (tkLinesFrame) { cancelAnimationFrame(tkLinesFrame); tkLinesFrame = 0; } tkLines(temp); }
 
 // Pointer on the map: move a box (and what hangs under it), connect from a dot, take a line
-// off, or drag the empty map around.
+// off, drag the empty map around, or drop a box on a tab in the list on the left.
 let tkGesture = null;
 function tkCanvasPoint(e) { const r = $('tk-canvas').getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
-// What moves along with a box: the layer's own box takes the whole layer, any other box itself.
-const tkBranch = (key) => (key === tkLayer() ? Object.keys(tkPos).map(tkKey) : [key]);
+// What moves along with a box: everything under it on this tab (the tab's own box: all of it).
+function tkBranch(key) {
+  if (key === 'root') return Object.keys(tkPos).map(tkKey);
+  const out = [key];
+  const kids = new Map();
+  for (const n of tkShown) { const k = tkParentKey(tkFind(n)); if (kids.has(k)) kids.get(k).push(n); else kids.set(k, [n]); }
+  for (let n = 0; n < out.length; n++) for (const c of kids.get(out[n]) || []) if (!out.includes(c)) out.push(c);
+  return out;
+}
 function tkTargetAt(e) {
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const n = el && el.closest('#tk-nodes [data-node]');
   return n ? tkKey(n.dataset.node) : null;
 }
+// The tab under the pointer while a box is dragged; looked up only when the pointer is over the
+// list of tabs, so moving a box over the map stays cheap.
+function tkTabAt(e, g) {
+  if (!g.tabs || e.clientX > g.tabs.right || e.clientX < g.tabs.left || e.clientY < g.tabs.top || e.clientY > g.tabs.bottom) return null;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const t = el && el.closest('[data-tabname]');
+  return t && t.dataset.tabname !== tkTab ? t : null;
+}
 
 $('tk-map').addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || e.target.closest('[data-plus], [data-into]')) return;
+  if (e.button !== 0 || e.target.closest('[data-plus]')) return;
+  tkMenuClose();
   const map = $('tk-map');
   const plug = e.target.closest('[data-plug]');
   const line = e.target.closest('[data-line]');
   const box = e.target.closest('[data-node]');
   if (line) {
     const n = Number(line.dataset.line), it = tkFind(n), p = it && tkFind(it.parent);
-    if (p && window.confirm(`Take #${n} off #${p.number}? It then hangs straight under the app.`)) tkLink(n, null);
+    if (p && window.confirm(`Take #${n} off #${p.number}? It stays on this tab, straight under it.`)) tkLink(n, null);
     return;
   }
   e.preventDefault();
@@ -538,7 +620,7 @@ $('tk-map').addEventListener('pointerdown', (e) => {
   if (plug) tkGesture = { kind: 'link', from: tkKey(plug.dataset.plug) };
   else if (box) {
     const key = tkKey(box.dataset.node), [x0, y0] = tkCanvasPoint(e);
-    tkGesture = { kind: 'move', key, x0, y0, moved: false, start: Object.fromEntries(tkBranch(key).map((k) => [k, (tkPos[k] || [40, 40]).slice()])) };
+    tkGesture = { kind: 'move', key, x0, y0, moved: false, tabs: key === 'root' ? null : $('tk-tabs').getBoundingClientRect(), start: Object.fromEntries(tkBranch(key).map((k) => [k, (tkPos[k] || [40, 40]).slice()])) };
   } else tkGesture = { kind: 'pan', x0: e.clientX, y0: e.clientY, sl: map.scrollLeft, st: map.scrollTop };
 });
 $('tk-map').addEventListener('pointermove', (e) => {
@@ -550,6 +632,8 @@ $('tk-map').addEventListener('pointermove', (e) => {
     const [x, y] = tkCanvasPoint(e), dx = x - g.x0, dy = y - g.y0;
     if (!g.moved && Math.hypot(dx, dy) < 4) return;
     g.moved = true;
+    const tab = tkTabAt(e, g);
+    if (tab !== g.tab) { if (g.tab) g.tab.classList.remove('drop'); if (tab) tab.classList.add('drop'); g.tab = tab; }
     for (const [k, [sx, sy]] of Object.entries(g.start)) {
       tkPos[tkKey(k)] = [Math.max(0, Math.round(sx + dx)), Math.max(0, Math.round(sy + dy))];
       const el = tkEls.get(tkKey(k));
@@ -572,8 +656,15 @@ function tkGestureEnd(e, cancelled) {
   if (!g) return;
   $('tk-map').classList.remove('panning');
   for (const el of $('tk-nodes').querySelectorAll('.drop, .dragging')) el.classList.remove('drop', 'dragging');
+  if (g.tab) g.tab.classList.remove('drop');
   if (g.kind === 'move') {
     if (!g.moved) { if (!cancelled && g.key !== 'root') tkOpenItem(g.key); return; }
+    // Dropped on a tab in the list: the box goes there, and its place here is not kept.
+    if (g.tab && !cancelled) {
+      for (const [k, p] of Object.entries(g.start)) tkPos[tkKey(k)] = p;
+      tkSetTab(g.key, g.tab.dataset.tabname);
+      return;
+    }
     tkLinesNow();
     const layout = { ...(state.config.trackerLayout || {}) };
     for (const k of Object.keys(g.start)) layout[tkLayoutKey(k)] = tkMoved[tkLayoutKey(k)] = tkPos[tkKey(k)];
@@ -584,44 +675,164 @@ function tkGestureEnd(e, cancelled) {
   tkLinesNow();
   const t = cancelled ? null : tkTargetAt(e);
   if (t == null || t === 'root' || t === g.from) return;
-  if (g.from !== 'root' && tkUnderOf(g.from, t)) { tkError(`#${g.from} already hangs under #${t}, so #${t} cannot go under it. Move #${g.from} somewhere else first.`); return; }
+  if (g.from !== 'root' && tkUnderOf(g.from, t)) { tkError(`#${g.from} already hangs under #${t}, so #${t} cannot go under it. Take #${g.from} off its line first.`); return; }
   tkLink(t, g.from === 'root' ? null : g.from);
 }
 $('tk-map').addEventListener('pointerup', (e) => tkGestureEnd(e, false));
 $('tk-map').addEventListener('pointercancel', (e) => tkGestureEnd(e, true));
 $('tk-map').addEventListener('click', (e) => {
-  const into = e.target.closest('[data-into]');
-  if (into) { tkGo(Number(into.dataset.into)); return; }
   const plus = e.target.closest('[data-plus]');
   if (!plus) return;
   tkUnder = plus.dataset.plus === 'root' ? null : Number(plus.dataset.plus);
   tkUnderLine();
   $('tk-add').elements.title.focus();
 });
-$('tk-crumbs').addEventListener('click', (e) => {
-  const c = e.target.closest('[data-crumb]');
-  if (c) tkGo(tkKey(c.dataset.crumb));
-});
 $('tk-map').addEventListener('keydown', (e) => {
-  // Backspace or Escape on the map: one layer up.
-  if ((e.key === 'Backspace' || e.key === 'Escape') && tkLayer() !== 'root') { e.preventDefault(); const t = tkTrail(); tkGo(t[t.length - 2]); return; }
   const box = e.target.closest('[data-node]');
   if (box && box.dataset.node !== 'root' && (e.key === 'Enter' || e.key === ' ') && e.target === box) { e.preventDefault(); tkOpenItem(Number(box.dataset.node)); }
 });
 
-// Hangs item `number` under `parent` (null: straight under the app) at once; GitHub is told behind it.
+// Hangs item `number` under `parent` (null: straight under the tab) at once; GitHub is told
+// behind it. Taken off a parent on another tab than Main, it gets that tab as its own, so it
+// does not fall back to Main.
 async function tkLink(number, parent) {
   const it = tkFind(number);
   if (!it || (it.parent ?? null) === parent) return;
-  const was = it.parent;
-  it.parent = parent; tkChanged();
+  const tab = tkTabOf(it);
+  const keep = parent == null && !it.tab && tab !== 'Main';
+  const was = { parent: it.parent, tab: it.tab };
+  it.parent = parent;
+  if (keep) it.tab = tab;
+  tkChanged();
   tkDraw();
   const r = await api.tracker({ type: 'parent', number, parent });
-  if (r.error) { it.parent = was; tkChanged(); tkDraw(); tkError(r.error); return; }
+  const r2 = !r.error && keep ? await api.tracker({ type: 'update', number, patch: { tab } }) : null;
+  const error = r.error || (r2 && r2.error);
+  if (error) { Object.assign(it, was); tkChanged(); tkDraw(); tkError(error); return; }
   tkError('');
   tkMerge(it, r.item);
+  if (r2) tkMerge(it, r2.item);
   tkDraw();
 }
+
+// ---- the tabs down the left ----
+function tkSaveTabs(tabs, extra = {}) {
+  api.setConfig({ trackerTabs: tabs.filter((t) => t !== 'Main'), ...extra });
+  state.config.trackerTabs = tabs.filter((t) => t !== 'Main'); // drawn at once, before the settings come back
+}
+async function tkTabNamed(value) {
+  const edit = tkTabEdit;
+  tkTabEdit = null;
+  const name = tkCleanTab(value);
+  const tabs = tkTabs();
+  if (!edit || !name || (edit.mode === 'rename' && name === edit.name)) { tkDraw(); return; }
+  if (name === 'Main' || tabs.includes(name)) { tkError(`There is already a tab called ${name}.`); tkDraw(); return; }
+  tkError('');
+  if (edit.mode === 'new') { tkSaveTabs([...tabs, name]); tkGoTab(name); return; }
+  // Rename: the label on GitHub, the boxes here, and the places kept for its boxes.
+  const from = edit.name;
+  const layout = {};
+  for (const [k, v] of Object.entries(state.config.trackerLayout || {})) layout[k.startsWith(`tab:${from}/`) ? `tab:${name}/${k.slice(from.length + 5)}` : k] = v;
+  for (const k of Object.keys(tkMoved)) if (k.startsWith(`tab:${from}/`)) { tkMoved[`tab:${name}/${k.slice(from.length + 5)}`] = tkMoved[k]; delete tkMoved[k]; }
+  tkSaveTabs(tabs.map((t) => (t === from ? name : t)), { trackerLayout: layout });
+  state.config.trackerLayout = layout;
+  for (const i of tkItems) if (i.tab === from) i.tab = name;
+  tkChanged();
+  if (tkTab === from) tkTab = name;
+  try { localStorage.setItem('trackerTab', tkTab); } catch (_) { /* not kept */ }
+  tkDraw();
+  const r = await api.tracker({ type: 'renameTab', from, to: name });
+  if (r.error) { tkError(`${r.error} The tab is renamed here; press Refresh to see what GitHub has.`); }
+}
+async function tkRemoveTab(name) {
+  const n = tkItems.filter((i) => tkTabOf(i) === name).length;
+  if (!window.confirm(`Remove the tab "${name}"?${n ? ` Its ${n} box${n === 1 ? '' : 'es'} go back to Main (nothing is deleted).` : ''}`)) return;
+  tkSaveTabs(tkTabs().filter((t) => t !== name));
+  for (const i of tkItems) if (i.tab === name) i.tab = '';
+  tkChanged();
+  if (tkTab === name) tkTab = 'Main';
+  tkDraw();
+  const r = await api.tracker({ type: 'removeTab', name });
+  if (r.error) tkError(r.error);
+}
+$('tk-tabs').addEventListener('click', (e) => {
+  if (e.target.closest('#tk-newtab')) { tkTabEdit = { mode: 'new' }; tkDraw(); return; }
+  const x = e.target.closest('[data-tabdel]');
+  if (x) { tkRemoveTab(x.dataset.tabdel); return; }
+  const t = e.target.closest('[data-tabname]');
+  if (t && t.dataset.tabname !== tkTab) tkGoTab(t.dataset.tabname);
+});
+$('tk-tabs').addEventListener('dblclick', (e) => {
+  const t = e.target.closest('[data-tabname]');
+  if (t && t.dataset.tabname !== 'Main') { tkTabEdit = { mode: 'rename', name: t.dataset.tabname }; tkDraw(); }
+});
+$('tk-tabs').addEventListener('keydown', (e) => {
+  if (e.target.id === 'tk-tabinput') {
+    if (e.key === 'Enter') { e.preventDefault(); tkTabNamed(e.target.value); }
+    if (e.key === 'Escape') { e.preventDefault(); tkTabEdit = null; tkDraw(); }
+    return;
+  }
+  const t = e.target.closest('[data-tabname]');
+  if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); tkGoTab(t.dataset.tabname); }
+  if (t && e.key === 'F2' && t.dataset.tabname !== 'Main') { tkTabEdit = { mode: 'rename', name: t.dataset.tabname }; tkDraw(); }
+});
+// Leaving the name field keeps what was typed, like pressing Enter.
+$('tk-tabs').addEventListener('focusout', (e) => { if (e.target.id === 'tk-tabinput' && tkTabEdit) tkTabNamed(e.target.value); });
+$('tk-hidedone').addEventListener('click', () => {
+  tkHideDone = !tkHideDone;
+  try { localStorage.setItem('trackerHideDone', tkHideDone ? '1' : ''); } catch (_) { /* not kept */ }
+  tkDraw();
+});
+
+// ---- right-click on a box: quick changes without opening it ----
+function tkMenuClose() { $('tk-menu').hidden = true; }
+function tkMenuOpen(number, x, y) {
+  const it = tkFind(number);
+  if (!it) return;
+  const btn = (act, value, label, on) => `<button type="button" role="menuitem" data-act="${act}" data-value="${esc(value)}"${on ? ' class="on" aria-checked="true"' : ''}>${label}</button>`;
+  const p = it.parent != null && tkShown.has(it.parent) ? tkFind(it.parent) : null;
+  const tabs = tkTabs().filter((t) => t !== tkTabOf(it));
+  setHtml($('tk-menu'), `<div class="tk-mhead">#${it.number} ${esc(it.title)}</div>
+    ${btn('open', '', 'Open')}${btn('under', '', 'Add something under it')}${p ? btn('off', '', `Take it off #${p.number}`) : ''}
+    <div class="tk-msec">Where it stands</div><div class="tk-mrow">${Object.entries(TK_STATUS).map(([k, v]) => btn('status', k, v, it.status === k)).join('')}</div>
+    <div class="tk-msec">Priority</div><div class="tk-mrow">${btn('priority', 'high', 'High', it.priority === 'high')}${btn('priority', 'normal', 'Normal', it.priority === 'normal')}${btn('priority', 'low', 'Low', it.priority === 'low')}</div>
+    ${tabs.length ? `<div class="tk-msec">Move to tab</div><div class="tk-mrow">${tabs.map((t) => btn('tab', t, esc(t))).join('')}</div>` : ''}
+    <div class="tk-msep"></div>${btn('delete', '', 'Delete…')}`);
+  const m = $('tk-menu');
+  m.dataset.number = number;
+  m.hidden = false;
+  // Kept inside the window.
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = `${Math.max(8, Math.min(x, innerWidth - w - 8))}px`;
+  m.style.top = `${Math.max(8, Math.min(y, innerHeight - h - 8))}px`;
+  const first = m.querySelector('button');
+  if (first) first.focus();
+}
+for (const id of ['tk-map', 'tk-board']) {
+  $(id).addEventListener('contextmenu', (e) => {
+    const box = e.target.closest('[data-node], [data-tk]');
+    const n = box && Number(box.dataset.node || box.dataset.tk);
+    if (!n) return;
+    e.preventDefault();
+    tkMenuOpen(n, e.clientX, e.clientY);
+  });
+}
+$('tk-menu').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const n = Number($('tk-menu').dataset.number), v = b.dataset.value;
+  tkMenuClose();
+  if (b.dataset.act === 'open') tkOpenItem(n);
+  else if (b.dataset.act === 'under') { tkUnder = n; tkUnderLine(); $('tk-add').elements.title.focus(); }
+  else if (b.dataset.act === 'off') tkLink(n, null);
+  else if (b.dataset.act === 'status') tkMove(n, v, true);
+  else if (b.dataset.act === 'priority') tkSetPriority(n, v);
+  else if (b.dataset.act === 'tab') tkSetTab(n, v);
+  else if (b.dataset.act === 'delete') { const error = await tkDeleteItem(n); if (error) tkError(error); }
+});
+document.addEventListener('pointerdown', (e) => { if (!$('tk-menu').hidden && !e.target.closest('#tk-menu')) tkMenuClose(); }, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('tk-menu').hidden) { e.preventDefault(); tkMenuClose(); } });
+window.addEventListener('blur', tkMenuClose);
 
 // Each connected recording's note in the list (read from this PC; ones not here yet are
 // fetched from GitHub first).

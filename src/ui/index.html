@@ -425,7 +425,7 @@
     <h2 class="pagetitle">Tracker</h2>
     <a class="tk-repo dim" id="tk-repo" target="_blank" rel="noreferrer"></a>
     <span class="chips tk-views" id="tk-views" role="group" aria-label="View"><button type="button" data-view="map" aria-pressed="true">Map</button><button type="button" data-view="board" aria-pressed="false">Board</button></span>
-    <span class="tk-tools row"><input id="tk-filter" placeholder="Find" aria-label="Find an item" spellcheck="false" autocomplete="off"><button type="button" id="tk-refresh">Refresh</button></span>
+    <span class="tk-tools row"><button type="button" id="tk-hidedone" aria-pressed="false" title="Hide boxes that are Done or Dropped">Hide finished</button><input id="tk-filter" placeholder="Find" aria-label="Find an item" spellcheck="false" autocomplete="off"><button type="button" id="tk-refresh">Refresh</button></span>
   </div>
   <form class="tk-add" id="tk-add" autocomplete="off">
     <span class="tk-under" id="tk-under" hidden>Under <b id="tk-under-name"></b><button type="button" class="link" id="tk-under-clear" title="Put it straight under the app instead" aria-label="Not under this one">×</button></span>
@@ -434,11 +434,16 @@
     <button type="submit" class="primary">Add</button>
   </form>
   <p class="warn" id="tk-error" hidden></p>
-  <nav class="tk-crumbs" id="tk-crumbs" aria-label="Where you are on the map" hidden></nav>
-  <div class="tk-map" id="tk-map"><div class="tk-canvas" id="tk-canvas"><svg class="tk-lines" id="tk-lines" aria-hidden="true"></svg><div id="tk-nodes"></div></div></div>
-  <div class="tk-board" id="tk-board" hidden></div>
-  <p class="fine" id="tk-hint-map">The map shows one layer at a time: "N inside" on a box opens what hangs under it, the path above the map (or Escape) goes back up. Drag a box to move it. To connect, drag from the dot on a box's right edge onto another box: that one then hangs under it. Click a line to take it off, + to add something under a box, a box to open it.</p>
-  <p class="fine" id="tk-hint-board" hidden>Drag a card to another column, or click it to add notes and steps.</p>
+  <div class="tk-body">
+    <nav class="tk-tabs" id="tk-tabs" aria-label="Tracker tabs"></nav>
+    <div class="tk-main">
+      <div class="tk-map" id="tk-map"><div class="tk-canvas" id="tk-canvas"><svg class="tk-lines" id="tk-lines" aria-hidden="true"></svg><div id="tk-nodes"></div></div></div>
+      <div class="tk-board" id="tk-board" hidden></div>
+    </div>
+  </div>
+  <div class="tk-menu" id="tk-menu" role="menu" aria-label="Quick changes" hidden></div>
+  <p class="fine" id="tk-hint-map">Each tab on the left shows all its boxes. Drag a box to move it (what hangs under it moves along); drop it on a tab to move it there. To connect, drag from the dot on a box's right edge onto another box. Click a line to take it off, + to add something under a box, a box to open it, right-click for quick changes. Double-click a tab to rename it.</p>
+  <p class="fine" id="tk-hint-board" hidden>The board shows the tab picked on the left. Drag a card to another column, click it to add notes and steps, or right-click it for quick changes.</p>
   <p class="fine">Kept as issues on GitHub (connections are GitHub's sub-issues), so Claude works from the same list.</p>
 </main>
 
@@ -808,7 +813,8 @@
       <label class="wide">Title <input name="title" maxlength="200" required></label>
       <label>Where it stands <select name="status"><option value="idea">Idea</option><option value="considering">Considering: not decided yet</option><option value="todo">To do</option><option value="doing">In progress</option><option value="testing">Testing: built, being checked</option><option value="hold">On hold: paused for now</option><option value="blocked">Blocked: waiting on something else</option><option value="done">Done</option><option value="dropped">Dropped: decided against it</option></select></label>
       <label>Priority <select name="priority"><option value="high">High</option><option value="normal">Normal</option><option value="low">Low</option></select></label>
-      <label class="wide">Part of <select name="parent"></select></label>
+      <label>Tab <select name="tab"></select></label>
+      <label>Part of <select name="parent"></select></label>
       <label class="wide">Notes <textarea name="notes" rows="5" maxlength="20000" placeholder="What it is, why, how it should work…"></textarea></label>
     </div>
     <h3 class="tr-h">Steps <span class="dim" id="tk-dprog"></span></h3>

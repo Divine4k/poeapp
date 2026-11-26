@@ -10,6 +10,8 @@
 //                                   testing: Testing, on hold: On hold, blocked: Blocked
 //   open, none of them           -> To do
 // Priority is a label too: "priority: high" or "priority: low" (none = normal).
+// The Tracker's tabs are labels as well: "tab: Jewels" puts an item on the Jewels tab. An item
+// without one is on the tab of its parent (the page works that out), or on Main.
 // How items hang together (the Tracker map's lines) is GitHub's own sub-issues: an item's parent
 // is the issue it is a sub-issue of. The map's box positions are not kept here (config.trackerLayout).
 // Plain Node: the caller hands in how to reach the web, so this is tested against a stand-in
@@ -51,6 +53,10 @@ function explain(status, data, repo) {
 }
 
 const numberIn = (url) => { const m = /\/issues\/(\d+)$/.exec(String(url || '')); return m ? Number(m[1]) : null; };
+const TAB = 'tab: ';
+const tabOf = (labels) => { const t = labels.find((n) => n.startsWith(TAB)); return t ? t.slice(TAB.length) : ''; };
+// A tab name as given, tidied: no line breaks or commas (GitHub labels), at most 40 characters.
+const cleanTab = (name) => String(name || '').replace(/[\r\n,]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
 const names = (issue) => (issue.labels || []).map((l) => (typeof l === 'string' ? l : l.name)).filter(Boolean);
 
 function statusOf(issue) {
@@ -71,7 +77,8 @@ function toItem(issue) {
     parent: 'parent_issue_url' in issue ? numberIn(issue.parent_issue_url) : undefined,
     status: statusOf(issue), priority: priorityOf(issue),
     dropped: issue.state === 'closed' && issue.state_reason === 'not_planned',
-    labels: names(issue).filter((n) => !MANAGED.has(n)),
+    labels: names(issue).filter((n) => !MANAGED.has(n) && !n.startsWith(TAB)),
+    tab: tabOf(names(issue)), // its own tab ('': none of its own)
     progress: progress(issue.body),
     // Troubleshooting recordings connected to it: lines with a link to recordings/<id>.
     recordings: recordingsIn(issue.body),
@@ -114,8 +121,14 @@ async function removeRecording({ fetchImpl, token, repo, number, id }) {
 }
 
 // The labels an issue gets: its own other labels kept, the status and priority ones replaced.
-function labelsFor(labels, status, priority) {
-  const out = (labels || []).filter((n) => !MANAGED.has(n));
+// tab: undefined keeps the item's tab label as it is; '' or 'Main' takes it off.
+function labelsFor(labels, status, priority, tab) {
+  let out = (labels || []).filter((n) => !MANAGED.has(n));
+  if (tab !== undefined) {
+    out = out.filter((n) => !n.startsWith(TAB));
+    const t = cleanTab(tab);
+    if (t && t !== 'Main') out.push(TAB + t);
+  }
   if (STATUS_LABEL[status]) out.push(STATUS_LABEL[status]);
   if (PRIORITY_LABEL[priority]) out.push(PRIORITY_LABEL[priority]);
   return out;
@@ -170,12 +183,12 @@ async function setParent({ fetchImpl, token, repo, number, parent }) {
   return { ...toItem(issue), parent: p };
 }
 
-async function addItem({ fetchImpl, token, repo, title, body = '', status = 'idea', priority = 'normal', parent = null }) {
+async function addItem({ fetchImpl, token, repo, title, body = '', status = 'idea', priority = 'normal', parent = null, tab }) {
   checkRepo(repo);
   title = String(title || '').trim();
   if (!title) throw new Error('Give it a title first.');
   if (!STATUSES.includes(status)) status = 'idea';
-  let issue = await call(fetchImpl, token, 'POST', `/repos/${repo}/issues`, { title, body: String(body || ''), labels: labelsFor([], status, priority) });
+  let issue = await call(fetchImpl, token, 'POST', `/repos/${repo}/issues`, { title, body: String(body || ''), labels: labelsFor([], status, priority, tab || undefined) });
   if (CLOSED[status]) issue = await call(fetchImpl, token, 'PATCH', `/repos/${repo}/issues/${issue.number}`, { state: 'closed', state_reason: CLOSED[status] });
   if (parent != null) return setParent({ fetchImpl, token, repo, number: issue.number, parent });
   return toItem(issue);
@@ -190,7 +203,7 @@ async function updateItem({ fetchImpl, token, repo, number, patch }) {
   const now = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`);
   const status = STATUSES.includes(patch.status) ? patch.status : statusOf(now);
   const priority = ['high', 'normal', 'low'].includes(patch.priority) ? patch.priority : priorityOf(now);
-  const body = { labels: labelsFor(names(now), status, priority) };
+  const body = { labels: labelsFor(names(now), status, priority, patch.tab) };
   if (patch.title !== undefined) { const t = String(patch.title).trim(); if (!t) throw new Error('The title cannot be empty.'); body.title = t; }
   if (patch.body !== undefined) body.body = String(patch.body);
   // Done and Dropped are GitHub's two ways of closing; every other status is an open issue.
@@ -220,4 +233,22 @@ async function deleteItem({ fetchImpl, token, repo, number }) {
   return { number: n, recordings: recordingsIn(issue.body) };
 }
 
-module.exports = { listItems, addItem, updateItem, setParent, deleteItem, addRecording, removeRecording, recordingsIn, recordingLine, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };
+// Renames a tab: one change to its label, and every item with it follows. A tab nobody has a
+// box on yet has no label; then there is nothing to do here.
+async function renameTab({ fetchImpl, token, repo, from, to }) {
+  checkRepo(repo);
+  const a = cleanTab(from), b = cleanTab(to);
+  if (!a || !b || a === 'Main' || b === 'Main') throw new Error('Give the tab a name (Main cannot be renamed).');
+  await call(fetchImpl, token, 'PATCH', `/repos/${repo}/labels/${encodeURIComponent(TAB + a)}`, { new_name: TAB + b }, { missingOk: true });
+  return { from: a, to: b };
+}
+// Removes a tab: its label goes, so its boxes are back on Main (nothing is deleted).
+async function removeTab({ fetchImpl, token, repo, name }) {
+  checkRepo(repo);
+  const a = cleanTab(name);
+  if (!a || a === 'Main') throw new Error('Main cannot be removed.');
+  await call(fetchImpl, token, 'DELETE', `/repos/${repo}/labels/${encodeURIComponent(TAB + a)}`, null, { missingOk: true });
+  return { name: a };
+}
+
+module.exports = { renameTab, removeTab, cleanTab, listItems, addItem, updateItem, setParent, deleteItem, addRecording, removeRecording, recordingsIn, recordingLine, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };

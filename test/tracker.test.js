@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { parseSteps, joinSteps, progress } = require('../src/ui/steps');
-const { listItems, addItem, updateItem, setParent, deleteItem, statusOf, labelsFor } = require('../src/tracker');
+const { renameTab, removeTab, listItems, addItem, updateItem, setParent, deleteItem, statusOf, labelsFor } = require('../src/tracker');
 
 test('steps are lifted out of the text and put back after the notes', () => {
   const body = 'Read a stash tab.\r\n\r\n- [x] Find the grid\n- [ ] Read the items\n* [X] Bundle data\nMore notes';
@@ -55,6 +55,14 @@ function fakeGithub(token = 'good', { withParent = true } = {}) {
       parentOf.delete(gone.number);
       for (const [k, v] of [...parentOf]) if (v === gone.number) parentOf.delete(k);
       return reply(200, { data: { deleteIssue: { clientMutationId: null } } });
+    }
+    const lab = /^\/repos\/Divine4k\/poeapp\/labels\/(.+)$/.exec(u.pathname);
+    if (lab) {
+      const name = decodeURIComponent(lab[1]);
+      const has = issues.filter((x) => x.labels.some((l) => l.name === name));
+      if (!has.length) return reply(404, { message: 'Not Found' });
+      for (const x of has) x.labels = opt.method === 'DELETE' ? x.labels.filter((l) => l.name !== name) : x.labels.map((l) => (l.name === name ? { name: body.new_name } : l));
+      return reply(opt.method === 'DELETE' ? 204 : 200, opt.method === 'DELETE' ? null : { name: body.new_name });
     }
     const sub = /^\/repos\/Divine4k\/poeapp\/issues\/(\d+)\/(parent|sub_issues|sub_issue)$/.exec(u.pathname);
     if (sub) {
@@ -211,4 +219,29 @@ test('a troubleshooting recording is connected to an item by a line in its text,
   assert.deepStrictEqual(recordingsIn('nothing here'), []);
   // A deleted box (GitHub answers 404 or 410): nothing to take out, the recording just lets go.
   assert.deepStrictEqual(await removeRecording({ ...base, number: 75, id: rec.id }), { number: 75, gone: true });
+});
+
+test('tabs are labels: set, kept, renamed and removed', async () => {
+  const gh = fakeGithub();
+  const base = { fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/poeapp' };
+  const a = await addItem({ ...base, title: 'Timeless search', tab: 'Jewels', priority: 'high' });
+  assert.strictEqual(a.tab, 'Jewels');
+  assert.deepStrictEqual(a.labels, []); // the tab is not one of its other labels
+  const m = await addItem({ ...base, title: 'On Main', tab: 'Main' });
+  assert.strictEqual(m.tab, '');
+  // A status change keeps the tab; a tab change keeps the rest.
+  assert.strictEqual((await updateItem({ ...base, number: 1, patch: { status: 'doing' } })).tab, 'Jewels');
+  const moved = await updateItem({ ...base, number: 1, patch: { tab: 'Trade, bulk\n' } });
+  assert.strictEqual(moved.tab, 'Trade bulk');
+  assert.strictEqual(moved.status, 'doing');
+  assert.strictEqual(moved.priority, 'high');
+  assert.strictEqual((await updateItem({ ...base, number: 1, patch: { tab: 'Main' } })).tab, '');
+  await updateItem({ ...base, number: 1, patch: { tab: 'Jewels' } });
+  await renameTab({ ...base, from: 'Jewels', to: 'Jewel calculator' });
+  assert.deepStrictEqual((await listItems(base)).map((i) => i.tab), ['Jewel calculator', '']);
+  await renameTab({ ...base, from: 'Empty one', to: 'Still empty' }); // no label yet: nothing to do
+  await removeTab({ ...base, name: 'Jewel calculator' });
+  assert.deepStrictEqual((await listItems(base)).map((i) => [i.tab, i.status]), [['', 'doing'], ['', 'idea']]);
+  await assert.rejects(renameTab({ ...base, from: 'Main', to: 'X' }), /Main/);
+  await assert.rejects(removeTab({ ...base, name: 'Main' }), /Main/);
 });

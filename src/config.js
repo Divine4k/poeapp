@@ -36,6 +36,7 @@ const DEFAULT_CONFIG = {
   themeCustom: null, // the four colours of the Custom theme: { bg, surface, ink, accent }
   motion: true, // short animations (toasts, the loading screen, Wraeclast's embers); off: everything appears at once
   trackerRepo: 'Divine4k/poeapp', // where the Tracker page keeps its items, as GitHub issues (admins only)
+  trackerTabs: [], // the Tracker's own tabs after Main, in order (each is a label "tab: <name>" on its boxes)
   trackerLayout: {}, // where the boxes sit on the Tracker map, per layer: '<layer>/<box>' (issue number or 'root') -> [x, y]
   navOrder: [], // sidebar pages in the order you dragged them; pages not listed keep their usual place
   // Trade offers from whispers. overlay: show them on top of the game. position and offsets:

@@ -1304,7 +1304,9 @@ async function trackerAction(a) {
   const base = { fetchImpl: webFetch, token: g.token, repo: String(config.trackerRepo || '').trim() };
   try {
     if (a.type === 'list') return { repo: base.repo, items: await tracker.listItems(base) };
-    if (a.type === 'add') return { item: await tracker.addItem({ ...base, title: a.title, body: a.body, status: a.status, priority: a.priority, parent: a.parent }) };
+    if (a.type === 'add') return { item: await tracker.addItem({ ...base, title: a.title, body: a.body, status: a.status, priority: a.priority, parent: a.parent, tab: a.tab }) };
+    if (a.type === 'renameTab') return await tracker.renameTab({ ...base, from: a.from, to: a.to });
+    if (a.type === 'removeTab') return await tracker.removeTab({ ...base, name: a.name });
     if (a.type === 'parent') return { item: await tracker.setParent({ ...base, number: a.number, parent: a.parent }) };
     if (a.type === 'update') return { item: await tracker.updateItem({ ...base, number: a.number, patch: a.patch || {} }) };
     if (a.type === 'delete') {

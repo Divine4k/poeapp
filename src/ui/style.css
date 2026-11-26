@@ -1278,16 +1278,36 @@ button.tk-del:hover { color: var(--blood); text-decoration: underline; }
 .tk-node:hover .tk-plus, .tk-node:focus-within .tk-plus, .tk-plus:focus-visible { opacity: 1; }
 .tk-plug { position: absolute; right: -7px; top: 50%; width: 14px; height: 14px; margin-top: -7px; border-radius: 50%; background: var(--slab); border: 2px solid color-mix(in srgb, var(--gold) 70%, transparent); cursor: crosshair; }
 .tk-plug:hover { background: var(--gold); }
-.tk-crumbs { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; font-size: 13.5px; color: var(--ash); }
-.tk-crumbs[hidden] { display: none; }
-.tk-crumbs b { color: var(--bone); font-weight: 600; }
-.tk-crumbs .link { color: var(--soft); padding: 0; }
-.tk-crumbs .link:hover { color: var(--gold); }
 .tk-sep { color: var(--line2); }
-.tk-into { align-self: flex-start; margin-top: 2px; padding: 2px 10px; font-size: 12px; font-weight: 560; border-radius: 999px; color: var(--gold); background: color-mix(in srgb, var(--gold) 10%, transparent); border-color: color-mix(in srgb, var(--gold) 35%, transparent); cursor: pointer; }
-.tk-into:hover { background: color-mix(in srgb, var(--gold) 20%, transparent); }
-.tk-node.focus { width: 260px; background: color-mix(in srgb, var(--gold) 8%, var(--raise)); box-shadow: var(--panel-shadow), inset 0 0 0 1px color-mix(in srgb, var(--gold) 45%, transparent); }
-.tk-node.focus .tk-ntitle { font-weight: 650; font-size: 15px; }
+/* Tracker tabs (0.55): a column of tabs left of the map or board, the open count beside each name. */
+.tk-body { display: flex; gap: 14px; align-items: stretch; }
+.tk-main { flex: 1; min-width: 0; }
+.tk-tabs { flex: none; width: 170px; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: var(--r-lg); background: var(--slab); box-shadow: var(--panel-shadow); align-self: flex-start; max-height: calc(100vh - 250px); overflow-y: auto; }
+.tk-tab { position: relative; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-sm); color: var(--soft); cursor: pointer; user-select: none; }
+.tk-tab:hover { background: var(--raise); color: var(--bone); }
+.tk-tab.on { background: color-mix(in srgb, var(--gold) 14%, var(--raise)); color: var(--bone); box-shadow: inset 3px 0 0 var(--gold); }
+.tk-tab.drop { background: color-mix(in srgb, var(--gold) 22%, var(--raise)); box-shadow: inset 0 0 0 2px var(--gold); }
+.tk-tabname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 560; }
+.tk-tabcount { font-size: 12px; color: var(--ash); }
+.tk-tabx { position: absolute; right: 6px; top: 50%; margin-top: -11px; width: 22px; height: 22px; padding: 0; font-size: 14px; line-height: 1; border-radius: 6px; background: var(--raise); opacity: 0; }
+.tk-tab:hover .tk-tabx, .tk-tabx:focus-visible { opacity: 1; }
+.tk-tabx:hover { color: var(--blood); }
+.tk-tabinput { width: 100%; padding: 7px 9px; font: inherit; }
+.tk-newtab { margin-top: 4px; padding: 7px 10px; text-align: left; font-size: 13px; color: var(--ash); background: transparent; border-style: dashed; }
+.tk-newtab:hover { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 50%, transparent); }
+#tk-hidedone[aria-pressed=true] { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 14%, transparent); }
+/* The right-click menu on a box. */
+.tk-menu { position: fixed; z-index: 50; width: 260px; padding: 6px; border-radius: var(--r-md); background: var(--raise); border: 1px solid var(--line2); box-shadow: 0 12px 32px color-mix(in srgb, black 45%, transparent); display: flex; flex-direction: column; }
+.tk-menu[hidden] { display: none; }
+.tk-menu > button { text-align: left; padding: 6px 10px; border: 0; background: transparent; border-radius: var(--r-sm); font-weight: 500; }
+.tk-menu > button:hover, .tk-menu > button:focus-visible { background: color-mix(in srgb, var(--gold) 12%, transparent); }
+.tk-menu > button[data-act=delete] { color: var(--blood); }
+.tk-mhead { padding: 4px 10px 6px; font-size: 12.5px; color: var(--ash); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.tk-msec { padding: 8px 10px 4px; font-size: 11.5px; color: var(--ash); }
+.tk-mrow { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 4px; }
+.tk-mrow button { padding: 3px 9px; font-size: 12px; border-radius: 999px; }
+.tk-mrow button.on { border-color: var(--gold); color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); }
+.tk-msep { height: 1px; background: var(--line); margin: 6px 4px; }
 .tk-nothing { left: 380px; top: 46px; }
 /* ---- Jewels page: choices on the left, the tree and what it gives on the right ---- */
 .view.jw { display: flex; flex-direction: column; gap: 12px; padding: 14px 18px 18px; overflow: hidden; position: relative; }

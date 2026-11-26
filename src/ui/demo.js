@@ -276,10 +276,13 @@
     // The Tracker page (open index.html?account=in&role=admin to see it). Kept while the page is open.
     tracker: async (q) => {
       const day = 86400000;
-      const mk = (number, title, status, priority, body, age, extra = {}) => ({ number, parent: null, title, body, status, priority, dropped: false, labels: [], progress: window.Steps.progress(body), url: `https://github.com/Divine4k/poeapp/issues/${number}`, by: 'Divine4k', created: now - age * day, updated: now - age * day / 2, closed: status === 'done' || status === 'dropped' ? now - day : 0, ...extra });
+      const mk = (number, title, status, priority, body, age, extra = {}) => ({ number, parent: null, tab: '', title, body, status, priority, dropped: false, labels: [], progress: window.Steps.progress(body), url: `https://github.com/Divine4k/poeapp/issues/${number}`, by: 'Divine4k', created: now - age * day, updated: now - age * day / 2, closed: status === 'done' || status === 'dropped' ? now - day : 0, ...extra });
       const list = (window.demoTracker = window.demoTracker || [
         mk(14, 'Pick a new name for the app', 'idea', 'normal', 'Map Companion is too narrow now that it does trade and price checks.', 6),
         mk(18, 'Read the items', 'todo', 'normal', '', 2, { parent: 12 }),
+        mk(30, 'Timeless jewel search', 'doing', 'high', '', 3, { tab: 'Jewels' }),
+        mk(31, 'Use my build', 'testing', 'normal', '', 2, { parent: 30 }),
+        mk(32, 'Cluster jewels', 'idea', 'normal', '', 1, { tab: 'Jewels' }),
         mk(19, 'Show the total', 'blocked', 'normal', '', 2, { parent: 12 }),
         mk(20, 'Board view', 'testing', 'normal', '', 1, { parent: 11 }),
         mk(21, 'Map view with lines', 'doing', 'high', '', 1, { parent: 11 }),
@@ -291,12 +294,14 @@
         mk(8, 'Separate launcher window', 'dropped', 'normal', '', 25, { dropped: true }),
       ]);
       if (q.type === 'list') return { repo: state.config.trackerRepo || 'Divine4k/poeapp', items: list.map((i) => ({ ...i })) };
-      if (q.type === 'add') { const it = mk(Math.max(...list.map((i) => i.number)) + 1, q.title, q.status || 'idea', 'normal', '', 0, { parent: q.parent ?? null }); list.push(it); return { item: { ...it } }; }
+      if (q.type === 'add') { const it = mk(Math.max(...list.map((i) => i.number)) + 1, q.title, q.status || 'idea', 'normal', '', 0, { parent: q.parent ?? null, tab: q.tab && q.tab !== 'Main' ? q.tab : '' }); list.push(it); return { item: { ...it } }; }
+      if (q.type === 'renameTab') { for (const i of list) if (i.tab === q.from) i.tab = q.to; return { from: q.from, to: q.to }; }
+      if (q.type === 'removeTab') { for (const i of list) if (i.tab === q.name) i.tab = ''; return { name: q.name }; }
       if (q.type === 'delete') { const at = list.findIndex((i) => i.number === q.number); for (const c of list) if (c.parent === q.number) c.parent = null; list.splice(at, 1); return { number: q.number }; }
       if (q.type === 'parent') { const it = list.find((i) => i.number === q.number); it.parent = q.parent; return { item: { ...it } }; }
       if (q.type === 'update') {
         const it = list.find((i) => i.number === q.number);
-        Object.assign(it, q.patch, { updated: Date.now() });
+        Object.assign(it, q.patch, { updated: Date.now() }); if (q.patch.tab !== undefined) it.tab = q.patch.tab === 'Main' ? '' : q.patch.tab;
         it.progress = window.Steps.progress(it.body); it.dropped = it.status === 'dropped'; it.closed = it.status === 'done' || it.status === 'dropped' ? it.closed || Date.now() : 0;
         return { item: { ...it } };
       }
