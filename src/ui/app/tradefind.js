@@ -1,12 +1,14 @@
 'use strict';
-// Trade page, Search (#trade-find, tracker #85): a search of the trade site started from
-// nothing, with everything the site's own search page has (0.67). Two modes, as on the site:
-// - Listed items: the item by name, stat groups (And, Not, If, Count, Weighted Sum, v2), every
-//   filter group the site lists (drawn from its own list, core/tradeFilters.js), who sells, sort.
-// - Bulk exchange: what you want and what you pay with, minimum stock, who sells.
-// Right: what the site has, with one button per listing (Whisper, or Travel when signed in).
-// The search, its answer, the filter list and the sign-in live in the main process
-// (findAction); this file only draws and asks. Part of the main window script: one scope.
+// Trade page, Search (#trade-find, tracker #85). Laid out like the game's own market (the
+// owner's wish, 0.68): on top the item search with who sells beside it, then every filter
+// group of the trade site as a folding bar with one row per filter (name left, value right),
+// stat filters last ("+ Add stat filter", "+ Add stat group"), and the buttons in a bar that
+// stays at the bottom. Two tabs as in game: Search and Bulk exchange.
+// What the game's market does not have: **live search** (as on the website, signed in): any
+// search is watched, each new listing comes into a feed with a sound and a toast over the game,
+// several at once. The right side shows the feed or the last search.
+// The search, its answer, the filter list, live searches and the sign-in live in the main
+// process (findAction); this file only draws and asks. Part of the main window script: one scope.
 
 const TF_BLANK = () => ({ mode: 'items', item: null, text: '', seller: 'available', filters: {}, groups: [], sort: { by: 'price', dir: 'asc' }, bulk: { want: [], have: [], minimum: '', seller: 'online' } });
 const tf = {
@@ -14,8 +16,10 @@ const tf = {
   view: null,      // what the main process last answered (findView)
   lists: null,     // { groups, from, statGroups, sellers, bulkSellers, kinds }, asked for once
   asked: false, busy: '', error: '', open: '', // open: the listing unfolded
-  rev: 0, drawn: '', formKey: '',
-  shut: {},        // filter groups the user opened or closed, by id: true = open
+  rev: 0, drawn: '', formKey: '', footKey: '', liveKey: '',
+  show: 'search',  // the right side: 'search' (the last search) or 'live' (the live feed)
+  feedSeen: 0,     // newest live listing already told with a sound
+  shut: {},        // filter groups opened or closed by hand, by id: true = open
   sug: { box: '', items: [], at: 0, note: '' }, // suggestions under one field
 };
 // What is being filled in is kept in this window, so it is still there after a restart.
@@ -26,107 +30,101 @@ const tfAmount = (n) => String(Math.round(Number(n) * 100) / 100);
 const tfTimed = (what, fn) => (window.Hood ? window.Hood.run(`drawing the Trade page, search ${what}`, fn) : fn());
 const tfOptions = (list, picked) => list.map(([id, label]) => `<option value="${esc(id)}"${String(id) === String(picked ?? '') ? ' selected' : ''}>${esc(label)}</option>`).join('');
 const tfVal = (v) => (v === undefined || v === null ? '' : esc(v));
+const tfSigned = () => !!(tf.view && tf.view.site && tf.view.site.in);
+const tfX = (act, label, extra = '') => `<button type="button" class="tf-x" data-tfact="${act}" ${extra} aria-label="${esc(label)}" title="${esc(label)}">×</button>`;
 
 // One ask of the main process; the answer is the new view. What went wrong shows over the results.
 async function tfAsk(a, busy = '') {
-  if (tf.busy) return null;
-  tf.busy = busy; tf.error = '';
-  if (busy) { tfDrawResults(); tfDrawForm(); }
+  if (tf.busy && busy) return null;
+  if (busy) { tf.busy = busy; tf.error = ''; tfDrawResults(); tfDrawFoot(); }
   try {
     const v = await api.tradeFind(a);
-    if (v && 'league' in v) { tf.view = v; tf.rev += 1; }
+    if (v && 'league' in v) { tf.view = v; tf.rev += 1; tfLiveSound(); }
+    if (busy) tf.error = '';
     return v;
   } catch (e) {
     tf.error = String((e && e.message) || e).replace(/^Error invoking remote method '[^']*': (Error: )?/, '');
     return null;
-  } finally { tf.busy = ''; renderFind(); }
+  } finally { if (busy) tf.busy = ''; renderFind(); }
+}
+// A new listing in the live feed: the same sound as a new trade offer (when sounds are on).
+function tfLiveSound() {
+  const top = tf.view && tf.view.live && tf.view.live.feed[0];
+  if (!top) return;
+  if (top.at > tf.feedSeen && tf.feedSeen && state && state.config && state.config.trade && state.config.trade.sound) beep();
+  tf.feedSeen = Math.max(tf.feedSeen, top.at);
 }
 
-// ---- the form: listed items ----------------------------------------------------------------
-const tfSugBox = (box) => `<div class="tf-sug" id="tf-sug-${box}" role="listbox" aria-label="Matches" hidden></div>`;
+// ---- the form ------------------------------------------------------------------------------
+const tfSugBox = (box) => `<div class="tf-sug" id="tf-sug-${box.replace(':', '-')}" role="listbox" aria-label="Matches" hidden></div>`;
 
-function tfStatGroupsHtml() {
+// One bar of a folding group, as the game draws them: its name, how many are filled, clear.
+function tfBar(id, title, n, open, inner) {
+  return `<details class="tf-fg" data-fg="${esc(id)}"${open ? ' open' : ''}><summary><span class="tf-bt">${esc(title)}</span><b class="tf-n">${n || ''}</b>${n ? tfX('clearfg', `Clear ${title}`, `data-fg="${esc(id)}"`) : ''}</summary><div class="tf-rows">${inner}</div></details>`;
+}
+const tfRow = (label, control, tip = '', wide = false) => `<div class="tf-r${wide ? ' wide' : ''}"${tip ? ` title="${esc(tip)}"` : ''}><span class="tf-l">${esc(label)}</span><span class="tf-c">${control}</span></div>`;
+
+function tfFilterHtml(g, f) {
+  const v = (tf.form.filters[g.id] || {})[f.id];
+  const o = v && typeof v === 'object' ? v : {};
+  const key = `${g.id}.${f.id}`;
+  const mm = `<input data-f="${key}.min" inputmode="decimal" placeholder="min" aria-label="${esc(f.text)} at least" value="${tfVal(o.min)}"><input data-f="${key}.max" inputmode="decimal" placeholder="max" aria-label="${esc(f.text)} at most" value="${tfVal(o.max)}">`;
+  const opts = (f.options || []).map((x) => [x.id, x.text]);
+  if (f.kind === 'range') return tfRow(f.text, `<span class="tf-mm">${mm}</span>`, f.tip);
+  if (f.kind === 'option') return tfRow(f.text, `<select data-f="${key}.option" aria-label="${esc(f.text)}">${tfOptions(opts, o.option)}</select>`, f.tip);
+  if (f.kind === 'text') return tfRow(f.text, `<input data-f="${key}.input" spellcheck="false" aria-label="${esc(f.text)}" value="${tfVal(typeof v === 'string' ? v : '')}">`, f.tip);
+  if (f.kind === 'price') return tfRow(f.text, `<span class="tf-mm"><select data-f="${key}.option" aria-label="Currency">${tfOptions(opts, o.option)}</select>${mm}</span>`, f.tip, true);
+  if (f.kind === 'sockets') return tfRow(f.text, `<span class="tf-sock">${['r', 'g', 'b', 'w'].map((c) => `<input class="c-${c}" data-f="${key}.${c}" inputmode="numeric" placeholder="${c.toUpperCase()}" aria-label="${esc(f.text)}, ${{ r: 'red', g: 'green', b: 'blue', w: 'white' }[c]}" value="${tfVal(o[c])}">`).join('')}${mm}</span>`, f.tip, true);
+  return '';
+}
+const tfCount = (gid) => Object.keys(tf.form.filters[gid] || {}).length;
+const tfIsOpen = (id, dflt) => (id in tf.shut ? tf.shut[id] : dflt);
+const tfTypes = () => ((tf.lists && tf.lists.statGroups) || []).map((t) => [t.id, t.signedIn && !tfSigned() ? `${t.text} (signed in)` : t.text]);
+
+function tfStatsHtml() {
   const L = tf.lists, kinds = L.kinds || {}, types = L.statGroups || [];
-  const signed = !!(tf.view && tf.view.site && tf.view.site.in);
   const groups = tf.form.groups.map((g, gi) => {
     const def = types.find((x) => x.id === g.type) || types[0];
     const rows = g.stats.map((s, si) => `<div class="tf-stat${def.weights ? ' w' : ''}${s.off ? ' off' : ''}">
         <input type="checkbox" data-st="${gi}.${si}.on" ${s.off ? '' : 'checked'} aria-label="Use this stat" title="Use this stat">
         <span class="tf-ref" title="${esc(s.ref)}">${esc(s.ref)}</span>
-        <select data-st="${gi}.${si}.kind" aria-label="Which kind of modifier">${tfOptions([['any', 'Any kind']].concat((s.kinds || []).map((k) => [k, kinds[k] || k])), s.kind || 'any')}</select>
+        <select data-st="${gi}.${si}.kind" aria-label="Which kind of modifier" title="Which kind of modifier">${tfOptions([['any', 'Any']].concat((s.kinds || []).map((k) => [k, kinds[k] || k])), s.kind || 'any')}</select>
         <input data-st="${gi}.${si}.min" inputmode="decimal" placeholder="min" aria-label="At least" value="${tfVal(s.min)}"><input data-st="${gi}.${si}.max" inputmode="decimal" placeholder="max" aria-label="At most" value="${tfVal(s.max)}">
-        ${def.weights ? `<input data-st="${gi}.${si}.weight" inputmode="decimal" placeholder="weight" aria-label="Weight" value="${tfVal(s.weight)}">` : ''}
-        <button type="button" class="tf-x" data-tfact="unstat" data-g="${gi}" data-s="${si}" aria-label="Take this stat out" title="Take this stat out">×</button></div>`).join('');
+        ${def.weights ? `<input data-st="${gi}.${si}.weight" inputmode="decimal" placeholder="wt" aria-label="Weight" title="Weight" value="${tfVal(s.weight)}">` : ''}
+        ${tfX('unstat', 'Take this stat out', `data-g="${gi}" data-s="${si}"`)}</div>`).join('');
     return `<div class="tf-group${g.off ? ' off' : ''}">
       <div class="tf-ghead"><input type="checkbox" data-gr="${gi}.on" ${g.off ? '' : 'checked'} aria-label="Use this group" title="Use this group">
-        <select data-gr="${gi}.type" aria-label="Kind of group">${tfOptions(types.map((t) => [t.id, t.signedIn && !signed ? `${t.text} (signed in only)` : t.text]), g.type)}</select>
-        ${def.minMax ? `<input data-gr="${gi}.min" inputmode="decimal" placeholder="min" aria-label="Group at least" value="${tfVal(g.min)}"><input data-gr="${gi}.max" inputmode="decimal" placeholder="max" aria-label="Group at most" value="${tfVal(g.max)}">` : '<span></span><span></span>'}
-        <button type="button" class="tf-x" data-tfact="ungroup" data-g="${gi}" aria-label="Take this group out" title="Take this group out">×</button></div>
+        <select data-gr="${gi}.type" aria-label="Kind of group">${tfOptions(tfTypes(), g.type)}</select>
+        ${def.minMax ? `<span class="tf-mm"><input data-gr="${gi}.min" inputmode="decimal" placeholder="min" aria-label="Group at least" value="${tfVal(g.min)}"><input data-gr="${gi}.max" inputmode="decimal" placeholder="max" aria-label="Group at most" value="${tfVal(g.max)}"></span>` : '<span></span>'}
+        ${tfX('ungroup', 'Take this group out', `data-g="${gi}"`)}</div>
       ${rows}
-      <div class="tf-box"><input type="search" data-sug="stat:${gi}" placeholder="Add a stat: type a few words, like max life" aria-label="Add a stat" spellcheck="false">${tfSugBox(`stat-${gi}`)}</div>
+      <div class="tf-box tf-addstat"><input type="search" data-sug="stat:${gi}" placeholder="+ Add stat filter" aria-label="Add a stat" spellcheck="false">${tfSugBox(`stat:${gi}`)}</div>
     </div>`;
   }).join('');
-  return `<div class="tf-sect"><span class="tx-label">Stat filters</span>${groups}
-    <button type="button" class="tf-add" data-tfact="addgroup"${tf.form.groups.length >= 8 ? ' disabled' : ''}>+ Add stat group</button></div>`;
-}
-
-function tfFilterHtml(g, f) {
-  const v = (tf.form.filters[g.id] || {})[f.id];
-  const o = v && typeof v === 'object' ? v : {};
-  const key = `${g.id}.${f.id}`, tip = f.tip ? ` title="${esc(f.tip)}"` : '';
-  const mm = `<input data-f="${key}.min" inputmode="decimal" placeholder="min" aria-label="${esc(f.text)} at least" value="${tfVal(o.min)}"><input data-f="${key}.max" inputmode="decimal" placeholder="max" aria-label="${esc(f.text)} at most" value="${tfVal(o.max)}">`;
-  const opts = (f.options || []).map((x) => [x.id, x.text]);
-  if (f.kind === 'range') return `<label class="tf-f"${tip}><span>${esc(f.text)}</span><span class="tf-mm">${mm}</span></label>`;
-  if (f.kind === 'option') return `<label class="tf-f"${tip}><span>${esc(f.text)}</span><select data-f="${key}.option">${tfOptions(opts, o.option)}</select></label>`;
-  if (f.kind === 'text') return `<label class="tf-f"${tip}><span>${esc(f.text)}</span><input data-f="${key}.input" spellcheck="false" value="${tfVal(typeof v === 'string' ? v : '')}"></label>`;
-  if (f.kind === 'price') return `<label class="tf-f wide"${tip}><span>${esc(f.text)}</span><span class="tf-mm"><select data-f="${key}.option" aria-label="Currency">${tfOptions(opts, o.option)}</select>${mm}</span></label>`;
-  if (f.kind === 'sockets') return `<div class="tf-f wide"${tip}><span>${esc(f.text)}</span><span class="tf-sock">${['r', 'g', 'b', 'w'].map((c) => `<input class="c-${c}" data-f="${key}.${c}" inputmode="numeric" placeholder="${c.toUpperCase()}" aria-label="${esc(f.text)}, ${{ r: 'red', g: 'green', b: 'blue', w: 'white' }[c]}" value="${tfVal(o[c])}">`).join('')}${mm}</span></div>`;
-  return '';
-}
-const tfCount = (gid) => Object.keys(tf.form.filters[gid] || {}).length;
-function tfFilterGroupsHtml() {
-  return tf.lists.groups.filter((g) => g.filters.length).map((g) => {
-    const n = tfCount(g.id), open = g.id in tf.shut ? tf.shut[g.id] : (g.open || n > 0);
-    return `<details class="tf-fg" data-fg="${esc(g.id)}"${open ? ' open' : ''}><summary><span>${esc(g.title)}</span><b class="tf-n">${n || ''}</b>${n ? `<button type="button" class="tf-x" data-tfact="clearfg" data-fg="${esc(g.id)}" aria-label="Clear ${esc(g.title)}" title="Clear this group">×</button>` : ''}</summary>
-      <div class="tf-fs">${g.filters.map((f) => tfFilterHtml(g, f)).join('')}</div></details>`;
-  }).join('');
-}
-
-function tfSortHtml() {
-  const opts = [['price.asc', 'Price: cheapest first'], ['price.desc', 'Price: dearest first']];
-  tf.form.groups.forEach((g, gi) => {
-    const def = (tf.lists.statGroups || []).find((x) => x.id === g.type) || {};
-    if (def.weights) opts.push([`group.${gi}`, `Highest ${def.text.toLowerCase()} (group ${gi + 1})`]);
-    for (const s of g.stats) opts.push([`stat.${s.ref}`, `Highest: ${s.ref}`]);
-  });
-  const s = tf.form.sort || {};
-  const cur = s.by === 'stat' ? `stat.${s.ref}` : s.by === 'group' ? `group.${s.i}` : `price.${s.dir || 'asc'}`;
-  return `<label><span class="tx-label">Sort by</span><select data-tfsort>${tfOptions(opts, opts.some(([id]) => id === cur) ? cur : 'price.asc')}</select></label>`;
+  const n = tf.form.groups.reduce((a, g) => a + g.stats.length, 0);
+  const add = `<div class="tf-addgroup"><select data-tfaddgroup aria-label="Add a stat group"${tf.form.groups.length >= 8 ? ' disabled' : ''}><option value="">+ Add stat group</option>${tfOptions(tfTypes(), '')}</select></div>`;
+  return tfBar('stats', 'Stat Filters', n, tfIsOpen('stats', true), groups + add);
 }
 
 function tfItemsHtml() {
   const f = tf.form, L = tf.lists;
-  return `<div class="tf-box"><span class="tx-label">Item</span>
-      ${f.item ? `<div class="tf-pick"><b>${esc(f.item.label)}</b><button type="button" class="tf-x" data-tfact="unpick" aria-label="Take the item out" title="Take the item out">×</button></div>`
-        : `<input type="search" data-sug="item" placeholder="Name of an item, or leave empty" aria-label="Name of an item" spellcheck="false" value="${tfVal(f.text)}">${tfSugBox('item')}`}
-    </div>
-    ${tfStatGroupsHtml()}
-    <div class="tf-fgs">${tfFilterGroupsHtml()}</div>
-    <div class="tf-pair"><label><span class="tx-label">Sold by</span><select data-tfseller>${tfOptions(L.sellers, f.seller)}</select></label>${tfSortHtml()}</div>`;
+  const head = `<div class="tf-top"><div class="tf-box">${f.item
+    ? `<div class="tf-pick"><b>${esc(f.item.label)}</b>${tfX('unpick', 'Take the item out')}</div>`
+    : `<input type="search" data-sug="item" placeholder="Search items" aria-label="Name of an item" spellcheck="false" value="${tfVal(f.text)}">${tfSugBox('item')}`}</div>
+    <select data-tfseller aria-label="Who sells">${tfOptions(L.sellers, f.seller)}</select></div>`;
+  const bars = L.groups.filter((g) => g.filters.length).map((g) => tfBar(g.id, g.title, tfCount(g.id), tfIsOpen(g.id, !!g.open || tfCount(g.id) > 0), g.filters.map((x) => tfFilterHtml(g, x)).join(''))).join('');
+  return head + `<div class="tf-bars">${bars}${tfStatsHtml()}</div>`;
 }
 
-// ---- the form: bulk exchange -----------------------------------------------------------------
 function tfChips(side) {
-  return tf.form.bulk[side].map((x, i) => `<span class="tf-chip"><span class="it xs">${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : ''}</span><span class="tf-cl">${esc(x.label)}</span><button type="button" class="tf-x" data-tfact="unbulk" data-side="${side}" data-i="${i}" aria-label="Take ${esc(x.label)} out" title="Take it out">×</button></span>`).join('');
+  return tf.form.bulk[side].map((x, i) => `<span class="tf-chip"><span class="it xs">${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : ''}</span><span class="tf-cl">${esc(x.label)}</span>${tfX('unbulk', `Take ${x.label} out`, `data-side="${side}" data-i="${i}"`)}</span>`).join('');
 }
 function tfBulkHtml() {
   const b = tf.form.bulk, L = tf.lists;
-  return `<div class="tf-box"><span class="tx-label">I want</span><div class="tf-chips">${tfChips('want')}</div>
-      <input type="search" data-sug="want" placeholder="Type a name, like divine or scarab" aria-label="What you want" spellcheck="false">${tfSugBox('want')}</div>
-    <div class="tf-box"><span class="tx-label">I pay with <small class="quiet">(empty: anything)</small></span><div class="tf-chips">${tfChips('have')}</div>
-      <input type="search" data-sug="have" placeholder="Type a name, like chaos" aria-label="What you pay with" spellcheck="false">${tfSugBox('have')}</div>
-    <div class="tf-pair"><label><span class="tx-label">Minimum stock</span><input data-bulk="minimum" inputmode="numeric" placeholder="any" value="${tfVal(b.minimum)}"></label>
-      <label><span class="tx-label">Sold by</span><select data-bulk="seller">${tfOptions(L.bulkSellers, b.seller)}</select></label></div>`;
+  const pick = (side, ph) => `<div class="tf-box">${tf.form.bulk[side].length ? `<div class="tf-chips">${tfChips(side)}</div>` : ''}<input type="search" data-sug="${side}" placeholder="${ph}" aria-label="${ph}" spellcheck="false">${tfSugBox(side)}</div>`;
+  return `<div class="tf-top"><span class="tf-l">Bulk item exchange</span><select data-bulk="seller" aria-label="Who sells">${tfOptions(L.bulkSellers, b.seller)}</select></div>
+    <div class="tf-bars">${tfBar('bulk', 'What to exchange', b.want.length + b.have.length, true,
+    tfRow('I want', pick('want', 'Type a name, like divine'), '', true) + tfRow('I pay with', pick('have', 'Anything, or type a name'), '', true) + tfRow('Minimum stock', `<input data-bulk="minimum" inputmode="numeric" placeholder="any" aria-label="Minimum stock" value="${tfVal(b.minimum)}">`))}</div>`;
 }
 
 // The form is drawn again only when its make-up changed (a stat or group added, the mode, a
@@ -135,27 +133,41 @@ function tfDrawForm(force = false) {
   const box = $('tf-formbox');
   if (!tf.lists) { setHtml(box, '<p class="empty">Reading the trade site\'s list of filters…</p>'); return; }
   const f = tf.form, items = f.mode !== 'bulk';
-  const key = JSON.stringify([f.mode, f.item, f.groups.map((g) => [g.type, g.off, g.stats.map((s) => [s.ref, s.kind, s.off])]), f.bulk.want, f.bulk.have, tf.lists.from, tf.busy, !!(tf.view && tf.view.site && tf.view.site.in)]);
+  const key = JSON.stringify([f.mode, f.item, f.groups.map((g) => [g.type, g.off, g.stats.map((s) => [s.ref, s.kind, s.off])]), f.bulk.want, f.bulk.have, tf.lists.from, tfSigned()]);
   if (!force && key === tf.formKey) return;
   tf.formKey = key;
   const html = `<form id="tf-form" autocomplete="off">
-    <div class="tf-modes" role="tablist" aria-label="Kind of search"><button type="button" role="tab" data-tfmode="items" aria-selected="${items}">Listed items</button><button type="button" role="tab" data-tfmode="bulk" aria-selected="${!items}">Bulk exchange</button></div>
+    <div class="tf-modes" role="tablist" aria-label="Kind of search"><button type="button" role="tab" data-tfmode="items" aria-selected="${items}">Search</button><button type="button" role="tab" data-tfmode="bulk" aria-selected="${!items}">Bulk exchange</button></div>
     ${items ? tfItemsHtml() : tfBulkHtml()}
-    <div class="tf-go"><button type="submit" class="primary" id="tf-search"${tf.busy ? ' disabled' : ''}>${tf.busy === 'search' ? 'Searching…' : 'Search'}</button><button type="button" data-tfact="save">Save this search</button><button type="button" data-tfact="reset">Start over</button></div>
     ${tf.lists.from !== 'site' && items ? '<p class="quiet tf-from">The trade site did not give its list of filters, so the app\'s own copy is shown. It is tried again at the next search.</p>' : ''}
   </form>`;
   const focus = document.activeElement && box.contains(document.activeElement) ? document.activeElement.getAttribute('data-sug') : null;
+  const top = box.scrollTop;
   setHtml(box, html);
+  box.scrollTop = top;
   if (focus) { const el = box.querySelector(`[data-sug="${focus}"]`); if (el) el.focus(); }
 }
 
-function tfDrawSide() {
-  const v = tf.view, saved = (v && v.saved) || [];
-  setHtml($('tf-saved'), saved.length ? `<span class="tx-label">Saved searches</span><div class="tf-chips">${saved.map((s) => `<span class="tf-chip"><button type="button" data-tfact="load" data-name="${esc(s.name)}" title="Fill this search in">${esc(s.name)}</button><button type="button" class="tf-x" data-tfact="unsave" data-name="${esc(s.name)}" aria-label="Forget this search" title="Forget this search">×</button></span>`).join('')}</div>` : '');
-  const site = v && v.site;
-  setHtml($('tf-site'), !site ? '' : site.in
-    ? `<p><b class="pos">Signed in to the trade site${site.name ? ` as ${esc(site.name)}` : ''}.</b> Searches count against your own account's limits, weighted sums work, and an instant buyout has a Travel button.</p><button type="button" data-tfact="signout">Sign out</button>`
-    : `<p><b>Not signed in to the trade site.</b> Searching and whispering work without it. Signed in, weighted sums work and an instant buyout gets a Travel button. You sign in on pathofexile.com's own page; the app never sees your password.</p><button type="button" data-tfact="signin">${site.window ? 'Show the sign-in window' : 'Sign in'}</button>`);
+// The bar at the bottom: the buttons, then the saved searches and the sign-in.
+function tfDrawFoot() {
+  const v = tf.view, saved = (v && v.saved) || [], site = v && v.site, signed = tfSigned();
+  const items = tf.form.mode !== 'bulk';
+  const live = v && v.live;
+  const full = live && live.searches.length >= live.max;
+  const html = `<div class="tf-go">
+      <button type="submit" form="tf-form" class="primary" id="tf-search"${tf.busy ? ' disabled' : ''}>${tf.busy === 'search' ? 'Searching…' : 'Search'}</button>
+      ${items ? `<button type="button" class="tf-golive" data-tfact="live"${tf.busy || full ? ' disabled' : ''} title="${signed ? 'Watch this search: every new listing that matches comes in at once, with a sound and a note over the game' : 'Live search needs the sign-in to the trade site, as on the website'}"><i></i>${tf.busy === 'live' ? 'Starting…' : 'Go live'}</button>` : ''}
+      <button type="button" data-tfact="save" title="Save this search">Save</button>
+      <button type="button" data-tfact="reset" title="Clear every filter">Clear</button>
+    </div>
+    <div class="tf-meta">
+      ${saved.length ? `<select data-tfload aria-label="Saved searches"><option value="">Saved searches (${saved.length})</option>${tfOptions(saved.map((s) => [s.name, s.name]), '')}</select>` : '<span class="quiet">No saved searches</span>'}
+      ${!site ? '' : site.in ? `<span class="tf-who"><i class="ok"></i>${esc(site.name || 'Signed in')}<button type="button" class="link" data-tfact="signout">Sign out</button></span>`
+        : `<span class="tf-who"><i></i>Not signed in<button type="button" class="link" data-tfact="signin" title="Sign in on pathofexile.com's own page: live search, weighted sums and Travel to hideout. The app never sees your password.">${site.window ? 'Show sign-in' : 'Sign in'}</button></span>`}
+    </div>`;
+  if (html === tf.footKey) return;
+  tf.footKey = html;
+  setHtml($('tf-foot'), html);
 }
 
 // ---- suggestions under a field ---------------------------------------------------------------
@@ -198,7 +210,21 @@ function tfPickSug(i) {
   if (input) { input.value = ''; input.focus(); }
 }
 
-// ---- the results ---------------------------------------------------------------------------
+// ---- the right side: live searches, the feed, the last search ---------------------------------
+function tfDrawLive() {
+  const live = tf.view && tf.view.live, box = $('tf-live');
+  const list = live ? live.searches : [];
+  const now = Date.now();
+  const word = { live: 'live', connecting: 'connecting', closed: 'stopped' };
+  const html = !list.length && !(live && live.feed.length) ? '' : `<div class="tf-lhead"><span class="tx-label">Live</span>
+      <span class="tf-tabs"><button type="button" class="tf-tab" data-tfshow="live" aria-pressed="${tf.show === 'live'}">New listings${live.feed.length ? ` <b>${live.feed.length}</b>` : ''}</button><button type="button" class="tf-tab" data-tfshow="search" aria-pressed="${tf.show === 'search'}">Last search</button></span></div>
+    <div class="tf-lchips">${list.map((l) => `<span class="tf-lchip ${esc(l.state)}" title="${esc(`${l.name}: ${word[l.state] || l.state} for ${span(now - l.since)}${l.error ? ` (${l.error})` : ''}`)}"><i></i><button type="button" class="tf-ln" data-tfact="loadlive" data-key="${esc(l.key)}" title="Fill this search in">${esc(l.name)}</button>${l.hits ? `<b>${l.hits}</b>` : ''}${l.state === 'closed' ? `<button type="button" class="link" data-tfact="relive" data-key="${esc(l.key)}">Again</button>` : ''}${tfX('unlive', `Stop watching ${l.name}`, `data-key="${esc(l.key)}"`)}</span>`).join('')}</div>`;
+  if (html === tf.liveKey) return;
+  tf.liveKey = html;
+  setHtml(box, html);
+  box.hidden = !html;
+}
+
 const TF_KIND = { enchant: 'enchant', implicit: 'implicit', fractured: 'fractured', crafted: 'crafted' };
 function tfDetailHtml(l) {
   const d = l.detail || {};
@@ -208,17 +234,18 @@ function tfDetailHtml(l) {
   return `<div class="tf-detail">${marks ? `<p class="quiet">${esc(marks)}</p>` : ''}${props ? `<p class="tf-props">${props}</p>` : ''}${mods ? `<ul>${mods}</ul>` : '<p class="quiet">No modifiers.</p>'}</div>`;
 }
 function tfButtonHtml(l, v, instant) {
-  if (l.travel) return `<button type="button" class="primary" data-tfact="travel" data-tfid="${esc(l.id)}" title="The trade site takes you to the seller's hideout">Travel</button>`;
-  if (instant) return '<button type="button" data-tfact="open" title="An instant buyout is travelled to from the trade site. Sign in under the form to do it from here.">Trade site</button>';
-  if (l.whisper && l.status !== 'offline') return `<button type="button" data-tfact="whisper" data-tfid="${esc(l.id)}"${v.canType ? '' : ' title="The app cannot type in the game on this PC right now"'}>${l.asked ? 'Ask again' : 'Whisper'}</button>`;
+  const live = l.live ? ` data-live="${esc(l.live)}"` : '';
+  if (l.travel) return `<button type="button" class="primary" data-tfact="travel" data-tfid="${esc(l.id)}"${live} title="The trade site takes you to the seller's hideout">Travel</button>`;
+  if (instant) return '<button type="button" data-tfact="open" title="An instant buyout is travelled to from the trade site. Sign in to do it from here.">Trade site</button>';
+  if (l.whisper && l.status !== 'offline') return `<button type="button" data-tfact="whisper" data-tfid="${esc(l.id)}"${live}${v.canType ? '' : ' title="The app cannot type in the game on this PC right now"'}>${l.asked ? 'Ask again' : 'Whisper'}</button>`;
   return '<span class="tq-wait">no whisper</span>';
 }
-function tfRowHtml(l, v, d, now) {
+function tfRowHtml(l, v, d, now, names) {
   const instant = l.status === 'instant';
   const mark = l.bait ? ['bad', 'likely bait'] : l.asked ? ['wait', `${instant ? 'travelled' : 'whispered'} ${span(now - l.asked)} ago`] : instant ? ['ok', 'instant buyout'] : l.status === 'afk' ? ['', 'AFK'] : l.status === 'offline' ? ['', 'offline'] : ['', ''];
-  const sub = [l.chaos != null && l.price && !/^(chaos|div)/i.test(l.price.currency) ? TradeCard.chaosText(l.chaos, d) : '', l.seller, l.listedAt ? `listed ${span(now - l.listedAt)} ago` : '', l.itemLevel ? `item level ${l.itemLevel}` : '', l.corrupted ? 'corrupted' : ''].filter(Boolean).join(' · ');
+  const sub = [names ? names[l.live] : '', l.chaos != null && l.price && !/^(chaos|div)/i.test(l.price.currency) ? TradeCard.chaosText(l.chaos, d) : '', l.seller, l.live ? `came in ${span(now - l.at)} ago` : l.listedAt ? `listed ${span(now - l.listedAt)} ago` : '', l.itemLevel ? `item level ${l.itemLevel}` : '', l.corrupted ? 'corrupted' : ''].filter(Boolean).join(' · ');
   const open = tf.open === l.id;
-  return `<div class="tw-row tf-row${l.bait ? ' dim' : ''}"><b class="tw-price">${l.price ? `${esc(tfAmount(l.price.amount))} ${esc(l.price.currency)}` : 'no price'}</b>
+  return `<div class="tw-row tf-row${l.bait ? ' dim' : ''}${l.live && now - l.at < 60000 ? ' fresh' : ''}"><b class="tw-price">${l.price ? `${esc(tfAmount(l.price.amount))} ${esc(l.price.currency)}` : 'no price'}</b>
     <button type="button" class="tf-open" data-tfact="unfold" data-tfid="${esc(l.id)}" aria-expanded="${open}"><span class="it sm">${l.icon ? `<img src="${esc(l.icon)}" alt="" loading="lazy">` : ''}</span><span class="tq-main"><b>${esc(l.name || l.base || 'Item')}</b><span>${esc(sub)}</span></span></button>
     ${mark[1] ? `<i class="${mark[0]}">${esc(mark[1])}</i>` : ''}${tfButtonHtml(l, v, instant)}</div>${open ? tfDetailHtml(l) : ''}`;
 }
@@ -229,25 +256,48 @@ function tfBulkRowHtml(l, v, now) {
     <span class="tq-main"><b>for ${esc(tfAmount(l.get.amount))} ${esc(l.get.currency)}</b><span>${esc(`${tfAmount(l.get.amount / l.pay.amount)} ${l.get.currency} per ${l.pay.currency} · ${sub}`)}</span></span>
     ${mark[1] ? `<i class="${mark[0]}">${esc(mark[1])}</i>` : ''}${tfButtonHtml(l, v, false)}</div>`;
 }
+function tfSortHtml() {
+  const opts = [['price.asc', 'Cheapest first'], ['price.desc', 'Dearest first']];
+  tf.form.groups.forEach((g, gi) => {
+    const def = ((tf.lists && tf.lists.statGroups) || []).find((x) => x.id === g.type) || {};
+    if (def.weights) opts.push([`group.${gi}`, `Highest ${def.text.toLowerCase()}`]);
+    for (const s of g.stats) opts.push([`stat.${s.ref}`, `Highest: ${s.ref}`]);
+  });
+  const s = tf.form.sort || {};
+  const cur = s.by === 'stat' ? `stat.${s.ref}` : s.by === 'group' ? `group.${s.i}` : `price.${s.dir || 'asc'}`;
+  return `<select data-tfsort aria-label="Sort by" title="Sort by (searches again)">${tfOptions(opts, opts.some(([id]) => id === cur) ? cur : 'price.asc')}</select>`;
+}
 function tfDrawResults() {
   const v = tf.view, box = $('tf-results');
-  const key = [tf.rev, tf.open, tf.busy, tf.error, state && state.trade ? state.trade.divine : 0, Math.floor(Date.now() / 30000)].join('|');
+  const live = tf.show === 'live' && v && v.live;
+  const key = [tf.rev, tf.open, tf.busy, tf.error, tf.show, tf.formKey, state && state.trade ? state.trade.divine : 0, Math.floor(Date.now() / 30000)].join('|');
   if (key === tf.drawn) return;
   tf.drawn = key;
   const err = tf.error ? `<p class="td-note neg">${esc(tf.error)}</p>` : '';
+  const now = Date.now(), d = state && state.trade ? state.trade.divine : 0;
+  if (live) {
+    const names = Object.fromEntries(v.live.searches.map((x) => [x.key, x.name]));
+    const rows = v.live.feed.map((x) => tfRowHtml(x, v, d, now, names)).join('');
+    setHtml(box, `<header><div><span class="tx-label">Newest first · ${v.live.searches.filter((x) => x.state === 'live').length} watching</span><h3>New listings</h3></div>
+        <span class="row">${v.live.feed.length ? '<button type="button" data-tfact="clearfeed">Clear</button>' : ''}</span></header>${err}
+      <div class="tw-rows tf-list">${rows || '<p class="empty">Nothing new yet. Each listing that matches a live search comes in here the moment it is listed, with a sound and a note over the game.</p>'}</div>
+      <p class="quiet tw-foot">One whisper or one trip per click. Nothing is bought or whispered by itself.</p>`);
+    return;
+  }
   if (tf.busy === 'search') { setHtml(box, '<p class="empty">Asking the trade site…</p>'); return; }
   const l = v && v.last;
   if (!l) {
-    setHtml(box, `${err}<p class="empty">Fill in what you are looking for and press Search. Every search is a request to the trade site, which allows only a few per minute, so it runs when you press the button and not while you type.</p>`);
+    setHtml(box, `${err}<div class="tf-hello"><h3>Search the trade site</h3><p>Fill in the filters on the left and press Search. The site allows only a few searches a minute, so nothing is sent while you type.</p>
+      <p><b>Go live</b> watches a search for you: every new listing that matches comes in at once, with a sound and a note over the game, for up to ${(v && v.live && v.live.max) || 10} searches at a time. It needs the sign-in, as on the website.</p></div>`);
     return;
   }
-  const now = Date.now(), d = state && state.trade ? state.trade.divine : 0, bulk = l.mode === 'bulk';
+  const bulk = l.mode === 'bulk';
   const rows = l.listings.map((x) => (bulk ? tfBulkRowHtml(x, v, now) : tfRowHtml(x, v, d, now))).join('');
   const unknown = l.unknown && l.unknown.length ? `<p class="td-note neg">Left out, the trade site no longer has ${l.unknown.length === 1 ? 'this stat' : 'these stats'}: ${l.unknown.map(esc).join('; ')}</p>` : '';
   setHtml(box, `<header><div><span class="tx-label">${esc(Number(l.total).toLocaleString())} listed in ${esc(v.league)} · searched ${esc(span(now - l.at))} ago</span><h3>${esc(l.name)}</h3></div>
-      <span class="row">${bulk ? '' : `<button type="button" data-tfact="want"${l.listings.length ? '' : ' disabled'} title="Keep this search and its sellers on the Buying list">Add to Buying</button>`}${l.url ? '<button type="button" data-tfact="open">Trade site</button>' : ''}</span></header>
+      <span class="row">${bulk ? '' : `${tfSortHtml()}<button type="button" data-tfact="want"${l.listings.length ? '' : ' disabled'} title="Keep this search and its sellers on the Buying list">Add to Buying</button>`}${l.url ? '<button type="button" data-tfact="open">Trade site</button>' : ''}</span></header>
     ${err}${unknown}
-    <div class="tw-rows tf-rows">${rows || '<p class="empty">Nothing like it is listed. Take a stat or a filter out, or widen a number.</p>'}
+    <div class="tw-rows tf-list">${rows || '<p class="empty">Nothing like it is listed. Take a stat or a filter out, or widen a number.</p>'}
       ${l.left ? `<div class="tf-more"><button type="button" data-tfact="more"${tf.busy ? ' disabled' : ''}>${tf.busy === 'more' ? 'Reading…' : `Show ${Math.min(10, l.left)} more`}</button><span class="quiet">${l.listings.length} of ${l.listings.length + l.left} read${l.total > l.listings.length + l.left ? '; the trade site hands out the first 100 of a search' : ''}</span></div>` : ''}</div>
     <p class="quiet tw-foot">One whisper or one trip per click.${bulk ? '' : ' Click a listing to see the whole item.'}</p>`);
 }
@@ -264,7 +314,8 @@ function renderFind() {
     tfAsk({ op: 'get' });
   }
   tfTimed('form', tfDrawForm);
-  tfTimed('side', tfDrawSide);
+  tfTimed('foot', tfDrawFoot);
+  tfTimed('live', tfDrawLive);
   tfTimed('results', tfDrawResults);
 }
 
@@ -288,11 +339,8 @@ function tfFilterInput(el) {
   const n = el.closest('details') && el.closest('details').querySelector('.tf-n');
   if (n) n.textContent = tfCount(g) || '';
 }
-$('trade-find').addEventListener('submit', (e) => {
-  if (e.target.id !== 'tf-form') return;
-  e.preventDefault(); tfSugClose(); tf.open = '';
-  tfAsk({ op: 'search', form: tf.form }, 'search');
-});
+function tfSearch() { tfSugClose(); tf.open = ''; tf.show = 'search'; tf.liveKey = ''; tfAsk({ op: 'search', form: tf.form }, 'search'); }
+$('trade-find').addEventListener('submit', (e) => { if (e.target.id !== 'tf-form') return; e.preventDefault(); tfSearch(); });
 $('trade-find').addEventListener('input', (e) => {
   const el = e.target, d = el.dataset;
   if (d.sug) { if (d.sug === 'item') tf.form.text = el.value; tfSuggest(d.sug, el.value); }
@@ -300,8 +348,22 @@ $('trade-find').addEventListener('input', (e) => {
   else if (d.st) { const [gi, si, part] = d.st.split('.'); const s = (tf.form.groups[gi] || { stats: [] }).stats[si]; if (s) { if (part === 'on') s.off = !el.checked; else s[part] = el.value; } if (part === 'on' || part === 'kind') tfDrawForm(); }
   else if (d.gr) { const [gi, part] = d.gr.split('.'); const g = tf.form.groups[gi]; if (g) { if (part === 'on') g.off = !el.checked; else g[part] = el.value; } if (part === 'on' || part === 'type') tfDrawForm(); }
   else if ('tfseller' in d) tf.form.seller = el.value;
-  else if ('tfsort' in d) { const [by, ...rest] = el.value.split('.'); const r = rest.join('.'); tf.form.sort = by === 'stat' ? { by, ref: r } : by === 'group' ? { by, i: Number(r) } : { by: 'price', dir: r }; }
-  else if (d.bulk) tf.form.bulk[d.bulk] = el.value;
+  else if ('tfaddgroup' in d) {
+    if (!el.value) return;
+    tf.form.groups.push({ type: el.value, min: '', max: '', off: false, stats: [] });
+    tf.shut.stats = true;
+    tfKeep(); tfDrawForm();
+    const box = $('tf-formbox').querySelector(`[data-sug="stat:${tf.form.groups.length - 1}"]`); if (box) box.focus();
+    return;
+  } else if ('tfsort' in d) {
+    const [by, ...rest] = el.value.split('.'); const r = rest.join('.');
+    tf.form.sort = by === 'stat' ? { by, ref: r } : by === 'group' ? { by, i: Number(r) } : { by: 'price', dir: r };
+    tfKeep(); tfSearch(); return;
+  } else if ('tfload' in d) {
+    const s = ((tf.view && tf.view.saved) || []).find((x) => x.name === el.value);
+    if (s) { tf.form = { ...TF_BLANK(), ...JSON.parse(JSON.stringify(s.form)) }; tfKeep(); tfDrawForm(true); }
+    el.value = ''; return;
+  } else if (d.bulk) tf.form.bulk[d.bulk] = el.value;
   else return;
   tfKeep();
 });
@@ -313,7 +375,7 @@ $('trade-find').addEventListener('keydown', (e) => {
   else if (e.key === 'Enter' && tf.sug.box === box && tf.sug.items.length) { e.preventDefault(); tfPickSug(0); }
   else if (e.key === 'Enter' && box !== 'item') e.preventDefault(); // a half-typed name does not start a search
 });
-// A filter group opened or closed by hand stays so (kept in this window).
+// A group bar opened or closed by hand stays so (kept in this window).
 $('trade-find').addEventListener('toggle', (e) => {
   const g = e.target.dataset && e.target.dataset.fg;
   if (!g) return;
@@ -324,26 +386,28 @@ $('trade-find').addEventListener('click', async (e) => {
   const sug = e.target.closest('[data-tfsug]');
   if (sug) { tfPickSug(Number(sug.dataset.tfsug)); return; }
   const mode = e.target.closest('[data-tfmode]');
-  if (mode) { tf.form.mode = mode.dataset.tfmode; tfSugClose(); tfKeep(); tfDrawForm(); return; }
+  if (mode) { tf.form.mode = mode.dataset.tfmode; tfSugClose(); tfKeep(); tfDrawForm(); tfDrawFoot(); return; }
+  const show = e.target.closest('[data-tfshow]');
+  if (show) { tf.show = show.dataset.tfshow; tf.liveKey = ''; renderFind(); return; }
   const b = e.target.closest('[data-tfact]');
   if (!b) return;
   const what = b.dataset.tfact, id = b.dataset.tfid;
-  if (what === 'clearfg') { e.preventDefault(); delete tf.form.filters[b.dataset.fg]; tfKeep(); tfDrawForm(true); }
+  if (what === 'clearfg') { e.preventDefault(); if (b.dataset.fg === 'stats') tf.form.groups = []; else delete tf.form.filters[b.dataset.fg]; tfKeep(); tfDrawForm(true); }
   else if (what === 'reset') { const mode = tf.form.mode; tf.form = { ...TF_BLANK(), mode }; tfKeep(); tfDrawForm(true); }
   else if (what === 'save') await tfAsk({ op: 'save', form: tf.form });
   else if (what === 'unpick') { tf.form.item = null; tfKeep(); tfDrawForm(); const el = $('tf-formbox').querySelector('[data-sug="item"]'); if (el) el.focus(); }
-  else if (what === 'addgroup') { tf.form.groups.push({ type: 'and', min: '', max: '', off: false, stats: [] }); tfKeep(); tfDrawForm(); const el = $('tf-formbox').querySelector(`[data-sug="stat:${tf.form.groups.length - 1}"]`); if (el) el.focus(); }
   else if (what === 'ungroup') { tf.form.groups.splice(Number(b.dataset.g), 1); if (tf.form.sort && tf.form.sort.by !== 'price') tf.form.sort = { by: 'price', dir: 'asc' }; tfKeep(); tfDrawForm(); }
   else if (what === 'unstat') { const g = tf.form.groups[Number(b.dataset.g)]; if (g) g.stats.splice(Number(b.dataset.s), 1); tfKeep(); tfDrawForm(); }
   else if (what === 'unbulk') { tf.form.bulk[b.dataset.side].splice(Number(b.dataset.i), 1); tfKeep(); tfDrawForm(); }
   else if (what === 'unfold') { tf.open = tf.open === id ? '' : id; tfDrawResults(); }
-  else if (what === 'load') {
-    const s = ((tf.view && tf.view.saved) || []).find((x) => x.name === b.dataset.name);
-    if (s) { tf.form = { ...TF_BLANK(), ...JSON.parse(JSON.stringify(s.form)) }; tfKeep(); tfDrawForm(true); }
-  } else if (what === 'unsave') { if (await askYes(`Forget the saved search “${b.dataset.name}”?`, { yes: 'Forget' })) tfAsk({ op: 'unsave', name: b.dataset.name }); }
-  else if (what === 'signout') { if (await askYes('Sign out of the trade site in this app? Searching and whispering keep working.', { yes: 'Sign out' })) tfAsk({ op: 'signout' }); }
+  else if (what === 'loadlive') { const l = tf.view.live.searches.find((x) => x.key === b.dataset.key); if (l && l.form) { tf.form = { ...TF_BLANK(), ...JSON.parse(JSON.stringify(l.form)) }; tfKeep(); tfDrawForm(true); } }
+  else if (what === 'live') { if (!tfSigned()) { tf.error = 'Live search needs the sign-in to the trade site, as on the website. Sign in at the bottom left.'; tf.drawn = ''; tfDrawResults(); return; } const r = await tfAsk({ op: 'live', form: tf.form }, 'live'); if (r) { tf.show = 'live'; tf.liveKey = ''; renderFind(); } }
+  else if (what === 'unlive' || what === 'relive') tfAsk({ op: what, key: b.dataset.key });
+  else if (what === 'clearfeed') tfAsk({ op: 'clearfeed' });
+  else if (what === 'signout') { if (await askYes('Sign out of the trade site in this app? Live searches stop; searching and whispering keep working.', { yes: 'Sign out' })) tfAsk({ op: 'signout' }); }
   else if (what === 'more') tfAsk({ op: 'more' }, 'more');
-  else if (['whisper', 'travel', 'want', 'open', 'signin'].includes(what)) tfAsk({ op: what, id });
+  else if (['whisper', 'travel'].includes(what)) tfAsk({ op: what, id, live: b.dataset.live || undefined });
+  else if (['want', 'open', 'signin'].includes(what)) tfAsk({ op: what, id });
 });
-// The sign-in window closed: the line under the form and the buttons follow.
+// News from the main process (a live listing, a connection, the sign-in window): ask again.
 if (api.onTradeFindNews) api.onTradeFindNews(() => { if (tf.asked) tfAsk({ op: 'get' }); });

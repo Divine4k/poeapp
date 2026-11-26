@@ -46,6 +46,7 @@ const ultimatum = require('./core/ultimatum');
 const { TradeClient, readListing, readOffer, readBulk, tokensOf, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
 const tradeFind = require('./core/tradeFind');
 const tradeFilters = require('./core/tradeFilters');
+const tradeLive = require('./core/tradeLive');
 const { JewelService } = require('./jewels');
 const { readJewelText, tradeQuery: jewelTradeQuery } = require('./core/jewels/timeless');
 const { dustValue } = require('./core/dust');
@@ -2377,6 +2378,7 @@ function tradeSignIn() {
   w.loadURL('https://www.pathofexile.com/login');
 }
 async function tradeSignOut() {
+  liveStopAll('signed out');
   if (tradeLoginWin) tradeLoginWin.close();
   await tradeSession().clearStorageData();
   tradeSite.in = false; tradeSite.name = ''; tradeSite.checked = true;
@@ -2417,6 +2419,7 @@ function findView() {
   return {
     league: config.league, busy: findBusy, saved: tradeFind.cleanSaved(config.tradeSearches), // older saved ones read into today's shape
     site: { in: tradeSite.in, name: tradeSite.name, window: !!tradeLoginWin },
+    live: liveView(),
     canType: !!hook && watch.running,
     last: l ? {
       mode: l.mode, form: l.form, name: l.name, total: l.total, at: l.at, url: l.url, unknown: l.unknown, left: Math.max(0, l.ids.length - l.shown.length), error: l.error || '',
@@ -2497,7 +2500,10 @@ async function findMore() {
 }
 async function findAction(a) {
   a = a || {};
-  const l = findLast, row = l && a.id ? l.shown.find((x) => x.id === String(a.id)) : null;
+  const l = findLast, inFeed = a.id && a.live ? liveFeed.find((x) => x.id === String(a.id)) : null;
+  const row = inFeed || (l && a.id ? l.shown.find((x) => x.id === String(a.id)) : null);
+  const asked = inFeed ? inFeed : null; // a live row keeps its own "whispered" time
+  const tokenOf = (r) => (inFeed ? ((lives.get(r.live) || { tokens: new Map() }).tokens.get(r.id) || {}) : (l.tokens.get(r.id.split('#')[0]) || {}));
   switch (a.op) {
     case 'get': if (!tradeSite.checked) await tradeSiteCheck(); break;
     case 'lists': { const cat = await findFilters(); return { groups: cat.groups, from: cat.from, statGroups: tradeFilters.STAT_GROUPS, sellers: tradeFilters.SELLERS, bulkSellers: tradeFilters.BULK_SELLERS, kinds: tradeFind.KIND_WORDS }; }
@@ -2518,15 +2524,15 @@ async function findAction(a) {
     case 'whisper': {
       const text = row ? String(row.whisper || '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 500) : '';
       if (!/^@\S+ \S/.test(text)) { diag.count('trade search: seller not whispered (no whisper line for that listing)'); throw new Error('That listing has no whisper line. Open the search on the trade site.'); }
-      if (await sendChat(text)) l.asked[row.id] = Date.now();
+      if (await sendChat(text)) { if (asked) asked.asked = Date.now(); else l.asked[row.id] = Date.now(); }
       break;
     }
     // One trip per click: the site's own "Travel to Hideout" for that listing.
     case 'travel': {
-      const token = row ? (l.tokens.get(row.id.split('#')[0]) || {}).hideout : '';
+      const token = row ? tokenOf(row).hideout : '';
       if (!tradeSite.in || !token) { diag.count(`trade search: no hideout trip (${tradeSite.in ? 'the listing has none' : 'not signed in'})`); throw new Error(tradeSite.in ? 'That listing cannot be travelled to. Search again: the site gives each listing a fresh pass.' : 'Sign in to the trade site first.'); }
       const timed = diag.start('price check: travel to a seller\'s hideout through the trade site');
-      try { await tradeClient.act(token); l.asked[row.id] = Date.now(); timed('the site accepted it'); if (trouble) trouble.event('tradeFind', { travel: row.name || row.base || row.seller }); } catch (e) { timed(`failed: ${e.message || e}`, false, true); throw e; }
+      try { await tradeClient.act(token); if (asked) asked.asked = Date.now(); else l.asked[row.id] = Date.now(); timed('the site accepted it'); if (trouble) trouble.event('tradeFind', { travel: row.name || row.base || row.seller }); } catch (e) { timed(`failed: ${e.message || e}`, false, true); throw e; }
       break;
     }
     case 'want': {
@@ -2547,11 +2553,145 @@ async function findAction(a) {
       break;
     }
     case 'unsave': applyConfig({ tradeSearches: (config.tradeSearches || []).filter((x) => x.name !== String(a.name || '')) }); break;
+    case 'live': await liveStart(a.form); break;
+    case 'unlive': liveStop(String(a.key || '')); break;
+    case 'relive': { const x = lives.get(String(a.key || '')); if (x && x.state === 'closed') { x.tries = 0; await liveOpen(x); } break; }
+    case 'clearfeed': liveFeed = []; break;
     case 'signin': tradeSignIn(); break;
     case 'signout': await tradeSignOut(); break;
     default: return null;
   }
   return findView();
+}
+
+// ---- live searches (the trade site's live search; signed in only) ----------------------------
+// As "Activate Live Search" on the website: a search made once, then the site names each new
+// listing that matches it the moment it is listed. The connections live in a hidden window that
+// shows a page of pathofexile.com in the signed-in session (src/live-preload.js), so they go out
+// as the site's own page would make them and the cookies stay inside Chromium. New listings are
+// read in tens, put in the feed (newest first), told with a sound on the Trade page and a toast
+// over the game. Nothing is ever bought or whispered by itself: every whisper and trip is a click.
+const lives = new Map(); // key -> { key, name, form, body, queryId, url, state, error, since, hits, tries, tokens }
+let liveFeed = [];       // new listings of every live search, newest first (tradeLive.MAX_FEED)
+let liveWin = null, liveReady = null;
+const liveQueue = new Map(); // key -> ids waiting to be read
+let liveTimer = null, liveReading = false;
+function liveWindow() {
+  if (liveWin && !liveWin.isDestroyed()) return liveReady;
+  liveWin = new BrowserWindow({ show: false, width: 200, height: 100, webPreferences: { partition: 'persist:tradesite', preload: path.join(__dirname, 'live-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  try { liveWin.setContentProtection(true); } catch (_) { /* not on this system */ }
+  liveWin.on('closed', () => { liveWin = null; liveReady = null; for (const l of lives.values()) if (l.state !== 'stopped') { l.state = 'closed'; l.error = 'the connection window closed'; } });
+  // A small page of the site, so the connections are the site's own: robots.txt is the lightest.
+  liveReady = liveWin.loadURL('https://www.pathofexile.com/robots.txt').then(() => true, (e) => { diag.count('trade search: live window did not load the site'); throw new Error(`The trade site could not be reached for live search (${e.message || e}).`); });
+  return liveReady;
+}
+function liveNews() { if (win && !win.isDestroyed()) win.webContents.send('trade-find-news'); }
+function liveSend(channel, data) { if (liveWin && !liveWin.isDestroyed()) liveWin.webContents.send(channel, data); }
+async function liveOpen(l) {
+  await liveWindow();
+  l.state = 'connecting'; l.error = '';
+  liveSend('live-open', { key: l.key, url: l.url });
+}
+async function liveStart(form) {
+  if (!tradeSite.checked) await tradeSiteCheck();
+  if (!tradeSite.in) { diag.count('trade search: live search not started, not signed in'); throw new Error('Live search needs the sign-in to the trade site (the website asks for it too). Sign in at the bottom of the form.'); }
+  if ([...lives.values()].filter((l) => l.state !== 'stopped').length >= tradeLive.MAX_LIVE) throw new Error(`At most ${tradeLive.MAX_LIVE} live searches run at once. Stop one first.`);
+  const cat = await findFilters();
+  const f = tradeFind.cleanForm(form, cat.groups);
+  if (f.mode === 'bulk') throw new Error('Live search is for listed items, as on the website.');
+  if (tradeFind.isEmpty(f, cat.groups)) throw new Error('Fill in what to watch for first.');
+  if (!config.league) throw new Error('Choose a league in Settings first.');
+  const timed = diag.start('price check: live search started');
+  try {
+    statIndex = statIndex || StatIndex.load();
+    const { body } = tradeFind.buildFind(f, statIndex, cat.groups);
+    await findTurn();
+    const r = await tradeClient.search(config.league, body);
+    if (!r.queryId) throw new Error('The trade site gave no search to watch.');
+    const key = `L${Date.now().toString(36)}`;
+    const l = { key, name: tradeFind.nameOf(f), form: f, body, queryId: r.queryId, url: tradeLive.liveUrl(config.league, r.queryId), state: 'connecting', error: '', since: Date.now(), hits: 0, tries: 0, tokens: new Map(), total: r.total };
+    lives.set(key, l);
+    await liveOpen(l);
+    timed(`"${l.name}": ${r.total} listed now, watching for new ones`);
+    if (trouble) trouble.event('tradeLive', { start: l.name, total: r.total });
+    return key;
+  } catch (e) { timed(`failed: ${e.message || e}`, false, true); throw e; }
+}
+function liveStop(key, why = 'stopped') {
+  const l = lives.get(key);
+  if (!l) return;
+  l.state = 'stopped'; l.error = why === 'stopped' ? '' : why;
+  liveSend('live-close', { key });
+  lives.delete(key);
+  liveFeed = liveFeed.filter((x) => x.live !== key);
+  if (trouble) trouble.event('tradeLive', { stop: l.name, hits: l.hits, why });
+}
+function liveStopAll(why) { for (const key of [...lives.keys()]) liveStop(key, why); liveSend('live-close-all'); }
+// What the hidden window tells about a connection.
+function liveEvent(e, m) {
+  if (!liveWin || e.sender !== liveWin.webContents || !m) return;
+  const l = lives.get(m.key);
+  if (!l) return;
+  if (m.type === 'open') { l.state = 'live'; l.tries = 0; diag.count('trade search: live search connected'); liveNews(); return; }
+  if (m.type === 'error') { l.error = String(m.message || 'connection error'); diag.count('trade search: live search connection error'); return; }
+  if (m.type === 'close') {
+    const words = tradeLive.closeWords(m.code, m.reason);
+    if (trouble) trouble.event('tradeLive', { closed: l.name, code: m.code, reason: m.reason || undefined });
+    // A dropped connection is tried again, three times, a little later each time; a refusal is not.
+    if (m.code !== 1000 && m.code !== 1008 && l.tries < 3 && tradeSite.in) {
+      l.tries += 1; l.state = 'connecting'; l.error = `${words}, trying again`;
+      setTimeout(() => { if (lives.get(l.key) === l) liveOpen(l).catch((err) => { l.state = 'closed'; l.error = err.message; liveNews(); }); }, 5000 * l.tries);
+    } else { l.state = 'closed'; l.error = words; }
+    liveNews(); return;
+  }
+  if (m.type === 'message') {
+    const msg = tradeLive.readMessage(m.data);
+    if (msg.auth === false) { l.state = 'closed'; l.error = 'the trade site did not take the sign-in'; diag.count('trade search: live search sign-in refused'); liveNews(); return; }
+    if (msg.error) { l.error = msg.error; liveNews(); }
+    if (msg.bad || msg.other) diag.count(`trade search: live message not understood (${msg.bad ? 'not JSON' : 'no listings in it'})`);
+    if (!msg.ids.length) return;
+    diag.count('trade search: live search named new listings');
+    const q = liveQueue.get(l.key) || [];
+    liveQueue.set(l.key, q.concat(msg.ids).slice(-50));
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(liveRead, 400); // listings named close together are read together
+  }
+}
+// The listings named, read ten at a time per search, each read waiting its turn with the site.
+async function liveRead() {
+  if (liveReading) return;
+  liveReading = true;
+  try {
+    while (liveQueue.size) {
+      const [key, ids] = liveQueue.entries().next().value;
+      const take = ids.slice(0, 10);
+      if (ids.length > 10) liveQueue.set(key, ids.slice(10)); else liveQueue.delete(key);
+      const l = lives.get(key);
+      if (!l) continue;
+      const timed = diag.start('price check: live search, new listings read');
+      try {
+        await findTurn();
+        const raws = await tradeClient.fetchItems(take, l.queryId);
+        const rows = raws.map((r) => { l.tokens.set(r.id, tokensOf(r)); return readListing(r, chaosOfPrice); });
+        const { feed, added } = tradeLive.addToFeed(liveFeed, key, rows);
+        liveFeed = feed; l.hits += added;
+        timed(`${added} new for "${l.name}"`);
+        if (added) {
+          const first = rows[0];
+          if (trouble) trouble.event('tradeLive', { found: l.name, added });
+          showToast({ title: `Live: ${l.name}`, detail: `${added === 1 ? '' : `${added} new · `}${first.name || first.base || 'item'}${first.price ? ` for ${Math.round(first.price.amount * 100) / 100} ${first.price.currency}` : ''}. On the Trade page, Search.` }, true);
+          liveNews();
+        }
+      } catch (e) { timed(`failed: ${e.message || e}`, false, true); l.error = `reading new listings failed: ${e.message || e}`; liveNews(); }
+    }
+  } finally { liveReading = false; }
+}
+function liveView() {
+  return {
+    searches: [...lives.values()].map((l) => ({ key: l.key, name: l.name, state: l.state, error: l.error, since: l.since, hits: l.hits, form: l.form })),
+    feed: liveFeed.slice(0, 100).map((x) => ({ ...x, travel: tradeSite.in && !!((lives.get(x.live) || { tokens: new Map() }).tokens.get(x.id) || {}).hideout })),
+    max: tradeLive.MAX_LIVE,
+  };
 }
 
 // ---- stash searches ------------------------------------------------------------
@@ -2774,7 +2914,7 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
-  win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); if (searchMenu) searchMenu.destroy(); });
+  win.on('closed', () => { win = null; if (liveWin && !liveWin.isDestroyed()) liveWin.destroy(); if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); if (searchMenu) searchMenu.destroy(); });
 }
 
 // ---- IPC -----------------------------------------------------------------------
@@ -2829,7 +2969,7 @@ function hoodSizes() {
   return {
     'Maps in this session': session.summary(prices).runs.length, 'Items named on this PC': learned.length, 'Shared item pictures': index.shared.length, 'Item pictures from poe.ninja': index.art.length,
     'Prices known': prices.size || status.prices.count, 'Items waiting for a name': backlog.items.length, 'Trade offers kept': book.offers.length, 'Finished trades kept': book.history.length, 'Missed offers kept': book.missed.length, 'Things on the buying list': book.wants.length,
-    'Results of the last trade search': findLast ? findLast.shown.length : 0, 'Bulk names of the trade site kept': findStaticList ? findStaticList.list.length : 0, 'Items of the trade site kept': findItemList ? findItemList.length : 0,
+    'Results of the last trade search': findLast ? findLast.shown.length : 0, 'Bulk names of the trade site kept': findStaticList ? findStaticList.list.length : 0, 'Live searches running': lives.size, 'New listings in the live feed': liveFeed.length, 'Items of the trade site kept': findItemList ? findItemList.length : 0,
     'Advanced price searches kept for a minute': advKept.size, 'Marks on advanced prices': Array.isArray(advMarks) ? advMarks.length : 0,
     'Slots in the last reading': lastInventory.cells.length, 'Saved sessions': archive ? archive.list().length : 0, 'Files waiting to be written': savesWaiting.size + savesRunning.size,
   };
@@ -3260,6 +3400,7 @@ function setupIpc() {
   handle('jewels', (_e, a) => jewelAction(a), kind);
   handle('ultimatum', (_e, a) => ultimatumAction(a), kind);
   handle('trade-find', (_e, a) => findAction(a), kind);
+  ipcMain.on('live-event', liveEvent);
   handle('items-list', () => itemDatabase());
   handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
   handle('price-categories', () => {

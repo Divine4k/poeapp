@@ -228,3 +228,37 @@ test('a listing\'s buttons of the site stay apart from what is shown', async () 
   assert.deepEqual(JSON.parse(sent[0][1].body), { token: 'h.h.h' });
   await assert.rejects(() => client.act(''), /no such button/);
 });
+
+// ---- live search ----
+const L = require('../src/core/tradeLive');
+
+test('a live search is watched at the site\'s own address', () => {
+  assert.equal(L.liveUrl('Keepers', 'abc123'), 'wss://www.pathofexile.com/api/trade/live/Keepers/abc123');
+  assert.equal(L.liveUrl('Hardcore Keepers', 'x'), 'wss://www.pathofexile.com/api/trade/live/Hardcore%20Keepers/x');
+});
+
+test('what the live connection says is read in both of the site\'s ways', () => {
+  assert.deepEqual(L.readMessage('{"new":["a1","b2"]}'), { ids: ['a1', 'b2'] });
+  assert.deepEqual(L.readMessage('{"result":"eyJhbGc.eyJpZCI.sig-_"}'), { ids: ['eyJhbGc.eyJpZCI.sig-_'] });
+  assert.deepEqual(L.readMessage('{"auth":true}'), { ids: [], auth: true });
+  assert.equal(L.readMessage('{"auth":false}').auth, false);
+  assert.deepEqual(L.readMessage('{"new":["ok", "bad id!", 5]}').ids, ['ok']);
+  assert.equal(L.readMessage('not json').bad, true);
+  assert.equal(L.readMessage('{"something":1}').other, true);
+  assert.equal(L.readMessage('{"error":{"message":"Rate limit"}}').error, 'Rate limit');
+});
+
+test('new listings go to the top of the feed, each once, and the feed stays short', () => {
+  let { feed, added } = L.addToFeed([], 'A', [{ id: '1' }, { id: '2' }], 100);
+  assert.deepEqual([feed.map((x) => x.id), added, feed[0].live, feed[0].at], [['1', '2'], 2, 'A', 100]);
+  ({ feed, added } = L.addToFeed(feed, 'B', [{ id: '2' }, { id: '3' }], 200));
+  assert.deepEqual([feed.map((x) => x.id), added], [['3', '1', '2'], 1]);
+  const many = Array.from({ length: L.MAX_FEED + 30 }, (_, i) => ({ id: `m${i}` }));
+  assert.equal(L.addToFeed(feed, 'C', many).feed.length, L.MAX_FEED);
+});
+
+test('why a live connection closed is said plainly', () => {
+  assert.equal(L.closeWords(1006, ''), 'the connection dropped');
+  assert.equal(L.closeWords(4000, 'Too many live searches'), 'Too many live searches');
+  assert.match(L.closeWords(1008, ''), /refused/);
+});

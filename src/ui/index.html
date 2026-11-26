@@ -186,11 +186,13 @@
     </div>
     <div class="tx-view tx-people tf" id="trade-find" hidden>
       <section class="panel tf-form" aria-label="What to search for">
-        <div id="tf-formbox"></div>
-        <div class="tf-saved" id="tf-saved"></div>
-        <div class="tf-site" id="tf-site"></div>
+        <div id="tf-formbox" class="tf-formbox"></div>
+        <div class="tf-foot" id="tf-foot"></div>
       </section>
-      <section class="panel td" id="tf-results" aria-label="What the trade site has" aria-live="polite"></section>
+      <section class="panel td tf-right" aria-label="What the trade site has">
+        <div class="tf-live" id="tf-live"></div>
+        <div class="tf-res" id="tf-results" aria-live="polite"></div>
+      </section>
     </div>
     <div class="tx-view panel tx-ledger" id="trade-ledger" hidden>
       <div class="tx-bar">

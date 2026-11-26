@@ -71,6 +71,8 @@ const LIMITS = [
   ['asked by the window: trade-find static', 4000],
   ['asked by the window: trade-find save', 4000],
   ['price check: the trade site\'s list of search filters', 4000],
+  ['asked by the window: trade-find live', 8000],
+  ['price check: live search', 8000],
   ['asked by the window: tracker', 4000],
   ['asked by the window: dev', 4000],
   ['asked by the window: account', 4000],
