@@ -21,7 +21,7 @@ const { readStack } = require('./core/inventory/digits');
 const { InventoryReader, SINGLE_ART_SCORE, learnable } = require('./core/inventory/reader');
 const { LootLedger } = require('./core/inventory/ledger');
 const { MAP_NAMES } = require('./core/inventory/maps');
-const { captureFrame, cursorInFrame, cursorOnDisplay } = require('./capture');
+const { captureFrame, cursorInFrame, cursorOnDisplay, judge: judgeCapture, warmUp: warmUpCapture, shutDown: stopCapture, watchOwnWindows } = require('./capture');
 const { ArtLoader } = require('./art');
 const { Updater } = require('./updater');
 const { webFetch } = require('./http');
@@ -778,6 +778,7 @@ async function readInventory(force) {
     // closes it.
     if (wasOpen && !status.inventory.open && checkPanel && checkPanel.visible) closeCheckPanel();
     if (!status.inventory.open) { diag.count('inventory: looked, and the inventory was not open'); stopFollow(); return; }
+    judgeCapture(frame, rect); // the quick way of capture is only trusted once its pictures match (capture.js)
     // A tooltip (or the mouse pointer) may cover some slots; the reader finds them, keeps what
     // it knew about those and reads the rest.
     const t1 = performance.now();
@@ -1254,9 +1255,19 @@ function setupTrouble() {
   diag.onTime = (name, ms, slow, detail) => { if (trouble.recording && ms >= 2 && !slow) trouble.event('timing', { name, ms: Math.round(ms * 10) / 10, detail: detail || undefined }); };
   diag.onSlow = (m) => { if (trouble.recording) trouble.event(m.kind === 'freeze' ? 'freeze' : 'slow', { name: m.name, ms: m.ms, limit: m.limit, detail: m.detail }); };
   // Admins and moderators see everyone's recordings: the reports repository is looked at once a minute.
-  const look = () => { if (trouble && canTrouble() && !trouble.current) trouble.syncRemote().catch(() => {}); };
-  setTimeout(look, 8000);
+  // Only while the app's window is the one in front: nobody sees new recordings otherwise, and it
+  // is four web requests each time. Coming back to the window looks at once if a minute has passed.
+  let lookedAt = 0;
+  const look = (anyway) => {
+    if (!trouble || !canTrouble() || trouble.current) return;
+    if (anyway !== true && !(win && !win.isDestroyed() && win.isFocused())) { diag.count('recordings: not looked for, the app was not in front'); return; }
+    if (Date.now() - lookedAt < 55 * 1000) return;
+    lookedAt = Date.now();
+    trouble.syncRemote().catch(() => {});
+  };
+  setTimeout(() => look(true), 8000);
   setInterval(look, 60 * 1000);
+  app.on('browser-window-focus', (_e, w) => { if (w === win) look(); });
   // What the app writes to its console goes into a recording too.
   for (const level of ['log', 'warn', 'error']) {
     const was = console[level].bind(console);
@@ -2653,6 +2664,10 @@ app.whenReady().then(() => {
   watch.on('change', () => { if (searchMenu && searchMenu.visible && !overlayAllowed({ known: watch.running, game: watch.gameInFront(), own: watch.ownInFront() })) closeSearchMenu('game left the front'); });
   watch.on('change', () => { if (watch.gameInFront() !== gameKeysOn) { registerHotkeys(); push(); } });
   watch.start();
+  // One of the app's windows over the game showing? Then captures go the old way, which leaves them out.
+  const onScreen = (w) => !!(w && !w.isDestroyed() && w.isVisible());
+  watchOwnWindows(() => [overlay, toast, checkPanel, searchMenu].some((o) => o && onScreen(o.win)) || onScreen(layoutWin));
+  setTimeout(warmUpCapture, 6000);
   const cached = PriceTable.fromJSON(readJson('prices.json', null));
   if (cached.size > 1) { setPrices(cached); syncArt(); }
 
@@ -2704,6 +2719,7 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (jewelService) jewelService.stop();
   watch.stop();
+  stopCapture();
   clearInterval(timedTimer);
   if (hook) { try { hook.uIOhook.stop(); } catch (_) { /* closing anyway */ } }
   writeJson('session.json', session.toJSON());
