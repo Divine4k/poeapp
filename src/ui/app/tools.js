@@ -55,10 +55,8 @@ function renderPriceCheck() {
   if (pc.error) { setHtml($('price-check'), `<p class="notice bad">${esc(pc.error)}</p>`); return; }
   // Gear has no poe.ninja price; the trade search below answers for it.
   if (!pc.found && state.tradeCheck) { setHtml($('price-check'), ''); return; }
-  setHtml($('price-check'), pc.found
-    ? `<p class="notice">${esc(pc.name)} ×${pc.qty} is worth ${fmtValue(pc.total)} (${fmtValue(pc.each)} each).
-          <button type="button" class="link" data-act="addLoot" data-name="${esc(pc.name)}" data-qty="${pc.qty}">Add to this map's loot</button></p>`
-    : `<p class="notice bad">No price found for ${esc(pc.name)}.</p>`);
+  // A price that was found is not repeated here: the result over the game already said it.
+  setHtml($('price-check'), pc.found ? '' : `<p class="notice bad">No price found for ${esc(pc.name)}.</p>`);
 }
 
 // ---- trade site search for the item last checked ---------------------------------------

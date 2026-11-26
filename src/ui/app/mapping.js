@@ -86,7 +86,7 @@ function updateLook() {
   if (up.error) return { cls: 'bad', label: up.available ? 'Install failed' : 'Check failed', sub: 'Click to try again', tip: up.error };
   if (up.available) return { cls: 'has-update', label: 'Install update', sub: up.latest.message, tip: `New: ${up.latest.message}. The app closes and opens again by itself.` };
   if (updPressed && up.checkedAt >= updPressed - 1000 && now - up.checkedAt < 5000) return { cls: 'done', label: 'Up to date', sub: 'You have the newest version', tip: '' };
-  return { cls: '', label: 'Check for updates', sub: up.checkedAt ? `Checked at ${clock(up.checkedAt)}` : '', tip: up.current ? `Installed: ${up.current.message}` : '' };
+  return { cls: '', label: 'Check for updates', sub: `Version ${state.version}`, tip: [up.checkedAt && `Checked at ${clock(up.checkedAt)}`, up.current && `Installed: ${up.current.message}`].filter(Boolean).join('\n') };
 }
 function renderUpdate() {
   const look = updateLook(), btn = $('btn-side-update'), up = state.status.update;
@@ -101,7 +101,7 @@ function renderUpdate() {
   btn.title = look.tip;
   const line = $('version-line');
   if (line) {
-    const cur = up.current ? `Installed version ${up.current.sha.slice(0, 7)} (${up.current.message}).` : 'Installed from a download, so the exact version is not known yet. Install the update once to fix that.';
+    const cur = up.current ? `Version ${state.version}, build ${up.current.sha.slice(0, 7)} (${up.current.message}).` : `Version ${state.version}. ` + 'Installed from a download, so the exact version is not known yet. Install the update once to fix that.';
     const chk = up.checkedAt ? ` Last checked at ${clock(up.checkedAt)}${up.available ? '' : ': up to date'}.` : '';
     line.textContent = cur + chk;
   }
@@ -290,7 +290,7 @@ function renderAttention() {
   box.hidden = !first;
   if (!first) { box.innerHTML = ''; return; }
   const more = all.length - 1 + Math.max(0, waiting);
-  const moreHtml = more ? `<button type="button" class="link more" data-tab="items" title="The rest are on the Items page">+${more} more</button>` : '';
+  const moreHtml = more ? `<button type="button" class="link more" data-tab="items" title="The rest are on the Items data page">+${more} more</button>` : '';
   if (first.u) {
     const u = first.u;
     box.innerHTML = `<span class="it sm"><img src="${esc(u.image)}" alt=""></span><b>What is this?</b><span class="what">stack of ${u.qty}, not counted until you say</span>

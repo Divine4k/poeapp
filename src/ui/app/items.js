@@ -80,7 +80,7 @@ function renderKnown() {
   const catHtml = `<button type="button" data-db-cat="" aria-pressed="${!dbCat}"><span class="noicon"></span><span class="cat-name">All categories</span><span class="n">${known.rows.length}</span></button>`
     + known.categories.map((c) => `<button type="button" data-db-cat="${esc(c.id)}" aria-pressed="${c.id === dbCat}">${c.icon ? `<img src="${esc(c.icon)}" alt="" loading="lazy">` : '<span class="noicon"></span>'}<span class="cat-name">${esc(c.label)}</span><span class="n">${c.count}</span></button>`).join('');
   if (cats.dataset.html !== catHtml) { cats.dataset.html = catHtml; cats.innerHTML = catHtml; }
-  $('db-title').textContent = 'Items';
+  $('db-title').textContent = 'Items data';
   // Whether what you name reaches everyone, said where you manage the items.
   const sh = state.status.shared || {}, share = $('db-share');
   const unsent = known.rows.reduce((n, r) => n + r.pictures.filter((p) => p.onlyHere && !p.auto).length, 0);

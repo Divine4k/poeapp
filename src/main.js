@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const zlib = require('zlib');
 const { app, BrowserWindow, ipcMain, globalShortcut, clipboard, dialog, screen, shell, safeStorage } = require('electron');
+const APP_VERSION = require('../package.json').version;
 
 // Settings and saved sessions always live in the same folder, however the app was started
 // (start.bat or the installed program), so nothing is lost when switching between them.
@@ -249,7 +250,7 @@ function buildState(full) {
   return {
     trouble: trouble ? { ...trouble.status, can: canTrouble(), admin: isAdmin(), rev: troubleRev } : null,
     config: { ...config, shareToken: undefined }, status, leagues, mapCheck, priceCheck, tradeCheck, notice,
-    packaged: app.isPackaged, // the installed program already has its shortcuts
+    version: APP_VERSION, packaged: app.isPackaged, // the installed program already has its shortcuts
     inventoryRev: lastInventory.rev,
     unknown: backlog.items.map((u) => ({ id: u.id, qty: u.qty, image: u.image, guesses: u.guesses, at: u.at, here: !!u.here })),
     // Slots of the latest reading where look-alikes could not be told apart, one per item.
@@ -995,7 +996,7 @@ function learnPrint(typed, print, image = null) {
   itemsRev++;
   writeJsonSoon('learned.json', () => learned);
   if (backlog.resolve(print)) saveBacklog();
-  if (!name) { say('That item is ignored from now on. Undo it on the Items page, under Items you named.'); return; }
+  if (!name) { say('That item is ignored from now on. Undo it on the Items data page, under Items you named.'); return; }
   say(entry ? `Saved: ${name}.` : `Saved as "${name}", but no price is known under that name, so it counts as 0c. Check the spelling if that is wrong.`, !entry);
   if (shared) {
     shared.queue(name, print);
@@ -1244,7 +1245,7 @@ function setupTrouble() {
       return { state: { ...buildState(true), logTrace, logStats: logTail ? logTail.stats : null }, inventory };
     },
     who: () => ({ name: cloud && cloud.signedIn ? cloud.name : '', role: cloud ? cloud.role : '' }),
-    version: require('../package.json').version, // the exact commit is filled in once the updater knows it
+    version: APP_VERSION, // the exact commit is filled in once the updater knows it
     cloud, fetchImpl: webFetch, say, diag,
     changed: () => { syncCaptureHiding(); troubleRev++; push(); },
   });

@@ -51,7 +51,7 @@
     // Open index.html?account=in&role=admin (or moderator) to see the Troubleshooting page and Developer tools.
     trouble: (() => { const q = new URLSearchParams(location.search); const role = q.get('account') === 'in' ? q.get('role') || '' : ''; return { recording: false, busy: '', startedAt: 0, video: false, maxMs: 480000, sending: null, can: !!role, admin: role === 'admin', rev: 1 }; })(),
     leagues: [{ id: 'Demo', name: 'Demo league' }], displays: [{ id: 1, label: 'Screen 1 (2560x1440)' }, { id: 2, label: 'Screen 2 (1920x1080)' }],
-    packaged: false,
+    version: '0.0.0', packaged: false,
     learned: ['Alchemy Shard', 'Chaos Orb', 'Legion Thread', '(ignored items)'], itemsRev: '1', doubts: [{ id: 'inv:3', name: 'Chaos Orb', qty: 8, image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==', options: ['Eldritch Chaos Orb'] }],
     notice: { text: 'Saved: Chaos Orb.', bad: false, at: now },
     unknown: [{ id: 1, qty: 3, at: now, here: true, guesses: [{ name: 'Vaal Orb', score: 78 }, { name: 'Orb of Fusing', score: 61 }, { name: 'Exalted Orb', score: 55 }], image: 'data:image/gif;base64,R0lGODlhAQABAIAAAGKv0AAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==' }],

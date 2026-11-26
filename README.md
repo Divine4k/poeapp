@@ -87,7 +87,7 @@ Gear has no poe.ninja price, so the app asks the official trade site instead, th
 
 ## Naming items and the shared list
 
-Items the app cannot recognise are kept on the Items page with their picture, also after they have left your inventory. Three ways to name one, fastest first:
+Items the app cannot recognise are kept on the Items data page with their picture, also after they have left your inventory. Three ways to name one, fastest first:
 
 1. Hover it in game and press F8. The item under your mouse gets the name the game reports.
 2. Click one of the suggested names next to its picture.
