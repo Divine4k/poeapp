@@ -49,6 +49,8 @@ const LIMITS = [
   ['inventory: reading', 60],
   ['inventory:', 250],
   ['price check: copy', 450],
+  ['price check: advanced plan', 30],
+  ['price check: advanced', 9000], // up to three searches, each waiting its turn with the trade site
   ['price check:', 2500],
   ['web:', 2000],
   ['file:', 40],

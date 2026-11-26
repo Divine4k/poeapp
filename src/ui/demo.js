@@ -60,6 +60,9 @@
       at: now, rev: 2, filtersRev: 0, inGame: false, ninja: null, state: 'done', error: '', total: 37, searchedAt: now - 4000, url: 'https://www.pathofexile.com/trade/search/Demo/abc123',
       icon: boots, iconW: 2, iconH: 2, compare: { label: '+# total maximum Life', mine: 88, lower: false },
       summary: { total: 37, low: 45, median: 80 },
+      // the advanced check's band, as it looks with its answer in (Settings, Price check)
+      adv: { state: 'done', kind: 'score', worth: true, source: 'score', step: 0, score: 231, fits: ['life builds'], parts: [{ as: 'movement speed', share: 45 }, { as: 'life', share: 38 }, { as: 'resistances', share: 16 }], unknown: [],
+        low: 60, typical: 75, high: 95, sure: 'fair', speed: 'fast', seen: 10, fresh: 7, total: 46, facts: ['46 like it listed', '7 of the 10 seen listed within a day'], why: '', url: 'https://www.pathofexile.com/trade/search/Demo/adv123', base: { chaos: 12, what: 'Two-Toned Boots, item level 86' }, said: '' },
       filters: {
         ok: true, rarity: 'Rare', title: 'Kraken Spark, Two-Toned Boots', name: '', offline: false, sockets: 'R-G-B B', itemLevel: 86,
         type: { value: 'Two-Toned Boots', enabled: false }, category: { id: 'armour.boots', label: 'Boots', enabled: true },

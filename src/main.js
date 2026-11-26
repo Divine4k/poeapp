@@ -48,6 +48,7 @@ const { JewelService } = require('./jewels');
 const { readJewelText, tradeQuery: jewelTradeQuery } = require('./core/jewels/timeless');
 const { dustValue } = require('./core/dust');
 const { vendorRecipe, verdict, craftRoom, withCrafts, typicalPrice, bulkPrice } = require('./core/worth');
+const advanced = require('./core/advanced');
 const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
@@ -1449,6 +1450,7 @@ function checkText(text, { count = true } = {}) {
   }
   const name = priceName(item);
   const entry = prices.get(name);
+  checkedText = { at: Date.now(), text }; // kept for a mark on the advanced price
   startTradeCheck(item, { always: !count });
   // A gem is worth what its level and quality make it, not what the cheapest of its name costs.
   const worth = (item.isGem && gemEntry(item)) || entry;
@@ -1532,11 +1534,12 @@ function pickChoice(name) {
   if (!tc || tc.kind !== 'pick') return;
   const ch = tc.choices.find((c) => c.name === name);
   Object.assign(tc, { state: 'idle', error: '', total: 0, listings: [], url: '', summary: null, searchedAt: 0, iconW: 0, iconH: 0 });
-  if (!ch) Object.assign(tc, { picked: '', filters: { ok: false, why: tc.why }, ninja: null, ninjaHigh: null, icon: null, dust: null });
+  if (!ch) Object.assign(tc, { picked: '', filters: { ok: false, why: tc.why }, ninja: null, ninjaHigh: null, icon: null, dust: null, adv: null });
   else {
     let filters;
     try { statIndex = statIndex || StatIndex.load(); filters = buildFilters({ ...tc.item, name: ch.name, unidentified: false }, statIndex); } catch (e) { filters = { ok: false, why: `The list of trade stats could not be read: ${e.message || e}` }; }
     Object.assign(tc, { picked: ch.name, filters, ninja: ch.chaos, ninjaHigh: ch.high || null, icon: ch.icon, dust: ch.dust });
+    advancedBegin(tc, { ...tc.item, name: ch.name, unidentified: false });
   }
   tc.filtersRev += 1; tc.rev = ++tradeRev;
   push();
@@ -1634,6 +1637,7 @@ function startTradeCheck(item, { always = false } = {}) {
   tradeCheck.vendor = vendorFor(item);
   tradeCheck.craft = filters.ok ? craftRoom(item, filters, statIndex) : null;
   tradeCheck.craftOn = []; // the crafts ticked: searched as if already on the item
+  advancedBegin(tradeCheck, item);
   if (filters.ok) showCheckPanel();
   // The price check key searches at once, with what is ticked from the start. The check key is
   // also pressed just to count loot, so there a unique (it has a poe.ninja price already) and
@@ -1681,7 +1685,10 @@ async function runTradeSearch(announce) {
   if (tradeCheck !== tc) return; // another item was checked meanwhile
   if (announce && !tc.inGame) showToast(tradeMessage(tc, prices.divine)); // the window in game says it itself
   push();
-  if (tc.state === 'done' && tc.craft) runCrafts(tc, tc.craftEdits ? applyEdits(tc.filters, tc.craftEdits) : tc.filters).catch(() => {});
+  const crafts = () => { if (tradeCheck === tc && tc.state === 'done' && tc.craft) runCrafts(tc, tc.craftEdits ? applyEdits(tc.filters, tc.craftEdits) : tc.filters).catch(() => {}); };
+  // With the advanced check on, its searches go first and what the bench crafts add after them:
+  // both take turns with the trade site.
+  if (tc.adv) runAdvanced(tc).catch(() => {}).then(crafts); else crafts();
 }
 
 // The price check window on top of the game. It opens beside the game panel the mouse is over.
@@ -1869,6 +1876,115 @@ function pauseKeys(on) {
   try { if (win && !win.isDestroyed()) win.webContents.setIgnoreMenuShortcuts(!!on); } catch (_) { /* the keys still come back below */ }
   if (on) { try { globalShortcut.unregisterAll(); } catch (_) { /* nothing was held */ } }
   else { registerHotkeys(); push(); }
+}
+
+// ---- the advanced price check (Settings, Price check; off by default) ----------------
+// The standard check above is left as it is and runs first. For the same item this adds: for a
+// rare, a search of its own by score (core/advanced: the value table, the anchored weighted
+// search, widened step by step); for anything searched, a range with how sure it is and how fast
+// such items sell; and what the base alone is worth. Its answer is `tradeCheck.adv`, drawn as a
+// band of its own in the window over the game. Nothing here runs while the setting is off.
+const advOn = () => !!(config.priceSearch || {}).advanced;
+const advPlans = new WeakMap(); // a check -> { plan, item }: what its search is built from
+const advKept = new Map();      // a search -> { at, found }: answers kept for a minute, as the trade client keeps the standard ones
+let checkedText = null;         // { at, text }: the item text last checked, kept with a mark
+let advMarks = null;            // the "Too low" / "Right" / "Too high" marks, newest last (advanced-marks.json)
+
+// A newly checked item: what the advanced check will do with it, worked out at once (no web).
+function advancedBegin(tc, item) {
+  tc.adv = null;
+  if (!advOn()) return;
+  if (!tc.filters || !tc.filters.ok || tc.filters.gem) { diag.count(`price check: advanced left out (${tc.filters && tc.filters.gem ? 'a gem' : 'nothing to search by'})`); return; }
+  let plan;
+  try { plan = diag.run('price check: advanced plan', () => advanced.plan(item, statIndex)); } catch (e) { plan = { ok: false, why: `it could not be worked out: ${e.message || e}` }; }
+  let base = null;
+  try { base = advanced.baseValue(item, (name) => prices.get(name)); } catch (_) { /* no base price: left out */ }
+  // a unique's price on poe.ninja over the last week: rising or falling by a tenth or more is said
+  const known = item.rarity === 'Unique' ? prices.get(priceName(item)) : null;
+  const trend = known && isFinite(known.change) && Math.abs(known.change) >= 10 ? Math.round(known.change) : null;
+  advPlans.set(tc, { plan, item });
+  const own = plan.ok && plan.kind === 'score';
+  tc.adv = {
+    state: 'waiting', run: 0, kind: plan.ok ? plan.kind : 'standard', worth: own ? plan.worth : null,
+    fits: own ? plan.fits : [], parts: own ? plan.parts : [], score: own ? plan.score : null, unknown: own ? plan.unknown : [],
+    base: base && base.chaos >= 3 ? base : null, trend, said: '',
+  };
+  if (trouble) trouble.event('advanced plan', { item: tc.filters.title, plan: advanced.describe(plan), base: base ? `${base.chaos}c for ${base.what}` : undefined });
+}
+
+// After each standard search of the item: the advanced answer for it. One search for most
+// rares (two requests: the search and ten of its results), up to three when few are listed
+// (advanced.run in core/advanced/run.js sends them, each waiting its turn with the trade site).
+async function runAdvanced(tc) {
+  const held = advPlans.get(tc);
+  if (!tc.adv || !held) return;
+  if (tc.state !== 'done') { diag.count('price check: advanced not run (the standard search did not finish)'); return; }
+  const run = tc.adv.run + 1;
+  tc.adv.run = run;
+  const stale = () => tradeCheck !== tc || tc.adv.run !== run || tc.state === 'searching';
+  const show = (patch) => { Object.assign(tc.adv, patch); tc.rev = ++tradeRev; push(); };
+  const read = (est, more) => { const { why: facts, ...rest } = est; return { state: 'done', why: '', facts, ...rest, ...more }; };
+  const said = (text) => { if (trouble) trouble.event('advanced check', { item: tc.filters.title, outcome: text }); };
+  const { plan } = held;
+  // Nothing of its own to search: the standard search's listings, read the honest way.
+  if (!plan.ok || !plan.steps) {
+    const est = advanced.estimate({ listings: tc.listings, total: tc.total });
+    show(est ? read(est, { source: 'standard', step: 0, url: '' }) : { state: 'none', source: 'standard', why: tc.total ? 'None of the listings has a price the app can read.' : 'Nothing like it is listed.' });
+    diag.count(`price check: advanced read from the standard search (${!plan.ok ? plan.why : 'nothing on it buyers search for'})`);
+    said(advanced.outcome(tc.adv));
+    return;
+  }
+  if (tc.adv.state !== 'done') show({ state: 'working' }); // a search again keeps the last answer on screen until the new one is there
+  const done = diag.start('price check: advanced search (waiting included)');
+  let failed = false, text = '';
+  try {
+    const r = await advanced.run({
+      plan, league: config.league, offline: !!tc.filters.offline, client: tradeClient, kept: advKept, sleep, stale,
+      read: (raw) => markBait(raw.map((l) => readListing(l, chaosOfPrice))),
+      count: (what) => diag.count(`price check: advanced ${what}`),
+      waited: (ms) => diag.time("price check: advanced, waiting for the trade site's pause", ms),
+    });
+    if (r.left) { text = 'left: another item or search came'; return; }
+    const url = r.queryId ? searchUrl(config.league, r.queryId) : '';
+    show(r.state === 'done' ? read(r.est, { source: plan.kind, step: r.step, url }) : { state: 'none', source: plan.kind, step: r.step, why: r.why, url });
+    text = `${advanced.outcome(tc.adv)}; ${r.sent} request${r.sent === 1 ? '' : 's'} sent`;
+    said(text);
+  } catch (e) {
+    const later = !!e.later || e.waitMs > 0; // the site asked for a pause: nothing is wrong
+    failed = !later;
+    show({ state: later ? 'later' : 'error', why: e.message || String(e) });
+    text = advanced.outcome(tc.adv);
+    said(text);
+  } finally {
+    done(text, false, failed);
+  }
+}
+
+// "Too low", "Right" or "Too high" on the advanced price: kept with the item and both prices, so
+// the value table can be tuned from them. Pressing the same one again takes it back. The marks
+// go along with a report sent from Under the hood (advanced-marks.json).
+function advancedSay(say) {
+  const tc = tradeCheck;
+  if (!tc || !tc.adv || !['low', 'right', 'high'].includes(say)) return;
+  if (!Array.isArray(advMarks)) { advMarks = readJson('advanced-marks.json', []); if (!Array.isArray(advMarks)) advMarks = []; }
+  const a = tc.adv, off = a.said === say;
+  advMarks = advMarks.filter((m) => m.checked !== tc.at);
+  const standard = tc.summary && tc.summary.typical !== undefined ? tc.summary.typical : null;
+  if (!off) {
+    advMarks.push({
+      at: Date.now(), checked: tc.at, say, league: config.league, app: APP_VERSION, item: tc.filters.title,
+      text: checkedText && Math.abs(checkedText.at - tc.at) < 5000 ? checkedText.text : '',
+      standard, standardFound: tc.total, ninja: tc.ninja,
+      advanced: { state: a.state, source: a.source, step: a.step, low: a.low, typical: a.typical, high: a.high, sure: a.sure, speed: a.speed, total: a.total, why: a.why || '', score: a.score, fits: a.fits },
+      plan: advanced.describe((advPlans.get(tc) || {}).plan), url: a.url || '',
+    });
+    if (advMarks.length > 300) advMarks = advMarks.slice(-300);
+  }
+  writeJsonSoon('advanced-marks.json', () => advMarks);
+  a.said = off ? '' : say;
+  if (trouble) trouble.event('advanced mark', { item: tc.filters.title, say: off ? 'taken back' : say, standard, advanced: advanced.outcome(a) });
+  tc.rev = ++tradeRev;
+  push();
 }
 
 // ---- trade offers ---------------------------------------------------------------
@@ -2251,12 +2367,15 @@ async function sendHood(last, note) {
     const title = last ? `Map Companion, under the hood: the run before this one (${snap.ended || 'it did not close normally: a crash, or the PC went off'})` : 'Map Companion, under the hood';
     const text = `${words ? `> Note from ${who}: ${words.replace(/\n/g, '\n> ')}\n\n` : ''}${hoodReport(snap, { title, version: last ? '' : (trouble && trouble.version) || '' })}`;
     const meta = { id, by: who, role: cloud.role || '', at: Date.now(), app: APP_VERSION, commit: (trouble && trouble.version) || '', last: !!last, note: words };
+    const marks = Array.isArray(advMarks) ? advMarks : readJson('advanced-marks.json', []) || [];
     const r = await uploadFolder({
       fetchImpl: webFetch, token: gh.token, repo: gh.repo, folder: `hood/${id}`,
       files: [
         { path: 'README.md', data: Buffer.from(text) },
         { path: 'meta.json', data: Buffer.from(JSON.stringify(meta, null, 1)) },
         { path: 'diagnostics.json.gz', data: zlib.gzipSync(Buffer.from(JSON.stringify(snap))) },
+        // the marks on advanced prices (Too low, Right, Too high), each with its item: what the value table is tuned from
+        ...(!last && marks.length ? [{ path: 'advanced-marks.json', data: Buffer.from(JSON.stringify(marks, null, 1)) }] : []),
       ],
       message: `Under the hood ${id}${words ? `: ${words.split('\n')[0].slice(0, 70)}` : ''}`,
     });
@@ -2282,6 +2401,7 @@ function hoodSizes() {
   return {
     'Maps in this session': session.summary(prices).runs.length, 'Items named on this PC': learned.length, 'Shared item pictures': index.shared.length, 'Item pictures from poe.ninja': index.art.length,
     'Prices known': prices.size || status.prices.count, 'Items waiting for a name': backlog.items.length, 'Trade offers kept': book.offers.length, 'Finished trades kept': book.history.length, 'Missed offers kept': book.missed.length, 'Things on the buying list': book.wants.length,
+    'Advanced price searches kept for a minute': advKept.size, 'Marks on advanced prices': Array.isArray(advMarks) ? advMarks.length : 0,
     'Slots in the last reading': lastInventory.cells.length, 'Saved sessions': archive ? archive.list().length : 0, 'Files waiting to be written': savesWaiting.size + savesRunning.size,
   };
 }
@@ -2659,6 +2779,9 @@ const actions = {
   // the socket button on the price check window: shown or hidden on every item picture there
   checkSockets: () => { applyConfig({ priceSearch: { sockets: config.priceSearch.sockets === false } }); push(); },
   tradeOpen: () => { if (tradeCheck && /^https:\/\/www\.pathofexile\.com\//.test(tradeCheck.url)) shell.openExternal(tradeCheck.url); },
+  // the advanced check's band: its own search on the trade site, and a mark on its price
+  advancedOpen: () => { const url = tradeCheck && tradeCheck.adv && tradeCheck.adv.url; if (url && /^https:\/\/www\.pathofexile\.com\//.test(url)) shell.openExternal(url); },
+  advancedSay: (a) => advancedSay(String(a.say || '')),
   readClipboard: () => checkText(clipboard.readText()),
   checkText: (a) => checkText(String(a.text || '')),
   refreshPrices: () => { refreshPrices(); },

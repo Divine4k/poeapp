@@ -133,7 +133,7 @@
     // one price, more or less: the average of the five cheapest real listings
     const typ = s.typical !== null && s.typical !== undefined ? s.typical : s.low;
     const how = s.from === 'ninja' ? `poe.ninja's price, from the game's currency exchange${s.low !== null ? ` (the cheapest real offer here is ${fmtValue(s.low)})` : ''}` : `The average of the five cheapest listings, bait left out (the cheapest is ${fmtValue(s.low)})`;
-    return `<div class="pc-price" title="${esc(how)}"><span class="pc-about-sign">~</span>${priceHtml(typ)}<small>${bulk ? 'each' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
+    return `<div class="pc-price" title="${esc(how)}"><span class="pc-about-sign">~</span>${priceHtml(typ)}<small>${bulk ? 'each' : d.adv ? 'standard' : ''}</small></div><p class="pc-sub">${sub}</p>${extrasHtml(d)}`;
   }
   // The verdict at a glance, beside the price.
   const VERDICT_TIPS = { top: 'Worth a divine or more', sell: 'Worth listing on the trade site', vendor: 'A vendor gives more than it sells for', low: 'Sells for less than a few chaos' };
@@ -289,7 +289,7 @@
   // What the window shows now, the bench crafts apart: while their prices come in one by one
   // (several updates within seconds of a search) only their box is drawn again, so the stats
   // above it stay as they are under the mouse and a quick run of clicks on them is not held up.
-  let shownMain = null, shownCraft = '';
+  let shownMain = null, shownCraft = '', shownAdv = '';
   function craftHtml(d) {
     const c = d.craft;
     if (!c) return '';
@@ -317,6 +317,58 @@
     return `<div class="pc-craft"><p><b>Possibly good bench crafts</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
   }
 
+  // The advanced price check's band, under the head (Settings, Price check): its own price as a
+  // range, how sure it is, how fast such items sell, who the item fits and what carries it, and
+  // a row to say how the price was. It keeps its four rows from the start, each one line high
+  // whatever it says, so the window does not change height when its answer comes a moment after
+  // the standard one.
+  const SURE = { sure: ['sure', 'Plenty of fresh listings like it, close in price'], fair: ['fairly sure', 'Take it as a good guide, not to the chaos'], guess: ['a guess', 'Too little to go by: look at the listings yourself'] };
+  const SPEED = { fast: ['sells fast', 'The cheapest listings like it are fresh: cheap ones get bought within a day'], steady: ['sells', 'The cheapest listings like it are a few days old'], slow: ['slow to sell', 'The cheapest listings like it have sat for days: expect to wait, or to go lower'] };
+  const STEP_WORDS = ['', 'search widened once', 'search widened twice'];
+  // The same range in the other currency, once it is worth half a divine: both are quoted in trade.
+  function otherUnit(lo, hi) {
+    const divine = data ? data.divine : 0;
+    if (!(divine > 0) || hi < divine / 2) return '';
+    const f = (x) => (x >= 10 ? Math.round(x).toLocaleString() : num(x));
+    return lo >= divine ? `${f(lo)}–${f(hi)}c` : `${f(lo / divine)}–${f(hi / divine)} div`;
+  }
+  const dots = (parts) => parts.filter(Boolean).join('<i>·</i>');
+  function advHtml(d) {
+    const a = d.adv;
+    if (!a) return '';
+    const done = a.state === 'done';
+    let top;
+    if (done) {
+      const other = otherUnit(a.low, a.high);
+      const sure = SURE[a.sure] || SURE.guess, speed = a.speed ? SPEED[a.speed] : null;
+      top = `<span class="pa-price" title="From what sells quickly to what a patient seller gets (typical: ${esc(fmtValue(a.typical))})">${priceHtml(a.low, a.high)}${other ? `<small>${esc(other)}</small>` : ''}</span>
+        <span class="pa-pill p-${esc(a.sure)}" title="${esc(sure[1])}">${sure[0]}</span>${speed ? `<span class="pa-pill p-speed" title="${esc(speed[1])}">${speed[0]}</span>` : ''}`;
+    } else if (a.state === 'working') top = '<span class="pa-wait">Working out its own price…</span>';
+    else if (a.state === 'waiting') top = `<span class="pa-wait">${d.state === 'searching' ? 'Comes after the standard search…' : d.state === 'error' ? 'Needs the standard search to go through first.' : 'Its own price comes with the search.'}</span>`;
+    else top = `<span class="pa-wait${a.state === 'error' ? ' pa-bad' : ''}" title="${esc(a.why || '')}">${esc(a.state === 'none' ? (a.why || 'Nothing to go by.') : a.state === 'later' ? (a.why || 'The trade site asked for a pause.') : `It could not be worked out: ${a.why || ''}`)}</span>`;
+    // who it fits and what carries it (known at once, before any search)
+    let fits;
+    if (a.kind === 'score' && a.worth) fits = dots([a.fits.length ? `Fits <b>${esc(a.fits.join(' and '))}</b>` : '', ...a.parts.map((p) => `<span title="How much of its worth comes from this">${esc(p.as)} <b>${p.share}%</b></span>`)]);
+    else if (a.kind === 'score') fits = `Nothing on it that buyers search for (<b>${a.score}</b> points): read from the standard search.`;
+    else if (a.kind === 'exact') fits = 'Searched with exactly its number of passives.';
+    else fits = 'No search of its own for this kind of item: read from the standard search.';
+    if (a.unknown && a.unknown.length) fits += `<i>·</i><span class="pa-warn" title="A top-tier modifier the advanced check gives no points for. If it is what the item is bought for, the price is too low: press Too low.">not weighed: ${esc(a.unknown.join('; '))}</span>`;
+    // what the price stands on
+    const how = dots([
+      ...(done ? (a.facts || []).map(esc) : []),
+      done && a.source !== 'standard' && a.step > 0 ? STEP_WORDS[a.step] || '' : '',
+      a.base ? `<span title="poe.ninja's price for ${esc(a.base.what)}, whatever is rolled on it">base alone ≈ <b>${esc(fmtValue(a.base.chaos))}</b></span>` : '',
+      a.trend ? `<span title="How poe.ninja's price for it moved over the last week">${a.trend > 0 ? 'up' : 'down'} <b>${Math.abs(a.trend)}%</b> this week</span>` : '',
+    ]);
+    // how was the price: what the advanced check is tuned from (kept with the item and both prices)
+    const say = (k, word, tip) => `<button type="button" class="${a.said === k ? 'on' : ''}" data-adv-say="${k}" aria-pressed="${a.said === k}" title="${esc(tip)}"${done ? '' : ' disabled'}>${word}</button>`;
+    const ask = `<div class="pa-ask"><span>${a.said ? 'Noted, thank you.' : 'How is this price?'}</span>${say('low', 'Too low', 'It is worth more than this')}${say('right', 'Right', 'This price is right')}${say('high', 'Too high', 'It is worth less than this')}
+      ${done && a.url ? '<button type="button" class="pc-link" data-adv-open title="The listings it was compared with, on the trade site">See them ↗</button>' : ''}</div>`;
+    const plain = (html) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return `<div class="pc-adv s-${esc(a.state)}"><div class="pa-top"><span class="pa-tag">Advanced</span>${top}</div>
+      <p class="pa-line" title="${esc(plain(fits))}">${fits}</p><p class="pa-line pa-how" title="${esc(plain(how))}">${how || '&nbsp;'}</p>${ask}</div>`;
+  }
+
   // rowsMoved: the ticks were changed by something other than a click on them (a ready-made search).
   // Timed for the Under the hood page: this window must stay quick while mods are clicked.
   function draw(rowsMoved) { return window.Hood ? window.Hood.run('drawing the price check window', () => drawNow(rowsMoved)) : drawNow(rowsMoved); }
@@ -337,11 +389,11 @@
     const stats = rows.map((r, i) => (r.chip ? '' : rowHtml(r, i))).join('');
     const busy = d.state === 'searching';
     const about = [f.gem ? `Gem · level ${f.level} · quality +${f.gemQuality}%` : '', !f.gem && f.type && f.name !== f.title ? f.type.value : (f.category ? f.category.label : ''), f.itemLevel ? `item level ${f.itemLevel}` : '', f.quality ? `quality +${f.quality}%` : '', f.catalyst ? `quality +${f.catalyst.value}% (${f.catalyst.kind.toLowerCase()})` : '', f.sockets ? `${Math.max(...f.sockets.split(' ').map((g) => g.split('-').length))} linked` : ''].filter(Boolean);
-    const craft = craftHtml(d);
-    const main = (chips, stats, c) => `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
+    const craft = craftHtml(d), adv = advHtml(d);
+    const main = (chips, stats, c, a) => `<div class="pc-head">${art(d.icon, f.sockets, ...headSize(d, f), 'big')}
         <div class="pc-meta"><h1>${esc(f.title)}</h1><p class="pc-about">${d.picked ? 'Unidentified · <button type="button" class="pc-link" data-pick="">Not this one?</button> · ' : ''}${esc(about.join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
         ${headTools(true)}</div>
-      ${tabs}
+      ${a}${tabs}
       <div class="pc-body"><div class="pc-chips">${chips}</div>
         ${stats ? `<ul class="pc-rows">${stats}</ul>` : ''}
         ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}${c}</div>
@@ -351,11 +403,17 @@
       ${footHtml(d)}`;
     // Compared without the stats: a click on one changes it in place (setOn, setNum), so what is
     // on screen already matches `rows`.
-    const rest = main('', stats ? ' ' : '', '');
-    const box = !rowsMoved && rest === shownMain && craft && shownCraft ? panel.querySelector('.pc-craft') : null;
-    if (box) { if (craft !== shownCraft) box.outerHTML = craft; }
-    else panel.innerHTML = main(chips, stats, craft);
-    shownMain = rest; shownCraft = craft;
+    const rest = main('', stats ? ' ' : '', '', '');
+    // The bench crafts and the advanced band each sit in a box of their own: when only they
+    // have news, only they are written again.
+    const same = !rowsMoved && rest === shownMain;
+    const box = same && craft && shownCraft ? panel.querySelector('.pc-craft') : null;
+    const band = same && adv && shownAdv ? panel.querySelector('.pc-adv') : null;
+    if ((box || band) && (craft === shownCraft || box) && (adv === shownAdv || band)) {
+      if (box && craft !== shownCraft) box.outerHTML = craft;
+      if (band && adv !== shownAdv) band.outerHTML = adv;
+    } else panel.innerHTML = main(chips, stats, craft, adv);
+    shownMain = rest; shownCraft = craft; shownAdv = adv;
     sendSize(fullHeight());
   }
   // The window is only told its height when it changed: each change moves a see-through window,
@@ -513,6 +571,9 @@
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
+    if (e.target.closest('[data-adv-open]')) { api.action({ type: 'advancedOpen' }); return; }
+    const mark = e.target.closest('[data-adv-say]');
+    if (mark) { api.action({ type: 'advancedSay', say: mark.dataset.advSay }); return; }
     if (e.target.closest('[data-sockets]')) {
       // shown or hidden at once here; the app keeps the choice for next time
       const on = panel.classList.toggle('no-sk') === false;
