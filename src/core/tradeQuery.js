@@ -50,12 +50,22 @@ const SMALL_GEM = /^(Awakened |(Empower|Enlighten|Enhance) Support$)/;
 // are its whole price. Level and quality are lines with a number, like a weapon's damage.
 // Levels below 20 and quality below 20% rarely change the price, so they start unticked (a level
 // 12 gem is then compared with the cheapest of its name), and are one click away.
+// 3.30: a corrupted item is either corrupted once or Twice Corrupted (the site's own filter,
+// misc_filters.twice_corrupted, as Awakened PoE Trade and Sidekick send it). The two are not the
+// same item to a buyer: one can still go on the Altar of Corruption or under the Lapidary Lens,
+// the other cannot and usually carries what the second corruption gave. So a once-corrupted item
+// is compared with once-corrupted ones and a twice-corrupted one with its like. sure: false leaves
+// "twice" unticked to begin with (gems: the site was reported not to mark them, Nov 2026).
+function twiceFlag(item, sure = true) {
+  if (!item.corrupted) return [];
+  return [{ key: 'twice', label: item.twiceCorrupted ? 'Twice corrupted' : 'Corrupted once only', value: !!item.twiceCorrupted, enabled: sure || !item.twiceCorrupted }];
+}
 function gemFilters(item) {
   const level = item.gemLevel || 1, quality = item.quality || 0;
   return {
     ok: true, gem: true, rarity: 'Gem', title: item.name, name: '',
     type: { value: item.name, enabled: true }, category: null,
-    flags: [{ key: 'corrupted', label: item.corrupted ? 'Corrupted' : 'Not corrupted', value: !!item.corrupted, enabled: true }],
+    flags: [{ key: 'corrupted', label: item.corrupted ? 'Corrupted' : 'Not corrupted', value: !!item.corrupted, enabled: true }, ...twiceFlag(item, false)],
     props: [
       { key: 'gem_level', label: 'Level', group: 'misc_filters', value: level, min: level, enabled: level >= 20 || (level > 1 && SMALL_GEM.test(item.name)) },
       { key: 'quality', label: 'Quality', unit: '%', group: 'misc_filters', value: quality, min: quality, enabled: quality >= 20 },
@@ -174,7 +184,7 @@ function buildFilters(item, index) {
   if (item.rarity === 'Rare' && item.name !== item.baseType) out.title = `${item.name}, ${item.baseType}`;
   if (item.rarity === 'Magic') out.title = item.name;
 
-  out.flags.push({ key: 'corrupted', label: item.corrupted ? 'Corrupted' : 'Not corrupted', value: !!item.corrupted, enabled: true });
+  out.flags.push({ key: 'corrupted', label: item.corrupted ? 'Corrupted' : 'Not corrupted', value: !!item.corrupted, enabled: true }, ...twiceFlag(item));
   if (item.links >= 5) out.flags.push({ key: 'links', label: `${item.links} linked sockets`, value: item.links, enabled: item.links === 6 });
   // Nothing rolls better above item level 86, so a higher one is searched as 86.
   const ilvl = Math.min(item.itemLevel || 0, 86);
@@ -336,6 +346,7 @@ function buildQuery(filters) {
   for (const f of filters.flags) {
     if (!f.enabled) continue;
     if (f.key === 'corrupted') misc.corrupted = { option: String(!!f.value) };
+    if (f.key === 'twice') misc.twice_corrupted = { option: String(!!f.value) };
     if (f.key === 'ilvl') misc.ilvl = { min: f.value };
     if (f.key === 'links') query.filters.socket_filters = { filters: { links: { min: f.value } } };
   }

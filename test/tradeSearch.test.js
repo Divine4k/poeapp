@@ -271,7 +271,7 @@ test('search request: what is ticked becomes the trade site query', () => {
 
   const hh = buildQuery(buildFilters(parseItemText(HEADHUNTER), index));
   assert.deepEqual([hh.query.name, hh.query.type, hh.query.filters.type_filters], ['Headhunter', 'Leather Belt', undefined]);
-  assert.deepEqual(hh.query.filters.misc_filters, { filters: { corrupted: { option: 'true' } } });
+  assert.deepEqual(hh.query.filters.misc_filters, { filters: { corrupted: { option: 'true' }, twice_corrupted: { option: 'false' } } });
 
   // A stat stored the other way round on the trade site has its range turned over.
   const turned = buildQuery({ ok: true, rarity: 'Rare', flags: [], props: [], offline: false, stats: [{ key: 'a', ids: ['explicit.x'], enabled: true, min: null, max: 10, inverted: true }, { key: 'b', ids: ['explicit.y', 'explicit.z'], enabled: true, min: 5, max: null }] });
@@ -508,7 +508,7 @@ test('item text: the game\'s fuller text, with a line above each modifier and ro
   assert.deepEqual([taken.ids, taken.min, taken.max, taken.negated], [['implicit.stat_3743301799'], null, -4, true]);
   const q = buildQuery(applyEdits(f, { stats: Object.fromEntries(f.stats.map((x) => [x.key, { enabled: x === taken }])) }));
   assert.deepEqual(q.query.stats[0].filters, [{ id: 'implicit.stat_3743301799', value: { max: -4 } }]);
-  assert.deepEqual([q.query.name, q.query.filters.misc_filters], ['Cloak of Flame', { filters: { corrupted: { option: 'true' } } }]);
+  assert.deepEqual([q.query.name, q.query.filters.misc_filters], ['Cloak of Flame', { filters: { corrupted: { option: 'true' }, twice_corrupted: { option: 'false' } } }]);
 
   const ring = parseItemText(RING_FULL);
   assert.deepEqual(ring.modLines.map((l) => [l.text, l.type]), [
@@ -527,8 +527,25 @@ test('item text: the game\'s fuller text, with a line above each modifier and ro
   const fromShort = buildFilters(parseItemText(short), index).stats;
   assert.deepEqual(fromShort.map((s) => [s.text, s.kind, s.enabled]), cloak.modLines.filter((l) => l.section < 6).map((l) => [l.text, l.type, false]));
   // A map's mods are read without the extra lines too.
-  const map = parseItemText('Item Class: Maps\nRarity: Rare\nX\nStrand Map\n--------\nMap Tier: 16\n--------\nItem Level: 83\n--------\n{ Prefix Modifier "Mirrored" (Tier: 1) }\nMonsters reflect 18(13-18)% of Physical Damage\n');
-  assert.deepEqual(map.mods, ['Monsters reflect 18% of Physical Damage']);
+  const map = parseItemText('Item Class: Maps\nRarity: Rare\nX\nStrand Map\n--------\nMap Tier: 16\n--------\nItem Level: 83\n--------\n{ Prefix Modifier "Punishing" (Tier: 1) }\nRare Monsters have Physical Thorns reflecting 800(400-800) Physical Damage\n{ Rare-only Suffix Modifier "of the Mirage" }\nArea contains a Mirage\n--------\nTwice Corrupted\n');
+  assert.deepEqual(map.mods, ['Rare Monsters have Physical Thorns reflecting 800 Physical Damage', 'Area contains a Mirage']);
+  assert.deepEqual([map.corrupted, map.twiceCorrupted], [true, true]);
+  assert.equal(parseItemText('Item Class: Maps\nRarity: Rare\nX\nStrand Map\n--------\nMap Tier: 16\nAtlas Drops: +92% (augmented)\n--------\nItem Level: 83\n').quantity, 92);
+});
+
+test('3.30: a Twice Corrupted item is corrupted, and is compared with its like', () => {
+  const once = buildFilters(parseItemText(HEADHUNTER), index);
+  assert.deepEqual(once.flags.filter((f) => f.key === 'twice').map((f) => [f.label, f.value, f.enabled]), [['Corrupted once only', false, true]]);
+  const item = parseItemText(HEADHUNTER.replace(/^Corrupted$/m, 'Twice Corrupted'));
+  assert.deepEqual([item.corrupted, item.twiceCorrupted], [true, true]);
+  assert.ok(!item.modLines.some((l) => /Corrupted/.test(l.text)));
+  const f = buildFilters(item, index);
+  assert.deepEqual(f.flags.filter((x) => x.key === 'twice').map((x) => [x.label, x.value, x.enabled]), [['Twice corrupted', true, true]]);
+  assert.deepEqual(buildQuery(f).query.filters.misc_filters, { filters: { corrupted: { option: 'true' }, twice_corrupted: { option: 'true' } } });
+  // unticked in the window: any corrupted one
+  assert.deepEqual(buildQuery(applyEdits(f, { flags: { twice: false } })).query.filters.misc_filters, { filters: { corrupted: { option: 'true' } } });
+  // an item that is not corrupted has no such choice
+  assert.deepEqual(buildFilters(parseItemText(HEADHUNTER.replace(/^Corrupted$/m, 'Mirrored')), index).flags.filter((x) => x.key === 'twice'), []);
 });
 
 const FLASK_FULL = `Item Class: Utility Flasks

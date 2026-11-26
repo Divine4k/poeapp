@@ -31,8 +31,8 @@ test('check key message: maps, nothing under the mouse, and stale results', () =
   const at = 5000;
   const safe = checkMessage({ mapCheck: { at, name: 'Strand Map', tier: 16, dangerCount: 0, mods: [{ mod: 'Area contains many Totems', dangerous: false }] } }, 4000);
   assert.deepEqual(safe, { title: 'Strand Map (T16): safe to run', detail: '', bad: false });
-  const danger = checkMessage({ mapCheck: { at, name: 'Strand Map', tier: 16, dangerCount: 1, mods: [{ mod: 'Monsters reflect 18% of Physical Damage', dangerous: true }, { mod: 'x', dangerous: false }] } }, 4000);
-  assert.deepEqual(danger, { title: 'Strand Map (T16): do not run: 1 dangerous mod', detail: 'Monsters reflect 18% of Physical Damage', bad: true });
+  const danger = checkMessage({ mapCheck: { at, name: 'Strand Map', tier: 16, dangerCount: 1, mods: [{ mod: 'Rare Monsters have Physical Thorns reflecting 800 Physical Damage', dangerous: true }, { mod: 'x', dangerous: false }] } }, 4000);
+  assert.deepEqual(danger, { title: 'Strand Map (T16): do not run: 1 dangerous mod', detail: 'Rare Monsters have Physical Thorns reflecting 800 Physical Damage', bad: true });
   assert.equal(checkMessage({ mapCheck: { at, name: 'Strand Map', unidentified: true, mods: [] } }, 4000).bad, true);
   const none = checkMessage({ notice: { at, text: 'No item under the mouse in game. Hover an item and press the key again.', bad: true }, priceCheck: { at: 100, name: 'Old', qty: 1, found: true, each: 1, total: 1 } }, 4000);
   assert.deepEqual(none, { title: 'No item under the mouse in game', detail: 'Hover an item and press the key again.', bad: true });

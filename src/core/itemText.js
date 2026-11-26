@@ -24,7 +24,8 @@ function parseItemText(text) {
   item.isMap = /^Map Tier: /m.test(text) || /Maps?$/.test(item.itemClass);
   if (item.isMap) {
     item.mapTier = num(/^Map Tier: (\d+)/m);
-    item.quantity = num(/^Item Quantity: \+(\d+)%/m);
+    // 3.30: maps show Atlas Drops where they showed Item Quantity (older maps still say Quantity).
+    item.quantity = num(/^(?:Atlas Drops|Item Quantity): \+(\d+)%/m);
     item.rarityBonus = num(/^Item Rarity: \+(\d+)%/m);
     item.packSize = num(/^Monster Pack Size: \+(\d+)%/m);
     // Mods sit in the sections after "Item Level", before the usage hint.
@@ -33,12 +34,15 @@ function parseItemText(text) {
       const s = sections[i];
       if (s.some((l) => /^Travel to this Map/i.test(l))) break;
       for (const l of s) {
-        if (/^(Corrupted|Unidentified|Mirrored|Split|Note: )/.test(l) || MOD_HEADER.test(l) || /^\(.*\)$/.test(l)) continue;
+        if (/^(Corrupted|Twice Corrupted|Unidentified|Mirrored|Split|Note: )/.test(l) || MOD_HEADER.test(l) || /^\(.*\)$/.test(l)) continue;
         item.mods.push(plainStat(l).replace(/ \((implicit|enchant|fractured|crafted)\)$/, ''));
       }
     }
   }
-  item.corrupted = /^Corrupted$/m.test(text);
+  // 3.30: an item corrupted a second time (Altar of Corruption, Lapidary Lens, Djinn-Touched Vaal
+  // Orb) says "Twice Corrupted" in place of "Corrupted".
+  item.twiceCorrupted = /^Twice Corrupted$/m.test(text);
+  item.corrupted = item.twiceCorrupted || /^Corrupted$/m.test(text);
   item.unidentified = /^Unidentified$/m.test(text);
   if (!item.isMap) readGear(item, text, sections);
   item.isGem = /Gems$/.test(item.itemClass);
@@ -61,7 +65,7 @@ function readGem(item, text, sections) {
 // What a line after a modifier says about where it came from: "(implicit)", "(crafted)"...
 const MOD_KIND = / \((implicit|enchant|fractured|crafted|scourge|crucible)\)$/;
 const INFLUENCE = /^(Shaper|Elder|Crusader|Redeemer|Hunter|Warlord) Item$/;
-const NOT_A_MOD = /^(Corrupted|Unidentified|Mirrored|Split|Synthesised Item|Fractured Item|Searing Exarch Item|Eater of Worlds Item|Unmodifiable|Note: .*)$/;
+const NOT_A_MOD = /^(Corrupted|Twice Corrupted|Unidentified|Mirrored|Split|Synthesised Item|Fractured Item|Searing Exarch Item|Eater of Worlds Item|Unmodifiable|Note: .*)$/;
 // The game's own hints at the end of an item's text.
 const HINT = /^(Right click |Place into |Shift click |Can be |Travel to |Use Intelligence |This is a Support Gem|Take this item |Give this |Relics can )/;
 

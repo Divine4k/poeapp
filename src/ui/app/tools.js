@@ -17,7 +17,7 @@ function renderMapCheck() {
         ${anyRule ? '' : '<p class="notice">No mods are ticked yet, so every map counts as safe. Tick the ones your build cannot run.</p>'}
         <button type="button" data-act="readClipboard">Check the copied item now</button>`;
   } else {
-    const stats = [mc.tier ? `Tier ${mc.tier}` : '', mc.quantity != null ? `${mc.quantity}% quantity` : '', mc.packSize != null ? `${mc.packSize}% pack size` : '', mc.corrupted ? 'corrupted' : '']
+    const stats = [mc.tier ? `Tier ${mc.tier}` : '', mc.quantity != null ? `${mc.quantity}% atlas drops` : '', mc.packSize != null ? `${mc.packSize}% pack size` : '', mc.corrupted ? 'corrupted' : '']
       .filter(Boolean).join(', ');
     const verdict = mc.unidentified ? '<div class="verdict danger">Unidentified: mods are hidden</div>'
       : mc.dangerCount ? `<div class="verdict danger">Do not run: ${mc.dangerCount} dangerous ${mc.dangerCount === 1 ? 'mod' : 'mods'}</div>`

@@ -6,7 +6,7 @@ const { normalize } = require('../src/core/fuzzy');
 const { parseLine, classifyArea } = require('../src/core/clientLog');
 const { parseExchange, parseItemOverview, PriceTable } = require('../src/core/prices');
 const { parseItemText, priceName } = require('../src/core/itemText');
-const { DEFAULT_RULES, checkMods } = require('../src/core/mapMods');
+const { DEFAULT_RULES, checkMods, mergeRules } = require('../src/core/mapMods');
 const { Session } = require('../src/core/session');
 
 test('normalize: case, punctuation and spacing', () => {
@@ -84,7 +84,7 @@ Quality: +20% (augmented)
 --------
 Item Level: 84
 --------
-Monsters reflect 18% of Physical Damage
+Rare Monsters have Physical Thorns reflecting 800 Physical Damage
 Players cannot Regenerate Life, Mana or Energy Shield
 Area contains many Totems
 --------
@@ -111,7 +111,7 @@ test('item text: maps and stackables', () => {
 });
 
 test('map mods: only enabled rules warn', () => {
-  const rules = DEFAULT_RULES.map((r) => ({ ...r, enabled: r.id === 'reflect-phys' }));
+  const rules = DEFAULT_RULES.map((r) => ({ ...r, enabled: r.id === 'thorns-phys' }));
   const res = checkMods(parseItemText(MAP_TEXT).mods, rules);
   assert.deepEqual(res.map((r) => r.dangerous), [true, false, false]);
   const all = checkMods(parseItemText(MAP_TEXT).mods, DEFAULT_RULES.map((r) => ({ ...r, enabled: true })));
@@ -320,4 +320,21 @@ test('game log check: area lines are passed on, chat never is', () => {
   assert.equal(isAreaTalk('2026/11/24 11:00:02 1 a [INFO Client 1] #Bob: I entered the area "MapX"'), false);
   assert.equal(isAreaTalk('2026/11/24 11:00:02 1 a [INFO Client 1] @From Bob: Generating level 83 area'), false);
   assert.equal(isAreaTalk('2026/11/24 11:00:03 1 a [INFO Client 1] : Trade accepted.'), false);
+});
+
+test('map check: saved ticks are kept, and a tick on a mod that left the game moves to what replaced it', () => {
+  const rules = mergeRules([
+    { id: 'reflect-phys', label: 'Physical reflect', pattern: 'reflect \\d+% of Physical', enabled: true },
+    { id: 'reflect-ele', label: 'Elemental reflect', pattern: 'reflect \\d+% of Elemental', enabled: false },
+    { id: 'no-leech', label: 'Cannot leech', pattern: 'Cannot Leech', enabled: true },
+    { id: 'mine', label: 'My own', pattern: 'Totems', enabled: true },
+  ]);
+  assert.deepEqual(rules.filter((r) => r.enabled).map((r) => r.id), ['thorns-phys', 'no-leech', 'mine']);
+  assert.ok(!rules.some((r) => /^reflect/.test(r.id)));
+  // the wording is today's, not the saved one
+  const hit = (mod) => checkMods([mod], rules)[0].labels;
+  assert.deepEqual(hit('Monsters cannot be Leeched from'), ['Cannot leech']);
+  assert.deepEqual(hit('Rare Monsters have Physical Thorns reflecting 800 Physical Damage'), ['Physical thorns (was reflect)']);
+  assert.deepEqual(hit('Rare Monsters have Elemental Thorns reflecting 1500 Elemental Damage'), []);
+  assert.deepEqual(mergeRules(undefined).map((r) => r.id), DEFAULT_RULES.map((r) => r.id));
 });

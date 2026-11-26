@@ -28,7 +28,7 @@
   const totals = { maps: 4, deaths: 1, lootValue: 0, costValue: 0, net: 0, mapMs: 0 };
   for (const r of runs) { totals.lootValue += r.lootValue; totals.costValue += r.costValue; totals.net += r.net; totals.mapMs += r.durationMs; }
   totals.avgMapMs = totals.mapMs / 4; totals.netPerHour = totals.net / 0.4; totals.elapsedMs = 24 * 60000; totals.playMs = 24 * 60000;
-  const rules = [['reflect-phys', 'Physical reflect', true], ['reflect-ele', 'Elemental reflect'], ['no-regen', 'No life or mana regeneration', true], ['no-leech', 'Cannot leech'], ['less-recovery', 'Less recovery rate'],
+  const rules = [['thorns-phys', 'Physical thorns (was reflect)', true], ['thorns-ele', 'Elemental thorns (was reflect)'], ['no-regen', 'No life or mana regeneration', true], ['no-leech', 'Cannot leech'], ['less-recovery', 'Less recovery rate'],
     ['max-res', 'Reduced maximum resistances'], ['curses', 'Players are cursed'], ['avoid-ailments', 'Monsters avoid ailments'], ['avoid-poison-bleed', 'Monsters avoid poison and bleeding'], ['less-defence', 'Less armour or block'],
     ['less-accuracy', 'Less accuracy'], ['less-aoe', 'Less area of effect'], ['aura-effect', 'Reduced aura effect'], ['flask-charges', 'Reduced flask charges'], ['steal-charges', 'Monsters steal charges'], ['no-slow', 'Monsters cannot be slowed or stunned']]
     .map(([id, label, enabled]) => ({ id, label, enabled: !!enabled, pattern: '' }));
@@ -37,7 +37,7 @@
       league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', advancedCheck: 'Ctrl+Alt+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
       inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
       stashSearches: [{ name: 'Currency', text: 'currency' }, { name: 'Maps 16', text: '"m q.*1[6-9]"' }, { name: 'Gem regex', text: '"(anoma|diverg|phant).*(blood|enfeeb|frenz|lightning|tempes)"' }, { name: '', text: 'unique' }],
-      regex: { map: { avoid: ['reflect-phys', 'no-regen', 'curse-tc'], wantMods: ['action-speed', 'extra-light'], yields: { pack: 25, rarity: 60, currency: 70 }, quality: { currency: 20 } }, vendor: { rgb: true, links: 4 } },
+      regex: { map: { avoid: ['thorns-phys', 'no-regen', 'curse-tc'], wantMods: ['action-speed', 'extra-light'], yields: { pack: 25, rarity: 60, currency: 70 }, quality: { currency: 20 } }, vendor: { rgb: true, links: 4 } },
       loadout: [{ name: 'Ambush Scarab of Containment', qty: 2, chaos: null }, { name: 'Map', qty: 1, chaos: 4 }],
     },
     status: {
@@ -95,7 +95,7 @@
     mapCheck: {
       at: now, name: 'Strand Map', tier: 16, quantity: 92, packSize: 33, corrupted: false, unidentified: false, dangerCount: 1,
       mods: [
-        { mod: 'Monsters reflect 18% of Physical Damage', dangerous: true, labels: ['Physical reflect'] },
+        { mod: 'Rare Monsters have Physical Thorns reflecting 800 Physical Damage', dangerous: true, labels: ['Physical thorns (was reflect)'] },
         { mod: 'Area contains many Totems', dangerous: false, labels: [] },
         { mod: 'Monsters have 30% increased Area of Effect', dangerous: false, labels: [] },
         { mod: '+40% Monster Fire Resistance', dangerous: false, labels: [] },

@@ -3,6 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert');
 const R = require('../src/core/regex');
 const { DEFAULT_RULES } = require('../src/core/mapMods');
+// Every map's name (Awakened PoE Trade's item list, 3.30): no mod's piece may find a map by its name.
+const MAP_NAMES = require('./fixtures/map-names.json');
 
 const num = (n) => new RegExp(`^${R.atLeast(n)}$`);
 
@@ -20,9 +22,10 @@ test('every map mod piece finds its mod and nothing else on a map', () => {
   for (const m of R.MAP_MODS) {
     assert.ok(!ids.has(m.id), `id ${m.id} twice`); ids.add(m.id);
     const re = new RegExp(m.tok, 'i');
-    assert.ok(re.test(m.text), `${m.id}: "${m.tok}" should find "${m.text}"`);
-    for (const o of R.MAP_MODS) if (o !== m) assert.ok(!re.test(o.text), `${m.id}: "${m.tok}" also finds "${o.text}"`);
+    for (const t of [m.text, ...(m.also || [])]) assert.ok(re.test(t), `${m.id}: "${m.tok}" should find "${t}"`);
+    for (const o of R.MAP_MODS) if (o !== m) for (const t of [o.text, ...(o.also || [])]) assert.ok(!re.test(t), `${m.id}: "${m.tok}" also finds "${t}"`);
     for (const line of R.MAP_LINES) assert.ok(!re.test(line), `${m.id}: "${m.tok}" also finds "${line}"`);
+    for (const name of MAP_NAMES) assert.ok(!re.test(`${name} Map`), `${m.id}: "${m.tok}" also finds the map "${name}"`);
   }
   // the numbers and kinds of quality find only their own line, and no mod finds them
   const numLines = [...R.YIELDS, ...R.QUALITY];
@@ -48,10 +51,10 @@ const MAP = (mods, extra = [], rarity = 'Rare') => ['Item Class: Maps', `Rarity:
 const on = (o, text) => R.testSearch(R.mapSearch(R.cleanBuilders({ map: o }).map).text, text).ok;
 
 test('the map search: mods not wanted, mods wanted, any or all', () => {
-  const o = { avoid: ['reflect-phys', 'no-regen'] };
-  assert.equal(R.mapSearch(o).text, '"!f phys|regen"');
+  const o = { avoid: ['thorns-phys', 'no-regen'] };
+  assert.equal(R.mapSearch(o).text, '"!ve p|regen"');
   assert.equal(on(o, MAP(['Monsters have 30% more Life'])), true);
-  assert.equal(on(o, MAP(['Monsters reflect 18% of Physical Damage'])), false);
+  assert.equal(on(o, MAP(['Rare Monsters have Physical Thorns reflecting 800 Physical Damage'])), false);
   assert.equal(on(o, MAP(['Players cannot Regenerate Life, Mana or Energy Shield'])), false);
   const want = { wantMods: ['blind', 'maim'], wantAll: false, wantMatch: 'any' };
   assert.equal(R.mapSearch(want).text, '"blind|maim"');
@@ -93,8 +96,8 @@ test('the map search: numbers, quality, rarity, corrupted, unidentified, map typ
 
 test('the number on a mod is the characters it adds', () => {
   assert.equal(R.modCost({}, 'no-regen', 'avoid'), '"!regen"'.length);
-  assert.equal(R.modCost({ avoid: ['reflect-phys'] }, 'no-regen', 'avoid'), '|regen'.length);
-  assert.equal(R.modCost({ avoid: ['reflect-phys', 'no-regen'] }, 'no-regen', 'avoid'), '|regen'.length); // picked: what it takes away
+  assert.equal(R.modCost({ avoid: ['thorns-phys'] }, 'no-regen', 'avoid'), '|regen'.length);
+  assert.equal(R.modCost({ avoid: ['thorns-phys', 'no-regen'] }, 'no-regen', 'avoid'), '|regen'.length); // picked: what it takes away
   assert.equal(R.modCost({}, 'blind', 'wantMods'), '"blind"'.length);
 });
 
@@ -140,12 +143,12 @@ test('the tester reads a search as the stash box does', () => {
 });
 
 test('a pasted search is read back into the builder, and what is not known is kept', () => {
-  const o = { avoid: ['reflect-phys', 'no-regen'], wantMods: ['blind', 'maim'], yields: { pack: 25, rarity: 60 }, yieldAny: true, quality: { currency: 20 },
+  const o = { avoid: ['thorns-phys', 'no-regen'], wantMods: ['blind', 'maim'], yields: { pack: 25, rarity: 60 }, yieldAny: true, quality: { currency: 20 },
     rarity: { normal: false, magic: true, rare: true }, corruptedOn: true, corruptedMode: 'exclude', unidOn: true, typeOn: { shaper: true, elder: true }, typeMode: { shaper: 'include' }, wantMatch: 'any' };
   const text = R.mapSearch(R.cleanBuilders({ map: o }).map).text;
   const back = R.readMapSearch(text);
   assert.equal(R.mapSearch(back).text, text); // the same search comes out again
-  assert.deepEqual(back.avoid, ['reflect-phys', 'no-regen']);
+  assert.deepEqual(back.avoid, ['thorns-phys', 'no-regen']);
   assert.deepEqual(back.yields, { pack: 25, rarity: 60 });
   assert.equal(back.yieldAny, true);
   assert.deepEqual(back.kept, []);
@@ -155,10 +158,10 @@ test('a pasted search is read back into the builder, and what is not known is ke
   // poe.re's own way of writing numbers is read too
   assert.deepEqual(R.readMapSearch('"r pa.*(8[5-9]|9.|\\d..)%"').yields, { pack: 85 });
   // parts it does not know stay as they were, at the end
-  const own = R.readMapSearch('"!f phys|abomin" "m q.*1[6-9]" ghosts');
-  assert.deepEqual(own.avoid, ['reflect-phys']);
+  const own = R.readMapSearch('"!ve p|abomin" "m q.*1[6-9]" ghosts');
+  assert.deepEqual(own.avoid, ['thorns-phys']);
   assert.deepEqual(own.kept, ['!abomin', '"m q.*1[6-9]"', 'ghosts']);
-  assert.equal(R.mapSearch(own).text, '"!f phys" !abomin "m q.*1[6-9]" ghosts');
+  assert.equal(R.mapSearch(own).text, '"!ve p" !abomin "m q.*1[6-9]" ghosts');
   assert.deepEqual(R.readMapSearch('').kept, []);
 });
 

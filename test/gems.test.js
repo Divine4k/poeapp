@@ -120,18 +120,18 @@ test('gems: searched by name, level, quality and corrupted', () => {
   assert.equal(isNarrow(f), true);
   const q = buildQuery(f).query;
   assert.equal(q.type, 'Grace');
-  assert.deepEqual(q.filters.misc_filters.filters, { corrupted: { option: 'true' }, gem_level: { min: 21 }, quality: { min: 23 } });
+  assert.deepEqual(q.filters.misc_filters.filters, { corrupted: { option: 'true' }, twice_corrupted: { option: 'false' }, gem_level: { min: 21 }, quality: { min: 23 } });
   assert.equal(q.filters.type_filters, undefined);
   // a lower number typed in the window, quality switched off
   const q2 = buildQuery(applyEdits(f, { props: { gem_level: { enabled: true, min: 20 }, quality: { enabled: false, min: 23 } } })).query;
-  assert.deepEqual(q2.filters.misc_filters.filters, { corrupted: { option: 'true' }, gem_level: { min: 20 } });
+  assert.deepEqual(q2.filters.misc_filters.filters, { corrupted: { option: 'true' }, twice_corrupted: { option: 'false' }, gem_level: { min: 20 } });
 });
 
 test('gems: low levels and little quality start unticked; small gems count from level 2', () => {
   const low = buildFilters(parseItemText(GRACE.replace('Level: 21 (Max)', 'Level: 12').replace('+23%', '+8%')), null);
   assert.deepEqual(low.props.map((p) => p.enabled), [false, false]);
   const q = buildQuery(low).query;
-  assert.deepEqual(q.filters.misc_filters.filters, { corrupted: { option: 'true' } });
+  assert.deepEqual(q.filters.misc_filters.filters, { corrupted: { option: 'true' }, twice_corrupted: { option: 'false' } });
   const en = buildFilters(parseItemText(FRESH), null);
   assert.deepEqual(en.props.map((p) => [p.value, p.enabled]), [[3, true], [0, false]]);
   assert.equal(en.flags[0].label, 'Not corrupted');

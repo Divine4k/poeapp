@@ -13,7 +13,7 @@ if (process.platform === 'win32') app.setAppUserModelId('com.divine4k.mapcompani
 const { LogTail, findLogPath, readRecent } = require('./core/clientLog');
 const { PriceTable, PriceService, CATEGORY_LABELS } = require('./core/prices');
 const { parseItemText, priceName } = require('./core/itemText');
-const { DEFAULT_RULES, checkMods } = require('./core/mapMods');
+const { checkMods, mergeRules } = require('./core/mapMods');
 const { Session } = require('./core/session');
 const { CANON, COLS, ROWS, gridRect, isInventoryOpen, extractCell, isEmptyCell } = require('./core/inventory/grid');
 const { IconIndex, similarity, fingerprint, encodePrint, decodePrint, sharpPrint, sharpShifts, packPrint, unpackPrint } = require('./core/inventory/icons');
@@ -227,11 +227,7 @@ function loadConfig() {
   if (!Array.isArray(config.strategies) || !config.strategies.length) config.strategies = DEFAULT_CONFIG.strategies;
   if (!config.strategies.some((x) => x.id === config.activeStrategy)) config.activeStrategy = config.strategies[0].id;
   // Keep the user's rule choices but pick up rules added in newer versions.
-  const byId = new Map((saved.mapRules || []).map((r) => [r.id, r]));
-  config.mapRules = [
-    ...DEFAULT_RULES.map((r) => ({ ...r, ...(byId.get(r.id) || {}) })),
-    ...(saved.mapRules || []).filter((r) => !DEFAULT_RULES.some((d) => d.id === r.id)),
-  ];
+  config.mapRules = mergeRules(saved.mapRules);
   // A key that was moved or filled in above is saved at once, so that it happens one time only.
   if (!saved.priceKeyMoved || !saved.hideoutKeyGiven || !saved.autoCopyOn) writeJson('config.json', config);
 }
