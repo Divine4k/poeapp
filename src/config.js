@@ -12,12 +12,12 @@ const DEFAULT_CONFIG = {
   // priceCheck: only check its price; nothing is named or counted. Held only while the game is in front.
   // record: starts and stops a troubleshooting recording (admins and moderators only).
   // stashSearch: opens the saved stash searches at the mouse. Held only while the game is in front.
-  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' },
+  // advancedCheck: the advanced price check's own key (Ctrl and Alt are the keys the copy needs anyway)
+  hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', advancedCheck: 'Ctrl+Alt+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' },
   checkToast: true, // after the check key, say in game for a moment what was read
   // auto: checking an item searches the trade site straight away (two web requests).
   // overlay: show the search on top of the game, beside the inventory or stash.
-  // advanced: the advanced price check runs beside the standard one (its own band in the window)
-  priceSearch: { auto: true, overlay: true, sockets: true, advanced: false },
+  priceSearch: { auto: true, overlay: true, sockets: true },
   // key: the key that opens your inventory in game. onKey: read once each time you press it.
   // timed: also check by itself every intervalMs (breaks GGG's one-read-per-key-press rule).
   // autoCopy: the check hotkey presses Ctrl+Alt+C in the game for you (one copy per key press).

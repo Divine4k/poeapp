@@ -589,7 +589,7 @@
 
       <section class="set-sec" id="set-check" aria-label="Price check" hidden>
         <h2>Price check</h2>
-        <p class="set-lead">Hover an item in game and press a check key to see what it is worth. Price check: <span class="keyname" data-keyname="hotkeys.priceCheck"></span>. Check and count: <span class="keyname" data-keyname="hotkeys.clipboard"></span>. <button type="button" class="link" data-settings="keys">Change the keys</button></p>
+        <p class="set-lead">Hover an item in game and press a check key to see what it is worth. Price check: <span class="keyname" data-keyname="hotkeys.priceCheck"></span>. Check and count: <span class="keyname" data-keyname="hotkeys.clipboard"></span>. Advanced price check (being built): <span class="keyname" data-keyname="hotkeys.advancedCheck"></span>. <button type="button" class="link" data-settings="keys">Change the keys</button></p>
         <div class="set-list">
           <label class="set-row">
             <span class="set-what"><b>Check item price</b><small>Keep this on for the check keys to work on the item you hover. Each press reads that item by sending one Ctrl+Alt+C to the game, as other price check tools do. Off: the keys only check an item you copied yourself with Ctrl+C first.</small></span>
@@ -598,10 +598,6 @@
           <label class="set-row">
             <span class="set-what"><b>Search the trade site straight away</b><small>Gear has no poe.ninja price, so rares, magic items and uniques are looked up on the official trade site. Off: the search waits for you to press its Search button.</small></span>
             <input type="checkbox" data-cfg="priceSearch.auto">
-          </label>
-          <label class="set-row">
-            <span class="set-what"><b>Advanced price check</b><small>Being built, so tell Claude where it is wrong (the Too low, Right and Too high buttons beside its price). Under the usual price it shows one of its own. A rare is compared with items worth as much to the same kind of build, not only with items that have the same stats; every price comes as a range, with how sure it is and how fast such items sell. The usual check stays as it is. Each check sends one or two more searches to the trade site.</small></span>
-            <input type="checkbox" data-cfg="priceSearch.advanced">
           </label>
         </div>
         <p class="set-foot">Whether the answer shows on top of the game or on the Prices page is set under <button type="button" class="link" data-settings="overlay">Overlay</button>.</p>

@@ -34,7 +34,7 @@
     .map(([id, label, enabled]) => ({ id, label, enabled: !!enabled, pattern: '' }));
   const state = {
     config: {
-      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
+      league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', advancedCheck: 'Ctrl+Alt+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
       inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
       stashSearches: [{ name: 'Currency', text: 'currency' }, { name: 'Maps 16', text: '"m q.*1[6-9]"' }, { name: 'Gem regex', text: '"(anoma|diverg|phant).*(blood|enfeeb|frenz|lightning|tempes)"' }, { name: '', text: 'unique' }],
       regex: { map: { avoid: ['reflect-phys', 'no-regen', 'curse-tc'], wantMods: ['action-speed', 'extra-light'], yields: { pack: 25, rarity: 60, currency: 70 }, quality: { currency: 20 } }, vendor: { rgb: true, links: 4 } },
@@ -120,7 +120,7 @@
     id, dir, player, item, qty, price, league: 'Demo', tab, left, top, note: '', at: now - id * 47000, lastAt: now, asks: 1,
     state: 'new', here: false, thanked: false, soldAlready: false, value: null, market: null, low: false, next: dir === 'in' ? 'invite' : 'hideout', nextLabel: '', waiting: '', grid: tab ? 12 : 0, ...more,
   });
-  const KEYS = { hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, trade: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' } };
+  const KEYS = { hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', advancedCheck: 'Ctrl+Alt+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, trade: { next: 'F2', dismiss: 'F3', layout: 'Shift+F2', invite: '', trade: '', busy: '', still: '', whisper: '', hideout: 'F5', remaining: '' } };
   state.config.trade = { enabled: true, overlay: true, position: 'bottom', offsetX: 0, offsetY: 0, sound: false, hotkeys: { ...KEYS.trade }, auto: { thankSold: true, kickSold: true, thankBought: false, leaveBought: false, homeBought: false, joinHideout: false, ignoreSold: false, closeBoughtSec: 0 }, messages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' } };
   state.status.hotkeys.layout = true; state.status.hotkeys.tradeNext = true; state.status.hotkeys.tradeDismiss = true;
   state.trade = {

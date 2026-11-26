@@ -90,6 +90,8 @@ const KEY_GROUPS = [
   { title: 'Checking items', keys: [
     { id: 'hotkeys.priceCheck', name: 'Price check', hint: 'Hover an item in game and press it to see what the item is worth. Gear is looked up on the trade site. Only held while the game is the window in front.',
       bad: (st) => st.hotkeys.priceCheckHeld && !st.hotkeys.priceCheck },
+    { id: 'hotkeys.advancedCheck', name: 'Advanced price check', hint: 'The same check with the advanced price beside the usual one: a rare is compared with items worth as much to the same kind of build, and the price comes as a range with how sure it is and how fast such items sell. Being built: say how its price was with Too low, Right or Too high. Sends one or two more searches to the trade site. Only held while the game is the window in front.',
+      bad: (st) => st.hotkeys.advancedCheckHeld && !st.hotkeys.advancedCheck },
     { id: 'hotkeys.clipboard', name: 'Check and count', needed: true, hint: 'The same check, and more: over your inventory it also counts the item as loot, or names one the app did not recognise. On a map it checks the mods.',
       bad: (st) => !st.hotkeys.clipboard },
     { id: 'inventory.key', name: 'Your inventory key in game', needed: true, game: true, hint: 'The key that opens your inventory in the game. The app only listens for it, to read your inventory once each time you press it.',

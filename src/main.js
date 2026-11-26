@@ -1433,7 +1433,7 @@ async function applyUpdate() {
 // ---- clipboard (read once per hotkey press or button click) --------------------
 // count: over the inventory, also name or count the item's slot (the check key does; the price
 // check key and nothing else does not).
-function checkText(text, { count = true } = {}) {
+function checkText(text, { count = true, advanced = false } = {}) {
   const item = parseItemText(text);
   if (!item) { priceCheck = { error: 'The clipboard does not hold a Path of Exile item. Hover an item in game and press Ctrl+C first.', at: Date.now() }; return; }
   if (item.isMap) {
@@ -1451,7 +1451,7 @@ function checkText(text, { count = true } = {}) {
   const name = priceName(item);
   const entry = prices.get(name);
   checkedText = { at: Date.now(), text }; // kept for a mark on the advanced price
-  startTradeCheck(item, { always: !count });
+  startTradeCheck(item, { always: !count, advanced });
   // A gem is worth what its level and quality make it, not what the cheapest of its name costs.
   const worth = (item.isGem && gemEntry(item)) || entry;
   priceCheck = {
@@ -1614,10 +1614,11 @@ async function nameGem(tc) {
   if (!list.length) { diag.count('price check: gem searched by its plain name (the trade site gave no item list)'); return; }
   tc.filters = { ...tc.filters, type: { ...tc.filters.type, as: gemType(list, t.value) } };
 }
-function startTradeCheck(item, { always = false } = {}) {
+// advanced: the check came from the advanced price check's own key (see its section below).
+function startTradeCheck(item, { always = false, advanced = false } = {}) {
   tradeCheck = null;
-  if (!searchable(item)) { bulkCheck(item, always); return; }
-  if (item.rarity === 'Unique' && item.unidentified) { pickUnique(item); return; }
+  if (!searchable(item)) { bulkCheck(item, always); if (advanced) diag.count('price check: advanced left out (priced by poe.ninja, no search of its own)'); return; }
+  if (item.rarity === 'Unique' && item.unidentified) { pickUnique(item); if (tradeCheck) tradeCheck.advanced = advanced; return; }
   let filters;
   try {
     statIndex = statIndex || StatIndex.load();
@@ -1637,6 +1638,7 @@ function startTradeCheck(item, { always = false } = {}) {
   tradeCheck.vendor = vendorFor(item);
   tradeCheck.craft = filters.ok ? craftRoom(item, filters, statIndex) : null;
   tradeCheck.craftOn = []; // the crafts ticked: searched as if already on the item
+  tradeCheck.advanced = advanced;
   advancedBegin(tradeCheck, item);
   if (filters.ok) showCheckPanel();
   // The price check key searches at once, with what is ticked from the start. The check key is
@@ -1739,7 +1741,7 @@ function keyAnswered() {
   if (checkKeyAt) diag.time('price check: from the key to the answer', performance.now() - checkKeyAt, tradeCheck ? tradeCheck.kind || 'gear' : 'price list');
   checkKeyAt = 0;
 }
-async function checkHovered({ count = true } = {}) {
+async function checkHovered({ count = true, advanced = false } = {}) {
   const started = Date.now();
   checkKeyAt = performance.now();
   if (checkPanel) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; } // the last item's window goes; a new one opens if this is gear
@@ -1756,7 +1758,7 @@ async function checkHovered({ count = true } = {}) {
       diag.time('price check: copy from the game', performance.now() - checkKeyAt, text ? '' : 'nothing came');
       const read = diag.start('price check: item text read');
       if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }
-      checkText(text, { count });
+      checkText(text, { count, advanced });
       read();
     } catch (e) {
       // Whatever went wrong is said as it is, not passed off as an empty clipboard.
@@ -1768,7 +1770,7 @@ async function checkHovered({ count = true } = {}) {
     // the clipboard is then not the item under the mouse.
     say('The item was not copied, because the part of the app that presses keys in the game could not be loaded. Restart the app; if this stays, reinstall it.', true);
   } else {
-    checkText(clipboard.readText(), { count });
+    checkText(clipboard.readText(), { count, advanced });
     // With copying switched off, an empty hand is most likely the setting, so name it.
     if (priceCheck && priceCheck.error && priceCheck.at >= started) priceCheck.error = 'Nothing to check: "Check item price" is switched off (Settings, Price check). Switch it on, or press Ctrl+C on the item before the key.';
   }
@@ -1821,7 +1823,7 @@ function registerHotkeys() {
   typingHeld = [];
   if (checkPanel && checkPanel.typing) typingKeys(true); // a number being typed keeps its keys
   gameKeysOn = false;
-  status.hotkeys = { clipboard: false, snapshot: false, priceCheck: false, tradeNext: false, tradeDismiss: false, layout: false, stashSearch: false };
+  status.hotkeys = { clipboard: false, snapshot: false, priceCheck: false, advancedCheck: false, tradeNext: false, tradeDismiss: false, layout: false, stashSearch: false };
   // Keys that only mean something in the game are held only while the game is in front.
   // Anywhere else they stay with the program you are in (Ctrl+D bookmarks, F5 refreshes).
   gameKeysOn = watch.gameInFront();
@@ -1837,6 +1839,9 @@ function registerHotkeys() {
   // The price check key: the same check without naming or counting anything.
   status.hotkeys.priceCheckHeld = gameKeysOn && !!config.hotkeys.priceCheck;
   if (gameKeysOn) reg('priceCheck', config.hotkeys.priceCheck, () => { checkHovered({ count: false }); });
+  // The advanced price check has a key of its own (owner, 0.64.1): the same window with its band.
+  status.hotkeys.advancedCheckHeld = gameKeysOn && !!config.hotkeys.advancedCheck;
+  if (gameKeysOn) reg('advancedCheck', config.hotkeys.advancedCheck, () => { checkHovered({ count: false, advanced: true }); });
   // The stash searches menu: only while the game is in front, like the price check key.
   status.hotkeys.stashSearchHeld = gameKeysOn && !!config.hotkeys.stashSearch;
   if (gameKeysOn) reg('stashSearch', config.hotkeys.stashSearch, () => { toggleSearchMenu(); });
@@ -1878,13 +1883,14 @@ function pauseKeys(on) {
   else { registerHotkeys(); push(); }
 }
 
-// ---- the advanced price check (Settings, Price check; off by default) ----------------
-// The standard check above is left as it is and runs first. For the same item this adds: for a
+// ---- the advanced price check (its own key, hotkeys.advancedCheck) --------------------
+// A checker of its own beside the standard one (owner, 0.64.1: its own key, not a band on every
+// check). Its key checks the item as the price check key does and marks the check `advanced`;
+// the other keys never set it, so the standard check is left as it was. For that item this adds: for a
 // rare, a search of its own by score (core/advanced: the value table, the anchored weighted
 // search, widened step by step); for anything searched, a range with how sure it is and how fast
 // such items sell; and what the base alone is worth. Its answer is `tradeCheck.adv`, drawn as a
-// band of its own in the window over the game. Nothing here runs while the setting is off.
-const advOn = () => !!(config.priceSearch || {}).advanced;
+// band of its own in the window over the game. Nothing here runs for a check from another key.
 const advPlans = new WeakMap(); // a check -> { plan, item }: what its search is built from
 const advKept = new Map();      // a search -> { at, found }: answers kept for a minute, as the trade client keeps the standard ones
 let checkedText = null;         // { at, text }: the item text last checked, kept with a mark
@@ -1893,7 +1899,7 @@ let advMarks = null;            // the "Too low" / "Right" / "Too high" marks, n
 // A newly checked item: what the advanced check will do with it, worked out at once (no web).
 function advancedBegin(tc, item) {
   tc.adv = null;
-  if (!advOn()) return;
+  if (!tc.advanced) return;
   if (!tc.filters || !tc.filters.ok || tc.filters.gem) { diag.count(`price check: advanced left out (${tc.filters && tc.filters.gem ? 'a gem' : 'nothing to search by'})`); return; }
   let plan;
   try { plan = diag.run('price check: advanced plan', () => advanced.plan(item, statIndex)); } catch (e) { plan = { ok: false, why: `it could not be worked out: ${e.message || e}` }; }

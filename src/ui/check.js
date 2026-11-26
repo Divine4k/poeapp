@@ -317,7 +317,7 @@
     return `<div class="pc-craft"><p><b>Possibly good bench crafts</b> · ${esc(open)} open${note}</p>${ideas ? `<ul class="pc-rows">${ideas}</ul>` : ''}</div>`;
   }
 
-  // The advanced price check's band, under the head (Settings, Price check): its own price as a
+  // The advanced price check's band, under the head (only after its own key): its own price as a
   // range, how sure it is, how fast such items sell, who the item fits and what carries it, and
   // a row to say how the price was. It keeps its four rows from the start, each one line high
   // whatever it says, so the window does not change height when its answer comes a moment after

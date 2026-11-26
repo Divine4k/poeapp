@@ -31,6 +31,7 @@ function statusChips() {
   const keys = [];
   if (!st.hotkeys.clipboard) keys.push(`${hk.clipboard} (check and count) is taken by another program`);
   if (st.hotkeys.priceCheckHeld && !st.hotkeys.priceCheck) keys.push(`${hk.priceCheck} (price check) is taken by another program or is not a key name`);
+  if (st.hotkeys.advancedCheckHeld && !st.hotkeys.advancedCheck) keys.push(`${hk.advancedCheck} (advanced price check) is taken by another program or is not a key name`);
   if (hk.snapshot && !st.hotkeys.snapshot) keys.push(`${hk.snapshot} (report) is taken by another program`);
   const tc = c.trade;
   if (tc) {
