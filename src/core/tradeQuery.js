@@ -135,7 +135,7 @@ function buildFilters(item, index) {
     type: base ? { value: base, enabled: unique } : null,
     category: unique ? null : { id: kind.tradeId, label: kind.category, enabled: true },
     flags: [], props: unique ? [] : propFilters(item), stats: [], unknown: [], offline: false,
-    sockets: item.sockets || '', itemLevel: item.itemLevel || null, size: SIZES[item.itemClass] || null,
+    sockets: item.sockets || '', itemLevel: item.itemLevel || null, quality: item.quality || 0, catalyst: item.catalyst || null, size: SIZES[item.itemClass] || null,
   };
   if (item.rarity === 'Rare' && item.name !== item.baseType) out.title = `${item.name}, ${item.baseType}`;
   if (item.rarity === 'Magic') out.title = item.name;

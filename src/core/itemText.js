@@ -88,6 +88,9 @@ function readGear(item, text, sections) {
   const num = (re) => { const m = re.exec(text); return m ? parseInt(m[1], 10) : null; };
   item.itemLevel = num(/^Item Level: (\d+)/m);
   item.quality = num(/^Quality: \+(\d+)%/m);
+  // Catalysts on jewellery: "Quality (Attribute Modifiers): +20% (augmented)"
+  const cat = /^Quality \(([^)]+)\): \+(\d+)%/m.exec(text);
+  item.catalyst = cat ? { kind: cat[1].replace(/ Modifiers$/, ''), value: parseInt(cat[2], 10) } : null;
   item.mirrored = /^Mirrored$/m.test(text);
   item.influences = [];
   const sockets = /^Sockets: (.+)$/m.exec(text);

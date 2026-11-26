@@ -780,3 +780,11 @@ test('bulk exchange: poe.ninja prices it, offers far under that are bait', () =>
   assert.deepEqual(bulkPrice([10, 12, 11, 30, 50].map((chaos) => ({ chaos })), null), { low: 10, typical: 22.6, from: 'offers' });
   assert.deepEqual(bulkPrice([{ chaos: 3 }, { chaos: 4 }], null), { low: 3, typical: 3, from: 'offers' });
 });
+
+test('the price check knows the item\'s quality, catalysts too', () => {
+  assert.equal(buildFilters(parseItemText(BOW), index).quality, 20);
+  assert.equal(buildFilters(parseItemText(RING), index).quality, 0);
+  const ring = parseItemText(RING.replace('--------\n', '--------\nQuality (Attribute Modifiers): +20% (augmented)\n--------\n'));
+  assert.deepEqual(ring.catalyst, { kind: 'Attribute', value: 20 });
+  assert.equal(ring.quality, null);
+});
