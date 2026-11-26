@@ -37,7 +37,7 @@
       league: 'Demo', logPath: '', characterName: '', hotkeys: { clipboard: 'F8', snapshot: 'F9', priceCheck: 'Ctrl+D', record: 'Shift+F9', stashSearch: 'Ctrl+Shift+F' }, priceSearch: { auto: true, overlay: true }, checkToast: true,
       inventory: { displayId: null, key: 'Tab', onKey: true, onClick: true, timed: true, intervalMs: 1000, autoCopy: true }, mapRules: rules, activeStrategy: 'st1', strategies: [{ id: 'st1', name: 'Legion', atlasUrl: 'https://example.com/tree' }, { id: 'st2', name: 'Harvest', atlasUrl: '' }, { id: 'st3', name: 'Boss rushing', atlasUrl: '' }],
       stashSearches: [{ name: 'Currency', text: 'currency' }, { name: 'Maps 16', text: '"m q.*1[6-9]"' }, { name: 'Gem regex', text: '"(anoma|diverg|phant).*(blood|enfeeb|frenz|lightning|tempes)"' }, { name: '', text: 'unique' }],
-      regex: { map: { avoid: ['reflect-phys', 'no-regen'], want: { quantity: 80 } }, vendor: { rgb: true, links: 4 } },
+      regex: { map: { avoid: ['reflect-phys', 'no-regen', 'curse-tc'], wantMods: ['action-speed', 'extra-light'], yields: { pack: 25, rarity: 60, currency: 70 }, quality: { currency: 20 } }, vendor: { rgb: true, links: 4 } },
       loadout: [{ name: 'Ambush Scarab of Containment', qty: 2, chaos: null }, { name: 'Map', qty: 1, chaos: 4 }],
     },
     status: {

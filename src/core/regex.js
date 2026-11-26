@@ -106,25 +106,43 @@ const MOD_BY_ID = new Map(MAP_MODS.map((m) => [m.id, m]));
 
 // Lines every map shows besides its mods; no mod's piece may find them. Used by the tests.
 const MAP_LINES = [
-  'Item Class: Maps', 'Rarity: Rare', 'Rarity: Magic', 'Rarity: Normal', 'Map Tier: 16', 'Item Quantity: +85% (augmented)', 'Item Rarity: +40% (augmented)',
-  'Monster Pack Size: +25% (augmented)', 'More Currency: +30% (augmented)', 'More Scarabs: +30% (augmented)', 'More Maps: +30% (augmented)',
-  'Quality: +20% (augmented)', 'Item Level: 83', 'Unidentified', 'Corrupted', 'Area Level: 83',
-  'Travel to this Map by using it in a personal Map Device. Maps can only be used once.',
+  'Item Class: Maps', 'Rarity: Rare', 'Rarity: Magic', 'Rarity: Normal', 'Map Tier: 16', 'Item Level: 83', 'Area Level: 83',
+  'Unidentified', 'Corrupted', 'Travel to this Map by using it in a personal Map Device. Maps can only be used once.',
   'Strand Map', 'Burial Chambers Map', 'Crimson Temple Map', 'Defiled Cathedral Map', 'Cemetery Map', 'Tower Map', 'Dunes Map',
   'Toxic Sewer Map', 'Waste Pool Map', 'City Square Map', 'Jungle Valley Map', 'Mesa Map', 'Glacier Map', 'Promenade Map',
 ];
 
-// What the map should have: each a line of the map with its number, found by the end of its
-// name, the sign (any one character) and the number.
-const MAP_WANTS = [
-  { id: 'quantity', label: 'Item quantity', tok: 'tity: .' },
-  { id: 'rarity', label: 'Item rarity', tok: 'rity: .' },
-  { id: 'pack', label: 'Pack size', tok: 'ze: .' },
-  { id: 'currency', label: 'More currency', tok: 'ncy: .' },
-  { id: 'scarabs', label: 'More scarabs', tok: 'abs: .' },
-  { id: 'maps', label: 'More maps', tok: 'aps: .' },
-  { id: 'quality', label: 'Quality', tok: 'lity: .' },
+// The numbers a map shows at the top. tok: the piece of the line that poe.re's map page uses for
+// it (read from its searches, 26 Nov 2026), so ours find the same lines; line: such a line, for the
+// tests. The search is the piece, anything, then the number: "r pa.*(8[5-9]|9\d|\d{3})%".
+const YIELDS = [
+  { id: 'atlas', label: 'Atlas drops', tok: 'as d', line: 'Atlas Drops: +40% (augmented)' },
+  { id: 'pack', label: 'Pack size', tok: 'r pa', line: 'Monster Pack Size: +25% (augmented)' },
+  { id: 'maps', label: 'Maps', tok: 're maps', line: 'More Maps: +30% (augmented)' },
+  { id: 'rarity', label: 'Rarity', tok: 'm rar', line: 'Item Rarity: +60% (augmented)' },
+  { id: 'currency', label: 'Currency', tok: 'cy:', line: 'More Currency: +70% (augmented)' },
+  { id: 'threads', label: 'Threads', tok: 'e thr', line: 'More Threads: +30% (augmented)' },
+  { id: 'divination', label: 'Divination', tok: 'e div', line: 'More Divination Cards: +30% (augmented)' },
 ];
+// Quality of a map, by kind (Maven chisels). "any" is plain quality.
+const QUALITY = [
+  { id: 'any', label: 'Quality of any kind', tok: 'ty \\(Quantity\\):', line: 'Quality (Quantity): +20% (augmented)' },
+  { id: 'pack', label: 'Pack size', tok: 'ze\\)', line: 'Quality (Pack Size): +20% (augmented)' },
+  { id: 'rarity', label: 'Rarity', tok: '\\(rar', line: 'Quality (Rarity): +20% (augmented)' },
+  { id: 'currency', label: 'Currency', tok: '\\(Curr', line: 'Quality (Currency): +20% (augmented)' },
+  { id: 'divination', label: 'Divination', tok: '\\(div', line: 'Quality (Divination Cards): +20% (augmented)' },
+  { id: 'threads', label: 'Threads', tok: '\\(th', line: 'Quality (Threads): +20% (augmented)' },
+];
+// Kinds of map, found by a piece of their text (as poe.re does).
+const MAP_TYPES = [
+  { id: 'shaper', label: 'Shaper', tok: 'the shaper' },
+  { id: 'elder', label: 'Elder', tok: 'the elder' },
+  { id: 'conqueror', label: 'Conqueror', tok: 'citadel' },
+  { id: 'originator', label: 'Originator', tok: 'originator' },
+  { id: 'blighted', label: 'Blighted', tok: '25% value' },
+  { id: 'ravaged', label: 'Blight-ravaged', tok: '50% value' },
+];
+const RARITIES = [{ id: 'normal', label: 'Normal', l: 'n' }, { id: 'magic', label: 'Magic', l: 'm' }, { id: 'rare', label: 'Rare', l: 'r' }];
 
 // The Map check page's ticks, as map mods: "use my Map check ticks".
 const RULE_MODS = {
@@ -143,43 +161,60 @@ function modsFromRules(rules) {
 // Extra words typed by hand: split on commas, kept as typed (they may be regex).
 const extraParts = (s) => String(s || '').split(',').map((x) => x.trim().replace(/"/g, '')).filter(Boolean);
 
-const MAP_DEFAULT = { avoid: [], extra: '', want: {}, wantAny: false, tierMin: 0, tierMax: 0, corrupted: 'any', unidentified: 'any', mode: 'run' };
+const MAP_DEFAULT = {
+  avoid: [], wantMods: [], wantAll: false,
+  yields: {}, yieldAny: false, yieldShort: false,
+  quality: {}, qualAny: true, qualShort: false,
+  rarity: { normal: true, magic: true, rare: true }, rarityMode: 'include',
+  corruptedOn: false, corruptedMode: 'include', unidOn: false, unidMode: 'exclude',
+  typesOn: false, typeOn: {}, typeMode: {},
+};
+// "Shorter": rounded down to tens, which makes a shorter pattern (as poe.re's Optimized).
+const numPat = (n, short) => atLeast(short && n >= 10 ? Math.floor(n / 10) * 10 : n);
 
-// The search for maps. mode 'run': lights up the maps to run (none of the avoided mods, the
-// wanted numbers); 'skip': lights up the maps with an avoided mod, to sell or reroll them.
-// Returns { text, parts: [{ what, text }] } so the page can say what each part does.
+// The search for maps: lights up the maps to run. Returns { text, parts: [{ what, text }] } so the
+// page can say what each part does. Every part must be found (the game's rule for words).
 function mapSearch(o) {
   o = { ...MAP_DEFAULT, ...(o || {}) };
-  const toks = (o.avoid || []).map((id) => MOD_BY_ID.get(id)).filter(Boolean).map((m) => m.tok).concat(extraParts(o.extra));
   const parts = [];
-  if (o.mode === 'skip') {
-    if (toks.length) parts.push({ what: 'has a mod you avoid', text: `"${toks.join('|')}"` });
-    return { text: parts.map((p) => p.text).join(' '), parts };
+  const avoid = (o.avoid || []).map((id) => MOD_BY_ID.get(id)).filter(Boolean);
+  if (avoid.length) parts.push({ what: 'none of the mods you don\'t want', text: `"!${avoid.map((m) => m.tok).join('|')}"` });
+  const want = (o.wantMods || []).map((id) => MOD_BY_ID.get(id)).filter(Boolean);
+  if (want.length) {
+    if (o.wantAll || want.length === 1) for (const m of want) parts.push({ what: `has: ${m.label.toLowerCase()}`, text: `"${m.tok}"` });
+    else parts.push({ what: 'at least one of the mods you want', text: `"${want.map((m) => m.tok).join('|')}"` });
   }
-  if (toks.length) parts.push({ what: 'none of the mods you avoid', text: `"!${toks.join('|')}"` });
-  const wants = MAP_WANTS.filter((w) => Number(o.want && o.want[w.id]) > 0).map((w) => ({ w, p: `${w.tok}${atLeast(o.want[w.id])}%` }));
-  if (wants.length) {
-    if (o.wantAny && wants.length > 1) parts.push({ what: `at least one of: ${wants.map((x) => `${x.w.label.toLowerCase()} ${o.want[x.w.id]}%+`).join(', ')}`, text: `"${wants.map((x) => x.p).join('|')}"` });
-    else for (const x of wants) parts.push({ what: `${x.w.label.toLowerCase()} ${o.want[x.w.id]}% or more`, text: `"${x.p}"` });
+  const numbers = (list, vals, any, short, kind) => {
+    const on = list.filter((x) => Number(vals && vals[x.id]) > 0).map((x) => ({ x, p: `${x.tok}.*${numPat(Number(vals[x.id]), short)}%` }));
+    if (on.length > 1 && any) parts.push({ what: `${kind}: at least one of ${on.map((y) => `${y.x.label.toLowerCase()} ${vals[y.x.id]}%+`).join(', ')}`, text: `"${on.map((y) => y.p).join('|')}"` });
+    else for (const y of on) parts.push({ what: `${kind}: ${y.x.label.toLowerCase()} ${vals[y.x.id]}% or more`, text: `"${y.p}"` });
+  };
+  numbers(YIELDS, o.yields, o.yieldAny, o.yieldShort, 'yield');
+  numbers(QUALITY, o.quality, o.qualAny, o.qualShort, 'quality');
+  const rar = RARITIES.filter((r) => o.rarity && o.rarity[r.id] !== false);
+  if (rar.length && (rar.length < 3 || o.rarityMode === 'exclude')) {
+    const body = `y: ${rar.length === 1 ? rar[0].l : `(${rar.map((r) => r.l).join('|')})`}`;
+    const names = rar.map((r) => r.label.toLowerCase()).join(' or ');
+    parts.push(o.rarityMode === 'exclude' ? { what: `not ${names}`, text: `"!${body}"` } : { what: `${names} maps only`, text: `"${body}"` });
   }
-  const lo = Math.max(1, Math.min(17, Math.floor(o.tierMin) || 1)), hi = Math.max(1, Math.min(17, Math.floor(o.tierMax) || 17));
-  if ((o.tierMin || o.tierMax) && (lo > 1 || hi < 17) && lo <= hi) parts.push({ what: lo === hi ? `tier ${lo}` : `tier ${lo} to ${hi}`, text: `"tier: ${tierPattern(lo, hi)}"` });
-  if (o.corrupted === 'only') parts.push({ what: 'corrupted', text: 'corrupted' });
-  else if (o.corrupted === 'not') parts.push({ what: 'not corrupted', text: '"!corrupted"' });
-  if (o.unidentified === 'not') parts.push({ what: 'identified (mods can be read)', text: '"!unidentified"' });
+  if (o.corruptedOn) parts.push(o.corruptedMode === 'exclude' ? { what: 'not corrupted', text: '!pte' } : { what: 'corrupted', text: 'pte' });
+  if (o.unidOn) parts.push(o.unidMode === 'exclude' ? { what: 'identified (mods can be read)', text: '!tified' } : { what: 'unidentified', text: 'tified' });
+  if (o.typesOn) {
+    const on = MAP_TYPES.filter((t) => (o.typeOn && o.typeOn[t.id]) !== false);
+    const out = on.filter((t) => (o.typeMode && o.typeMode[t.id]) !== 'include'), inn = on.filter((t) => (o.typeMode && o.typeMode[t.id]) === 'include');
+    if (out.length) parts.push({ what: `not ${out.map((t) => t.label).join(', ')}`, text: `"!${out.map((t) => t.tok).join('|')}"` });
+    if (inn.length) parts.push({ what: `${inn.map((t) => t.label).join(' or ')} only`, text: `"${inn.map((t) => t.tok).join('|')}"` });
+  }
   return { text: parts.map((p) => p.text).join(' '), parts };
 }
-// Tiers lo..hi (1 to 17) as one pattern. A one-digit tier is followed by something other than a
-// digit (the line's end), so tier 1 never finds 16.
-function tierPattern(lo, hi) {
-  const nums = [];
-  for (let t = lo; t <= hi; t++) nums.push(t);
-  const one = nums.filter((t) => t < 10), two = nums.filter((t) => t >= 10).map((t) => t - 10);
-  const cls = (ds) => (ds.length === 1 ? String(ds[0]) : ds.every((d, i) => !i || d === ds[i - 1] + 1) ? `[${ds[0]}-${ds[ds.length - 1]}]` : `[${ds.join('')}]`);
-  const alts = [];
-  if (one.length) alts.push(`${cls(one)}\\D`);
-  if (two.length) alts.push(`1${cls(two)}`);
-  return alts.length === 1 ? alts[0] : `(${alts.join('|')})`;
+// How many characters a mod adds to the search (or takes away, when it is picked), in one list.
+function modCost(o, id, list) {
+  o = cleanBuilders({ map: o }).map;
+  const has = o[list].includes(id);
+  const other = list === 'avoid' ? 'wantMods' : 'avoid';
+  const without = { ...o, [list]: o[list].filter((x) => x !== id) };
+  const withIt = { ...o, [list]: has ? o[list] : [...o[list], id], [other]: o[other].filter((x) => x !== id) };
+  return mapSearch(withIt).text.length - mapSearch(without).text.length;
 }
 
 // ---- vendors ---------------------------------------------------------------------------
@@ -245,15 +280,25 @@ function cleanBuilders(r) {
   r = r && typeof r === 'object' ? r : {};
   const m = { ...MAP_DEFAULT, ...(r.map || {}) }, v = { ...VENDOR_DEFAULT, ...(r.vendor || {}) };
   const num = (x, max) => Math.max(0, Math.min(max, Math.floor(Number(x)) || 0));
-  const want = {};
-  for (const w of MAP_WANTS) { const n = num(m.want && m.want[w.id], 999); if (n) want[w.id] = n; }
+  const nums = (list, src) => { const out = {}; for (const x of list) { const n = num(src && src[x.id], 999); if (n) out[x.id] = n; } return out; };
+  // Before 0.54 the numbers were "want": { quantity, rarity, pack, currency, scarabs, maps, quality }.
+  const oldWant = m.want && typeof m.want === 'object' && !Array.isArray(m.want) ? m.want : {};
+  const yields = nums(YIELDS, { pack: oldWant.pack, rarity: oldWant.rarity, currency: oldWant.currency, maps: oldWant.maps, ...(m.yields || {}) });
+  const ids = (x) => (Array.isArray(x) ? x : []).filter((id, i, a) => MOD_BY_ID.has(id) && a.indexOf(id) === i);
+  const avoid = ids(m.avoid);
+  const inOut = (x, dflt) => (x === 'include' || x === 'exclude' ? x : dflt);
+  const typeOn = {}, typeMode = {};
+  for (const t of MAP_TYPES) { typeOn[t.id] = !(m.typeOn && m.typeOn[t.id] === false); typeMode[t.id] = inOut(m.typeMode && m.typeMode[t.id], 'exclude'); }
   return {
     map: {
-      avoid: (Array.isArray(m.avoid) ? m.avoid : []).filter((id) => MOD_BY_ID.has(id)),
-      extra: String(m.extra || '').slice(0, 200), want, wantAny: !!m.wantAny,
-      tierMin: num(m.tierMin, 17), tierMax: num(m.tierMax, 17),
-      corrupted: ['any', 'only', 'not'].includes(m.corrupted) ? m.corrupted : 'any',
-      unidentified: m.unidentified === 'not' ? 'not' : 'any', mode: m.mode === 'skip' ? 'skip' : 'run',
+      avoid, wantMods: ids(m.wantMods).filter((id) => !avoid.includes(id)), wantAll: !!m.wantAll,
+      yields, yieldAny: !!(m.yieldAny || m.wantAny), yieldShort: !!m.yieldShort,
+      quality: nums(QUALITY, m.quality), qualAny: m.qualAny !== false, qualShort: !!m.qualShort,
+      rarity: { normal: !(m.rarity && m.rarity.normal === false), magic: !(m.rarity && m.rarity.magic === false), rare: !(m.rarity && m.rarity.rare === false) },
+      rarityMode: inOut(m.rarityMode, 'include'),
+      corruptedOn: !!m.corruptedOn || m.corrupted === 'only' || m.corrupted === 'not', corruptedMode: m.corrupted === 'not' ? 'exclude' : inOut(m.corruptedMode, 'include'),
+      unidOn: !!m.unidOn || m.unidentified === 'not', unidMode: inOut(m.unidMode, 'exclude'),
+      typesOn: !!m.typesOn, typeOn, typeMode,
     },
     vendor: {
       rgb: !!v.rgb, links: LINKS[v.links] ? Number(v.links) : 0, sockets: [5, 6].includes(Number(v.sockets)) ? Number(v.sockets) : 0,
@@ -262,7 +307,7 @@ function cleanBuilders(r) {
   };
 }
 
-const api = { GAME_LIMIT, atLeast, MAP_MODS, MAP_LINES, MAP_WANTS, RULE_MODS, modsFromRules, mapSearch, tierPattern, vendorSearch, parseSearch, testSearch, problems, cleanBuilders, MAP_DEFAULT, VENDOR_DEFAULT };
+const api = { GAME_LIMIT, atLeast, MAP_MODS, MAP_LINES, YIELDS, QUALITY, MAP_TYPES, RARITIES, RULE_MODS, modsFromRules, mapSearch, modCost, vendorSearch, parseSearch, testSearch, problems, cleanBuilders, MAP_DEFAULT, VENDOR_DEFAULT };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 if (typeof window !== 'undefined') window.PoeRegex = api;
 })();
