@@ -127,8 +127,11 @@ async function trackerOpenItem(number) {
 
 function tkError(text) { $('tk-error').textContent = text || ''; $('tk-error').hidden = !text; }
 
-async function tkLoad() {
-  if (tkBusy) return;
+// One reading at a time; whoever asks while one runs gets that one (so "read it again, then
+// draw" never draws the old list).
+let tkLoading = null;
+function tkLoad() { return tkLoading || (tkLoading = tkLoadNow().finally(() => { tkLoading = null; })); }
+async function tkLoadNow() {
   tkBusy = true;
   $('tk-refresh').disabled = true; $('tk-refresh').classList.add('busy');
   if (!tkLoaded) { setHtml($('tk-board'), '<p class="empty">Loading from GitHub…</p>'); setHtml($('tk-nodes'), '<p class="empty tk-loading">Loading from GitHub…</p>'); $('tk-lines').innerHTML = ''; }
@@ -150,6 +153,7 @@ function tkSort(col) {
 }
 
 // How many troubleshooting recordings are connected to a box.
+const tkNoteTag = (i) => (i.notes ? `<span class="tag tk-notetag" title="${i.notes} note${i.notes === 1 ? '' : 's'} over time">✎ ${i.notes}</span>` : '');
 const tkRecTag = (i) => ((i.recordings || []).length ? `<span class="tag tk-rec" title="${i.recordings.length} recording${i.recordings.length === 1 ? '' : 's'} or report${i.recordings.length === 1 ? '' : 's'} connected">▶ ${i.recordings.length}</span>` : '');
 function tkCard(i, col) {
   const p = i.progress;
@@ -160,7 +164,7 @@ function tkCard(i, col) {
   ].join('');
   return `<li><button type="button" class="tk-card pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}" draggable="true" data-tk="${i.number}">
     <span class="tk-ctitle">${esc(i.title)}</span>
-    <span class="tk-cmeta"><span class="dim num">#${i.number}</span>${tkRecTag(i)}${tags}</span>
+    <span class="tk-cmeta"><span class="dim num">#${i.number}</span>${tkRecTag(i)}${tkNoteTag(i)}${tags}</span>
     ${p.total ? `<span class="tk-prog"><progress max="${p.total}" value="${p.done}"></progress><small class="num">${p.done}/${p.total}</small></span>` : ''}
   </button></li>`;
 }
@@ -286,11 +290,12 @@ function tkOpenItem(number) {
   f.elements.parent.innerHTML = `<option value="">Nothing: straight under the tab</option>${opts.map((i) => `<option value="${i.number}">#${i.number} ${esc(i.title)}</option>`).join('')}`;
   f.elements.parent.value = it.parent != null && tkFind(it.parent) ? String(it.parent) : '';
   tkSteps = parts.steps;
-  // The recordings connected to it, each opened on the Troubleshooting page.
-  const recs = it.recordings || [];
-  $('tk-recs').hidden = !recs.length;
-  setHtml($('tk-reclist'), recs.map((id) => `<li class="tk-recrow" data-rec-row="${esc(id)}"><button type="button" class="tk-watch" data-watch="${esc(id)}">▶ Watch</button><span class="tk-recnote dim">${esc(id)}</span></li>`).join(''));
-  tkRecNotes(recs);
+  tkTags = it.labels.slice();
+  tkTagsDraw();
+  tkRecDraw(it);
+  $('tk-recpick').hidden = true;
+  tkNotesLoad(number);
+  $('tk-notenew').value = '';
   $('tk-dtitle').textContent = `#${it.number}`;
   $('tk-dlink').href = it.url;
   const day = (ts) => new Date(ts).toLocaleDateString();
@@ -321,6 +326,7 @@ $('tk-form').addEventListener('submit', async (e) => {
   };
   $('tk-save').disabled = true;
   const it = tkFind(tkOpen);
+  if (it && tkTags.join('\n') !== it.labels.join('\n')) patch.tags = tkTags;
   const parent = f.elements.parent.value ? Number(f.elements.parent.value) : null;
   const r = await api.tracker({ type: 'update', number: tkOpen, patch });
   if (!r.error && it) tkMerge(it, r.item);
@@ -334,6 +340,126 @@ $('tk-form').addEventListener('submit', async (e) => {
   if (it && f.elements.tab.value && f.elements.tab.value !== tkTabOf(it)) tkSetTab(it.number, f.elements.tab.value);
 });
 $('tk-cancel').addEventListener('click', () => $('tk-dialog').close());
+
+// ---- more in the box window: tags, recordings, notes over time, duplicate ----
+let tkTags = [];
+function tkTagsDraw() {
+  setHtml($('tk-tags'), tkTags.map((t, n) => `<span class="tag tk-tag">${esc(t)}<button type="button" class="link" data-tagdel="${n}" aria-label="Remove the tag ${esc(t)}">×</button></span>`).join(''));
+  // Every tag used anywhere, offered while typing.
+  const all = new Set();
+  for (const i of tkItems) for (const l of i.labels) all.add(l);
+  setHtml($('tk-taglist'), [...all].sort().map((t) => `<option value="${esc(t)}">`).join(''));
+}
+$('tk-tagnew').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const t = e.target.value.replace(/[\r\n,]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 30);
+  if (t && !/^tab:/i.test(t) && !tkTags.some((x) => x.toLowerCase() === t.toLowerCase()) && tkTags.length < 10) tkTags.push(t);
+  e.target.value = '';
+  tkTagsDraw();
+});
+$('tk-tags').addEventListener('click', (e) => {
+  const x = e.target.closest('[data-tagdel]');
+  if (x) { tkTags.splice(Number(x.dataset.tagdel), 1); tkTagsDraw(); }
+});
+
+// The recordings and reports connected to the box: watch one, take one out, connect another.
+function tkRecDraw(it) {
+  const recs = (it && it.recordings) || [];
+  setHtml($('tk-reclist'), recs.length ? recs.map((id) => `<li class="tk-recrow" data-rec-row="${esc(id)}"><button type="button" class="tk-watch" data-watch="${esc(id)}">▶ Watch</button><span class="tk-recnote dim">${esc(id)}</span><button type="button" class="link tk-untrack" data-untrack="${esc(id)}" title="Take it out of this box (the recording stays)">Take out</button></li>`).join('') : '<li class="empty">None yet. Connect a recording or report sent from the Troubleshooting page.</li>');
+  tkRecNotes(recs);
+}
+const tkRecWhat = (r) => (r.type === 'suggestion' ? 'Suggestion' : r.kind === 'note' ? 'Report' : 'Recording');
+async function tkRecPick() {
+  const box = $('tk-recpick');
+  if (!box.hidden) { box.hidden = true; return; }
+  box.hidden = false;
+  setHtml(box, '<p class="empty">Looking for recordings…</p>');
+  const it = tkFind(tkOpen), have = new Set((it && it.recordings) || []);
+  const list = ((await api.troubleList()) || []).filter((r) => r.sent && !have.has(r.id));
+  if (tkFind(tkOpen) !== it) return;
+  setHtml(box, list.length ? `<ul>${list.slice(0, 60).map((r) => {
+    const first = String(r.note || '').trim().split('\n')[0] || 'No note';
+    return `<li><button type="button" class="tk-recopt" data-recpick="${esc(r.id)}"><b>${tkRecWhat(r)}</b> <span class="dim">${esc(r.by || 'someone')}, ${new Date(r.startedAt).toLocaleDateString()}${r.issue ? `, in #${r.issue}` : ''}</span><span class="tk-recline">${esc(first)}</span></button></li>`;
+  }).join('')}</ul>` : '<p class="empty">Nothing to connect: only recordings and reports sent from the Troubleshooting page can go into a box.</p>');
+}
+$('tk-recadd').addEventListener('click', tkRecPick);
+$('tk-recpick').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-recpick]');
+  if (!b) return;
+  const n = tkOpen;
+  b.disabled = true;
+  await act({ type: 'troubleTrack', id: b.dataset.recpick, issue: n });
+  await tkLoad();
+  $('tk-recpick').hidden = true;
+  if (tkOpen === n) tkRecDraw(tkFind(n));
+});
+$('tk-reclist').addEventListener('click', async (e) => {
+  const x = e.target.closest('[data-untrack]');
+  if (!x) return;
+  const n = tkOpen;
+  if (!await askYes('Take this recording out of the box? The recording itself stays.', { yes: 'Take it out' })) return;
+  await act({ type: 'troubleUntrack', id: x.dataset.untrack });
+  await tkLoad();
+  if (tkOpen === n) tkRecDraw(tkFind(n));
+});
+
+// Notes over time: the issue's comments on GitHub, newest last, each with who and when.
+async function tkNotesLoad(number) {
+  $('tk-ncount').textContent = '';
+  setHtml($('tk-notes'), '<li class="empty">Loading…</li>');
+  const r = await api.tracker({ type: 'notes', number });
+  if (tkOpen !== number) return;
+  if (r.error) { setHtml($('tk-notes'), `<li class="empty">${esc(r.error)}</li>`); return; }
+  tkNotesDraw(r.notes);
+}
+let tkNotesShown = [];
+function tkNotesDraw(notes) {
+  tkNotesShown = notes;
+  $('tk-ncount').textContent = notes.length ? String(notes.length) : '';
+  setHtml($('tk-notes'), notes.length ? notes.map((n) => `<li><div class="tk-nhead"><b>${esc(n.by || 'someone')}</b><span class="dim">${new Date(n.at).toLocaleString()}</span></div><p>${esc(n.text)}</p></li>`).join('') : '<li class="empty">No notes yet. Add what you find, try or decide along the way; it keeps its date.</li>');
+  const list = $('tk-notes');
+  list.scrollTop = list.scrollHeight;
+}
+async function tkNoteAdd() {
+  const text = $('tk-notenew').value.trim(), n = tkOpen;
+  if (!text) return;
+  $('tk-notebtn').disabled = true;
+  const r = await api.tracker({ type: 'addNote', number: n, text });
+  $('tk-notebtn').disabled = false;
+  if (r.error) { $('tk-derror').textContent = r.error; $('tk-derror').hidden = false; return; }
+  const it = tkFind(n);
+  if (it) { it.notes = (it.notes || 0) + 1; tkDraw(); }
+  if (tkOpen !== n) return;
+  $('tk-notenew').value = '';
+  tkNotesDraw([...tkNotesShown, r.note]);
+}
+$('tk-notebtn').addEventListener('click', tkNoteAdd);
+// Ctrl+Enter adds the note; Enter alone makes a new line.
+$('tk-notenew').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); tkNoteAdd(); } });
+
+// A copy of a box: same text, status, priority, tags, tab and place.
+async function tkDuplicate(number) {
+  const it = tkFind(number);
+  if (!it) return '';
+  const r = await api.tracker({ type: 'add', title: `${it.title} (copy)`.slice(0, 200), body: it.body, status: it.status, priority: it.priority, parent: it.parent != null ? it.parent : null, tab: it.parent == null && tkTabOf(it) !== 'Main' ? tkTabOf(it) : undefined });
+  if (r.error) return r.error;
+  let item = { ...r.item, parent: r.item.parent !== undefined ? r.item.parent : it.parent };
+  if (it.labels.length) { const t = await api.tracker({ type: 'update', number: item.number, patch: { tags: it.labels } }); if (!t.error) item = { ...item, ...t.item, parent: item.parent }; }
+  tkItems.push(item);
+  tkChanged();
+  tkDraw();
+  return '';
+}
+$('tk-dup').addEventListener('click', async () => {
+  const n = tkOpen;
+  $('tk-dup').disabled = true;
+  const error = await tkDuplicate(n);
+  $('tk-dup').disabled = false;
+  if (error) { $('tk-derror').textContent = error; $('tk-derror').hidden = false; return; }
+  $('tk-dialog').close();
+  tkOpenItem(Math.max(...tkItems.map((i) => i.number)));
+});
 // Delete for good (GitHub needs admin rights on the token for this; src/tracker.js deleteItem).
 // Asks first. Returns an error text, or '' when it went (or the question was answered No).
 async function tkDeleteItem(number) {
@@ -483,7 +609,7 @@ function tkMapDraw() {
     const p = i.progress;
     return `<div class="tk-node st-${i.status} pri-${i.priority}${i.status === 'dropped' ? ' dropped' : ''}${tkMatch(i, q) ? '' : ' faded'}" data-node="${i.number}" tabindex="0" role="button" aria-label="#${i.number} ${esc(i.title)}">
       <span class="tk-ntitle">${esc(i.title)}</span>
-      <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${TK_STATUS[i.status]}</span>${tkRecTag(i)}${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
+      <span class="tk-nmeta"><span class="num">#${i.number}</span><span class="tk-st">${TK_STATUS[i.status]}</span>${tkRecTag(i)}${tkNoteTag(i)}${i.priority === 'high' ? '<span class="tag warn">High</span>' : ''}${i.labels.slice(0, 2).map((l) => `<span class="tag">${esc(l)}</span>`).join('')}${p.total ? `<small class="num">${p.done}/${p.total}</small>` : ''}</span>
       ${p.total ? `<progress max="${p.total}" value="${p.done}"></progress>` : ''}
       <button type="button" class="tk-plus" data-plus="${i.number}" title="Add something under this" aria-label="Add something under #${i.number}">+</button>
       <span class="tk-plug" data-plug="${i.number}" title="Drag onto another box to connect it under this one"></span>
@@ -762,12 +888,57 @@ async function tkRemoveTab(name) {
   if (r.error) tkError(r.error);
 }
 $('tk-tabs').addEventListener('click', (e) => {
+  if (tkTabDragged) { tkTabDragged = false; return; } // the end of a drag, not a click
   if (e.target.closest('#tk-newtab')) { tkTabEdit = { mode: 'new' }; tkDraw(); return; }
   const x = e.target.closest('[data-tabdel]');
   if (x) { tkRemoveTab(x.dataset.tabdel); return; }
   const t = e.target.closest('[data-tabname]');
   if (t && t.dataset.tabname !== tkTab) tkGoTab(t.dataset.tabname);
 });
+// Dragging a tab up or down puts it elsewhere in the list (Main stays first). A line shows
+// where it will land; the tabs' places are measured once, when the drag starts.
+let tkTabDrag = null, tkTabDragged = false;
+$('tk-tabs').addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 || e.target.closest('[data-tabdel], #tk-tabinput, #tk-newtab')) return;
+  const t = e.target.closest('[data-tabname]');
+  if (!t || t.dataset.tabname === 'Main') return;
+  tkTabDrag = { el: t, name: t.dataset.tabname, y0: e.clientY, id: e.pointerId, moved: false };
+});
+$('tk-tabs').addEventListener('pointermove', (e) => {
+  const d = tkTabDrag;
+  if (!d) return;
+  if (!d.moved) {
+    if (Math.abs(e.clientY - d.y0) < 5) return;
+    d.moved = true;
+    $('tk-tabs').setPointerCapture(d.id);
+    d.el.classList.add('dragging');
+    d.rows = [...$('tk-tabs').querySelectorAll('[data-tabname]')].map((el) => { const b = el.getBoundingClientRect(); return { el, name: el.dataset.tabname, mid: b.top + b.height / 2 }; });
+  }
+  d.el.style.transform = `translateY(${e.clientY - d.y0}px)`;
+  const before = d.rows.find((x) => x.name !== 'Main' && x.el !== d.el && e.clientY < x.mid) || null;
+  d.before = before ? before.name : '';
+  for (const x of d.rows) x.el.classList.toggle('insert-before', x === before);
+  const nt = $('tk-newtab');
+  if (nt) nt.classList.toggle('insert-before', !before);
+});
+function tkTabDragEnd(cancelled) {
+  const d = tkTabDrag;
+  tkTabDrag = null;
+  if (!d || !d.moved) return;
+  tkTabDragged = true;
+  setTimeout(() => { tkTabDragged = false; }, 0); // only the click that ends this drag is skipped
+  d.el.style.transform = '';
+  d.el.classList.remove('dragging');
+  for (const el of $('tk-tabs').querySelectorAll('.insert-before')) el.classList.remove('insert-before');
+  if (cancelled) return;
+  const tabs = tkTabs().filter((t) => t !== 'Main' && t !== d.name);
+  const at = d.before ? tabs.indexOf(d.before) : tabs.length;
+  tabs.splice(at < 0 ? tabs.length : at, 0, d.name);
+  tkSaveTabs(tabs);
+  tkDraw();
+}
+$('tk-tabs').addEventListener('pointerup', () => tkTabDragEnd(false));
+$('tk-tabs').addEventListener('pointercancel', () => tkTabDragEnd(true));
 $('tk-tabs').addEventListener('dblclick', (e) => {
   const t = e.target.closest('[data-tabname]');
   if (t && t.dataset.tabname !== 'Main') { tkTabEdit = { mode: 'rename', name: t.dataset.tabname }; tkDraw(); }
@@ -817,7 +988,7 @@ function tkBoxMenu(number, x, y) {
   const p = it.parent != null && tkShown.has(it.parent) ? tkFind(it.parent) : null;
   const tabs = tkTabs().filter((t) => t !== tkTabOf(it));
   tkMenuShow({ kind: 'box', number }, `#${it.number} ${esc(it.title)}`,
-    `${tkMBtn('open', '', 'Open')}${tkMBtn('under', '', 'Add something under it')}${p ? tkMBtn('off', '', `Take it off #${p.number}`) : ''}${tkMBtn('github', '', 'Open on GitHub')}${tkMBtn('copy', '', `Copy "#${it.number} ${esc(it.title.length > 24 ? `${it.title.slice(0, 24)}…` : it.title)}"`)}
+    `${tkMBtn('open', '', 'Open')}${tkMBtn('under', '', 'Add something under it')}${p ? tkMBtn('off', '', `Take it off #${p.number}`) : ''}${tkMBtn('note', '', 'Add a note')}${tkMBtn('connect', '', 'Connect a recording')}${tkMBtn('duplicate', '', 'Duplicate')}${tkMBtn('github', '', 'Open on GitHub')}${tkMBtn('copy', '', `Copy "#${it.number} ${esc(it.title.length > 24 ? `${it.title.slice(0, 24)}…` : it.title)}"`)}
     ${tkMRow('Where it stands', Object.entries(TK_STATUS).map(([k, v]) => tkMBtn('status', k, v, it.status === k)).join(''))}
     ${tkMRow('Priority', `${tkMBtn('priority', 'high', 'High', it.priority === 'high')}${tkMBtn('priority', 'normal', 'Normal', it.priority === 'normal')}${tkMBtn('priority', 'low', 'Low', it.priority === 'low')}`)}
     ${tabs.length ? tkMRow('Move to tab', tabs.map((t) => tkMBtn('tab', t, esc(t))).join('')) : ''}
@@ -896,6 +1067,9 @@ $('tk-menu').addEventListener('click', async (e) => {
   else if (act === 'openparent') tkOpenItem(tkFind(n).parent);
   else if (act === 'under') { tkUnder = n; tkUnderLine(); tkAddFocus(); }
   else if (act === 'off') tkLink(n, null);
+  else if (act === 'note') { tkOpenItem(n); $('tk-notenew').focus(); }
+  else if (act === 'connect') { tkOpenItem(n); tkRecPick(); }
+  else if (act === 'duplicate') { const error = await tkDuplicate(n); if (error) tkError(error); }
   else if (act === 'github') { const it = tkFind(n); if (it && it.url) window.open(it.url, '_blank', 'noreferrer'); }
   else if (act === 'copy') { const it = tkFind(n); if (it) navigator.clipboard.writeText(`#${it.number} ${it.title}`).catch(() => tkError('Could not copy.')); }
   else if (act === 'status') tkMove(n, v, true);

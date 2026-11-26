@@ -816,14 +816,18 @@
       <label>Tab <select name="tab"></select></label>
       <label>Part of <select name="parent"></select></label>
       <label class="wide">Notes <textarea name="notes" rows="5" maxlength="20000" placeholder="What it is, why, how it should work…"></textarea></label>
+      <div class="wide tk-tagfield"><span class="tk-flabel">Tags</span><span class="tk-tags" id="tk-tags"></span><input id="tk-tagnew" list="tk-taglist" maxlength="30" placeholder="Add a tag and press Enter" aria-label="New tag" autocomplete="off"><datalist id="tk-taglist"></datalist></div>
     </div>
     <h3 class="tr-h">Steps <span class="dim" id="tk-dprog"></span></h3>
     <ul class="tk-steps" id="tk-steps"></ul>
     <div class="row tk-stepadd"><input id="tk-stepnew" maxlength="300" placeholder="Add a step and press Enter" aria-label="New step"><button type="button" id="tk-stepbtn">Add step</button></div>
-    <div class="tk-recs" id="tk-recs" hidden><h3 class="tr-h">Recordings and reports</h3><ul id="tk-reclist"></ul></div>
+    <div class="tk-recs" id="tk-recs"><h3 class="tr-h">Recordings and reports <button type="button" class="link tk-hbtn" id="tk-recadd">+ Connect one</button></h3><ul id="tk-reclist"></ul><div class="tk-recpick" id="tk-recpick" hidden></div></div>
+    <h3 class="tr-h">Notes over time <span class="dim" id="tk-ncount"></span></h3>
+    <ul class="tk-notes" id="tk-notes"></ul>
+    <div class="row tk-noteadd"><textarea id="tk-notenew" rows="2" maxlength="20000" placeholder="Add a note: what you found, tried or decided…" aria-label="New note"></textarea><button type="button" id="tk-notebtn">Add note</button></div>
     <p class="warn" id="tk-derror" hidden></p>
     <div class="dialog-actions">
-      <span class="tk-dleft"><button type="button" class="link tk-del" id="tk-delete">Delete</button><span class="dim tk-dby" id="tk-dby"></span></span>
+      <span class="tk-dleft"><button type="button" class="link tk-del" id="tk-delete">Delete</button><button type="button" class="link" id="tk-dup">Duplicate</button><span class="dim tk-dby" id="tk-dby"></span></span>
       <span class="row"><button type="button" id="tk-cancel">Cancel</button><button type="submit" class="primary" id="tk-save" value="save">Save</button></span>
     </div>
   </form>

@@ -79,6 +79,7 @@ function toItem(issue) {
     dropped: issue.state === 'closed' && issue.state_reason === 'not_planned',
     labels: names(issue).filter((n) => !MANAGED.has(n) && !n.startsWith(TAB)),
     tab: tabOf(names(issue)), // its own tab ('': none of its own)
+    notes: issue.comments || 0, // notes added over time (the issue's comments)
     progress: progress(issue.body),
     // Troubleshooting recordings connected to it: lines with a link to recordings/<id>.
     recordings: recordingsIn(issue.body),
@@ -203,7 +204,10 @@ async function updateItem({ fetchImpl, token, repo, number, patch }) {
   const now = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}`);
   const status = STATUSES.includes(patch.status) ? patch.status : statusOf(now);
   const priority = ['high', 'normal', 'low'].includes(patch.priority) ? patch.priority : priorityOf(now);
-  const body = { labels: labelsFor(names(now), status, priority, patch.tab) };
+  // Tags: the owner's own labels; given, they replace the ones there (status, priority and tab stay).
+  let had = names(now);
+  if (Array.isArray(patch.tags)) had = [...had.filter((n) => MANAGED.has(n) || n.startsWith(TAB)), ...cleanTags(patch.tags)];
+  const body = { labels: labelsFor(had, status, priority, patch.tab) };
   if (patch.title !== undefined) { const t = String(patch.title).trim(); if (!t) throw new Error('The title cannot be empty.'); body.title = t; }
   if (patch.body !== undefined) body.body = String(patch.body);
   // Done and Dropped are GitHub's two ways of closing; every other status is an open issue.
@@ -233,6 +237,33 @@ async function deleteItem({ fetchImpl, token, repo, number }) {
   return { number: n, recordings: recordingsIn(issue.body) };
 }
 
+// A box's own tags, tidied: no tab or status names, no doubles, at most 10 of 30 characters.
+function cleanTags(tags) {
+  const out = [];
+  for (const t of tags || []) {
+    const n = String(t || '').replace(/[\r\n,]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 30);
+    if (n && !MANAGED.has(n) && !n.startsWith(TAB) && !out.some((o) => o.toLowerCase() === n.toLowerCase())) out.push(n);
+  }
+  return out.slice(0, 10);
+}
+
+// Notes over time: the issue's comments, oldest first.
+async function listNotes({ fetchImpl, token, repo, number }) {
+  checkRepo(repo);
+  const n = Number(number);
+  if (!Number.isInteger(n) || n < 1) throw new Error('Unknown item.');
+  const list = await call(fetchImpl, token, 'GET', `/repos/${repo}/issues/${n}/comments?per_page=100`);
+  return (list || []).map((c) => ({ id: c.id, by: c.user ? c.user.login : '', at: Date.parse(c.created_at) || 0, text: c.body || '', url: c.html_url || '' }));
+}
+async function addNote({ fetchImpl, token, repo, number, text }) {
+  checkRepo(repo);
+  const n = Number(number), body = String(text || '').trim();
+  if (!Number.isInteger(n) || n < 1) throw new Error('Unknown item.');
+  if (!body) throw new Error('Write something first.');
+  const c = await call(fetchImpl, token, 'POST', `/repos/${repo}/issues/${n}/comments`, { body: body.slice(0, 20000) });
+  return { id: c.id, by: c.user ? c.user.login : '', at: Date.parse(c.created_at) || Date.now(), text: c.body || body, url: c.html_url || '' };
+}
+
 // Renames a tab: one change to its label, and every item with it follows. A tab nobody has a
 // box on yet has no label; then there is nothing to do here.
 async function renameTab({ fetchImpl, token, repo, from, to }) {
@@ -251,4 +282,4 @@ async function removeTab({ fetchImpl, token, repo, name }) {
   return { name: a };
 }
 
-module.exports = { renameTab, removeTab, cleanTab, listItems, addItem, updateItem, setParent, deleteItem, addRecording, removeRecording, recordingsIn, recordingLine, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };
+module.exports = { listNotes, addNote, cleanTags, renameTab, removeTab, cleanTab, listItems, addItem, updateItem, setParent, deleteItem, addRecording, removeRecording, recordingsIn, recordingLine, toItem, statusOf, priorityOf, labelsFor, STATUSES, STATUS_LABEL, PRIORITY_LABEL };

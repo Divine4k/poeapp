@@ -171,6 +171,13 @@
         Object.assign(c, { ms, running: a.id === 'start' || a.id === 'resume', paused: a.id === 'pause' });
         state.summary.now = Date.now(); listener(state);
       }
+      // The tracker's recordings: a line with the recording's link goes into the box's text.
+      if (a && (a.type === 'troubleTrack' || a.type === 'troubleUntrack') && window.demoTracker) {
+        for (const it of window.demoTracker) {
+          const recs = (it.recordings || []).filter((r) => r !== a.id);
+          it.recordings = a.type === 'troubleTrack' && it.number === Number(a.issue) ? [...recs, a.id] : recs;
+        }
+      }
       if (a && a.type === 'resetKeys') { merge(state.config, { hotkeys: { ...KEYS.hotkeys }, trade: { hotkeys: { ...KEYS.trade } }, inventory: { key: 'Tab' } }); listener(state); }
       return true;
     },
@@ -295,13 +302,15 @@
       ]);
       if (q.type === 'list') return { repo: state.config.trackerRepo || 'Divine4k/poeapp', items: list.map((i) => ({ ...i })) };
       if (q.type === 'add') { const it = mk(Math.max(...list.map((i) => i.number)) + 1, q.title, q.status || 'idea', 'normal', '', 0, { parent: q.parent ?? null, tab: q.tab && q.tab !== 'Main' ? q.tab : '' }); list.push(it); return { item: { ...it } }; }
+      if (q.type === 'notes') { const it = list.find((i) => i.number === q.number); return { notes: (it && it.noteList) || [] }; }
+      if (q.type === 'addNote') { const it = list.find((i) => i.number === q.number); const n = { id: Date.now(), by: 'Divine4k', at: Date.now(), text: q.text }; it.noteList = [...(it.noteList || []), n]; it.notes = it.noteList.length; return { note: n }; }
       if (q.type === 'renameTab') { for (const i of list) if (i.tab === q.from) i.tab = q.to; return { from: q.from, to: q.to }; }
       if (q.type === 'removeTab') { for (const i of list) if (i.tab === q.name) i.tab = ''; return { name: q.name }; }
       if (q.type === 'delete') { const at = list.findIndex((i) => i.number === q.number); for (const c of list) if (c.parent === q.number) c.parent = null; list.splice(at, 1); return { number: q.number }; }
       if (q.type === 'parent') { const it = list.find((i) => i.number === q.number); it.parent = q.parent; return { item: { ...it } }; }
       if (q.type === 'update') {
         const it = list.find((i) => i.number === q.number);
-        Object.assign(it, q.patch, { updated: Date.now() }); if (q.patch.tab !== undefined) it.tab = q.patch.tab === 'Main' ? '' : q.patch.tab;
+        Object.assign(it, q.patch, { updated: Date.now() }); if (q.patch.tab !== undefined) it.tab = q.patch.tab === 'Main' ? '' : q.patch.tab; if (q.patch.tags) { it.labels = q.patch.tags; delete it.tags; }
         it.progress = window.Steps.progress(it.body); it.dropped = it.status === 'dropped'; it.closed = it.status === 'done' || it.status === 'dropped' ? it.closed || Date.now() : 0;
         return { item: { ...it } };
       }

@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { parseSteps, joinSteps, progress } = require('../src/ui/steps');
-const { renameTab, removeTab, listItems, addItem, updateItem, setParent, deleteItem, statusOf, labelsFor } = require('../src/tracker');
+const { listNotes, addNote, renameTab, removeTab, listItems, addItem, updateItem, setParent, deleteItem, statusOf, labelsFor } = require('../src/tracker');
 
 test('steps are lifted out of the text and put back after the notes', () => {
   const body = 'Read a stash tab.\r\n\r\n- [x] Find the grid\n- [ ] Read the items\n* [X] Bundle data\nMore notes';
@@ -55,6 +55,14 @@ function fakeGithub(token = 'good', { withParent = true } = {}) {
       parentOf.delete(gone.number);
       for (const [k, v] of [...parentOf]) if (v === gone.number) parentOf.delete(k);
       return reply(200, { data: { deleteIssue: { clientMutationId: null } } });
+    }
+    const com = /^\/repos\/Divine4k\/poeapp\/issues\/(\d+)\/comments$/.exec(u.pathname);
+    if (com) {
+      const i = issues.find((x) => x.number === Number(com[1]));
+      if (!i) return reply(404, { message: 'Not Found' });
+      i.notes = i.notes || [];
+      if (opt.method === 'POST') { const c = { id: 500 + i.notes.length, body: body.body, user: { login: 'Divine4k' }, created_at: new Date(1700000000000 + i.notes.length).toISOString() }; i.notes.push(c); i.comments = i.notes.length; return reply(201, c); }
+      return reply(200, i.notes);
     }
     const lab = /^\/repos\/Divine4k\/poeapp\/labels\/(.+)$/.exec(u.pathname);
     if (lab) {
@@ -244,4 +252,24 @@ test('tabs are labels: set, kept, renamed and removed', async () => {
   assert.deepStrictEqual((await listItems(base)).map((i) => [i.tab, i.status]), [['', 'doing'], ['', 'idea']]);
   await assert.rejects(renameTab({ ...base, from: 'Main', to: 'X' }), /Main/);
   await assert.rejects(removeTab({ ...base, name: 'Main' }), /Main/);
+});
+
+test('notes over time are comments, and tags replace only the own labels', async () => {
+  const gh = fakeGithub();
+  const base = { fetchImpl: gh.fetch, token: 'good', repo: 'Divine4k/poeapp' };
+  await addItem({ ...base, title: 'Tagged', tab: 'Jewels', status: 'doing', priority: 'high' });
+  const t = await updateItem({ ...base, number: 1, patch: { tags: ['ui', ' UI ', 'tab: Sneaky', 'in progress', 'look, feel', ''] } });
+  assert.deepStrictEqual(t.labels, ['ui', 'look feel']);
+  assert.strictEqual(t.tab, 'Jewels');
+  assert.strictEqual(t.status, 'doing');
+  assert.strictEqual(t.priority, 'high');
+  assert.deepStrictEqual((await updateItem({ ...base, number: 1, patch: { tags: [] } })).labels, []);
+  assert.deepStrictEqual(await listNotes({ ...base, number: 1 }), []);
+  const n = await addNote({ ...base, number: 1, text: '  Tried it on the live league: works.  ' });
+  assert.strictEqual(n.text, 'Tried it on the live league: works.');
+  assert.strictEqual(n.by, 'Divine4k');
+  await addNote({ ...base, number: 1, text: 'Second' });
+  assert.deepStrictEqual((await listNotes({ ...base, number: 1 })).map((x) => x.text), ['Tried it on the live league: works.', 'Second']);
+  assert.strictEqual((await listItems(base))[0].notes, 2);
+  await assert.rejects(addNote({ ...base, number: 1, text: ' ' }), /Write something/);
 });
