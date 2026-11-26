@@ -202,6 +202,7 @@ class InventoryReader {
     for (const c of cells) {
       const k = c.cell;
       const unsure = hidden.has(k);
+      if (unsure) c.unsure = true; // its picture may show a tooltip or the pointer
       const kept = this.clean[k];
       const named = (c.status === 'item' || c.status === 'remembered') && c.name;
       if (named && kept && kept.name === c.name && (unsure || c.status === 'remembered')) {

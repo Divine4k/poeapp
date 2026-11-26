@@ -714,19 +714,15 @@ function keepSnapshot(result) {
       if (first === null || (c.name && first.name !== c.name)) withdrawn.add(c.cell);
     }
   }
-  const cells = markCarried(result.cells.filter((c) => c.status !== 'covered' && !withdrawn.has(c.cell)), base, (a, b) => similarity(a, b) > 0.9)
+  const cells = markCarried(result.cells.filter((c) => c.status !== 'covered' && !withdrawn.has(c.cell) && !(c.unsure && !c.name)), base, (a, b) => similarity(a, b) > 0.9)
     .map((c) => ({ ...c, score: c.score ? Math.round(c.score * 100) : null, near: nearList(c.near), packed: c.print ? packPrint(c.print) : null }));
   const growing = ledger.inMap;
   const stale = !!(carriedIn && carriedIn.stale && base === carriedIn.cells);
-  // A picture that shows such a slot is replaced even by a smaller one.
-  const prev = snapshots.get(run.id).trips.find((t) => t.trip === trip);
-  const fix = !!prev && ledger.pendingArrival && prev.cells.some((c) => {
-    if (!ledger.arrival.has(c.cell)) return false;
-    const first = ledger.arrival.get(c.cell);
-    return first === null || (c.name && first.name !== c.name);
-  });
-  if (!snapshots.wants(run.id, trip, cells, growing || fix)) return;
-  if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing: growing || fix, stale })) session.markSnapshot(run.id);
+  // A picture is never replaced by a smaller one back from the map: a slot stashed before it
+  // was seen clearly looks just like one filled from the stash, so shrinking it (0.51.1 to 0.66)
+  // took stashed loot out of the picture. Withdrawals are kept out above instead.
+  if (!snapshots.wants(run.id, trip, cells, growing)) return;
+  if (snapshots.record(run.id, trip, { at: Date.now(), cells, image: gridPicture(cells), growing, stale })) session.markSnapshot(run.id);
 }
 
 function updateUnknown(found) {
