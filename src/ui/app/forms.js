@@ -3,8 +3,8 @@
 // Part of the main window script: all files in src/ui/app/ share one scope, loaded in the order of index.html.
 
 $('btn-run-toggle').addEventListener('click', () => act({ type: currentRun() ? 'endRun' : 'startRun' }));
-$('btn-new-session').addEventListener('click', () => {
-  if (!state.summary.runs.length || window.confirm('Start a new session? The current one is saved and stays in the row of sessions above the map list.')) act({ type: 'newSession' });
+$('btn-new-session').addEventListener('click', async () => {
+  if (!state.summary.runs.length || await askYes('Start a new session? The current one is saved and stays in the row of sessions above the map list.', { yes: 'New session' })) act({ type: 'newSession' });
 });
 // Adding loot by name is rare, so its fields stay folded until asked for.
 $('btn-add-loot').addEventListener('click', () => {

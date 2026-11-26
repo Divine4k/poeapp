@@ -53,7 +53,7 @@ $('dev-users').addEventListener('change', async (e) => {
   const sel = e.target.closest('[data-role-of]');
   if (!sel) return;
   const name = sel.dataset.roleOf, role = sel.value;
-  if (role === 'admin' && !window.confirm(`Make ${name} an admin? Admins can change everyone's roles and the GitHub token.`)) { devTable(); return; }
+  if (role === 'admin' && !await askYes(`Make ${name} an admin? Admins can change everyone's roles and the GitHub token.`, { yes: 'Make admin' })) { devTable(); return; }
   sel.disabled = true;
   const r = await api.dev({ type: 'setRole', name, role });
   if (r.error) devError(r.error);
@@ -71,7 +71,7 @@ $('dev-github').addEventListener('submit', async (e) => {
   $('dev-github-status').textContent = `Saved. ${$('dev-github-status').textContent}`;
 });
 $('dev-token-clear').addEventListener('click', async () => {
-  if (!window.confirm('Remove the saved token? Nobody can send recordings until a new one is saved.')) return;
+  if (!await askYes('Remove the saved token? Nobody can send recordings until a new one is saved.', { yes: 'Remove token', danger: true })) return;
   const r = await api.dev({ type: 'setGithub', token: '' });
   if (r.error) $('dev-github-status').textContent = r.error;
   else devLoad();

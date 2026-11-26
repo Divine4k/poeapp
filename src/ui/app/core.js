@@ -34,3 +34,23 @@ const act = (a) => api.action(a);
 // What was last written is remembered beside the page, not in an attribute of the box (a second copy of all its HTML in the page).
 const htmlShown = new WeakMap();
 const setHtml = (el, html) => { if (htmlShown.get(el) !== html) { htmlShown.set(el, html); el.innerHTML = html; } };
+
+// Questions and messages in the app's own window (#ask-dialog), never window.confirm/alert:
+// after one of those, Electron on Windows can leave text fields deaf to typing until the
+// window loses focus and gets it back (the owner could not type in fields after removing a
+// tracker tab). askYes resolves true for the yes button, false for No, Escape or closing.
+function askYes(text, { yes = 'OK', no = 'Cancel', danger = false } = {}) {
+  const d = $('ask-dialog');
+  $('ask-text').textContent = text;
+  $('ask-yes').textContent = yes;
+  $('ask-yes').classList.toggle('danger', danger);
+  $('ask-no').textContent = no;
+  $('ask-no').hidden = !no;
+  d.returnValue = '';
+  return new Promise((resolve) => {
+    d.addEventListener('close', () => resolve(d.returnValue === 'yes'), { once: true });
+    d.showModal();
+    $('ask-yes').focus();
+  });
+}
+const tell = (text) => askYes(text, { no: '' });

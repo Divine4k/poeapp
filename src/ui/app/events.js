@@ -15,8 +15,8 @@ document.addEventListener('click', (e) => {
   if (b) {
     const d = b.dataset;
     e.stopPropagation();
-    if (d.confirm && !window.confirm(d.confirm)) return;
-    Promise.resolve(act({ type: d.act, id: d.id, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined })).then(() => { if (d.act === 'removeCustomPrice') renderPrices(true); });
+    const run = () => Promise.resolve(act({ type: d.act, id: d.id, runId: d.run, lootId: d.loot, batch: d.batch, costId: d.cost, name: d.name, qty: d.qty ? Number(d.qty) : undefined })).then(() => { if (d.act === 'removeCustomPrice') renderPrices(true); });
+    if (d.confirm) askYes(d.confirm).then((ok) => { if (ok) run(); }); else run();
     return;
   }
   const lo = e.target.closest('[data-loadout]');

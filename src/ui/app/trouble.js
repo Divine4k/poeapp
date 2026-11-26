@@ -299,7 +299,7 @@ async function trAddPics(files) {
   for (const f of files) {
     if (!/^image\//.test(f.type)) continue;
     const err = await api.troubleAddImage(id, new Uint8Array(await f.arrayBuffer()), f.type);
-    if (err) { window.alert(err); break; }
+    if (err) { await tell(err); break; }
   }
   if (trSel === id) trOpen(id);
 }
@@ -385,9 +385,9 @@ $('tr-sendbtn').addEventListener('click', () => {
   clearTimeout(noteTimer);
   act({ type: 'troubleSend', id: trSel, note: $('tr-note').value });
 });
-$('tr-delete').addEventListener('click', () => {
+$('tr-delete').addEventListener('click', async () => {
   const remote = trDetail && trDetail.remote;
-  if (!trSel || !window.confirm(remote ? 'Remove this recording from your list? It stays on GitHub.' : 'Delete this recording from this PC? What was already sent stays on GitHub.')) return;
+  if (!trSel || !await askYes(remote ? 'Remove this recording from your list? It stays on GitHub.' : 'Delete this recording from this PC? What was already sent stays on GitHub.', { yes: remote ? 'Remove' : 'Delete', danger: true })) return;
   act({ type: 'troubleRemove', id: trSel });
 });
 
@@ -459,8 +459,8 @@ $('tr-trackform').addEventListener('submit', (e) => {
     : { type: 'troubleTrack', id: trSel, issue: Number(trBoxPick) });
   $('tr-trackdlg').close();
 });
-$('tr-untrack').addEventListener('click', () => {
-  if (trSel && window.confirm('Take this recording out of its box in the tracker? The box stays.')) act({ type: 'troubleUntrack', id: trSel });
+$('tr-untrack').addEventListener('click', async () => {
+  if (trSel && await askYes('Take this recording out of its box in the tracker? The box stays.', { yes: 'Take it out' })) act({ type: 'troubleUntrack', id: trSel });
 });
 // The box it is in: the tracker opens on it.
 $('tr-tracklink').addEventListener('click', (e) => {

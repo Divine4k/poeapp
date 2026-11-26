@@ -15,9 +15,9 @@ function openStrategy(id) {
   sdlg.showModal();
 }
 $('btn-strategy-cancel').addEventListener('click', () => sdlg.close());
-$('btn-strategy-delete').addEventListener('click', () => {
+$('btn-strategy-delete').addEventListener('click', async () => {
   const n = (state.sessions || []).filter((x) => x.strategyId === editing).length;
-  if (!window.confirm(`Delete this strategy${n ? ` and its ${n} saved ${n === 1 ? 'session' : 'sessions'}` : ''}? This cannot be undone.`)) return;
+  if (!await askYes(`Delete this strategy${n ? ` and its ${n} saved ${n === 1 ? 'session' : 'sessions'}` : ''}? This cannot be undone.`, { yes: 'Delete', danger: true })) return;
   act({ type: 'deleteStrategy', id: editing });
   sdlg.close();
 });

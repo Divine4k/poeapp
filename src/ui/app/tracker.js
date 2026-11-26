@@ -104,11 +104,17 @@ function renderTracker() {
   if (!admin) { tkLoaded = false; tkItems = []; tkChanged(); if (!$('tab-tracker').hidden) showTab('mapping'); return; }
   // Another repository was set in Developer tools: the list is read again when the page shows.
   if (tkLoaded && state.config.trackerRepo !== tkCfg) tkLoaded = false;
-  // A recording was put in a box (or taken out) since the list was read: read it again.
-  if (tkLoaded && state.trouble && state.trouble.marksRev !== tkMarks) tkLoaded = false;
+  // A recording was put in a box (or taken out) since the list was read: read it again, in the
+  // background, keeping what is on screen (until 0.55.1 the page stopped drawing changes until
+  // it was opened again, so new boxes and edits seemed to do nothing).
+  if (tkLoaded && state.trouble && state.trouble.marksRev !== tkMarks) {
+    tkMarks = state.trouble.marksRev;
+    if (!$('tab-tracker').hidden) tkLoad(); else tkStale = true;
+  }
 }
+let tkStale = false;
 let tkMarks = -1;
-function trackerShown() { if (tkLoaded) tkDraw(); else tkLoad(); }
+function trackerShown() { if (tkLoaded && !tkStale) tkDraw(); else tkLoad(); }
 // Opens the tracker on one box (from a recording on the Troubleshooting page).
 async function trackerOpenItem(number) {
   showTab('tracker');
@@ -132,7 +138,7 @@ async function tkLoad() {
   $('tk-refresh').disabled = false; $('tk-refresh').classList.remove('busy');
   if (r.error) { tkError(r.error); if (!tkLoaded) { setHtml($('tk-board'), ''); setHtml($('tk-nodes'), ''); } return; }
   tkError('');
-  tkItems = r.items; tkRepo = r.repo; tkCfg = cfg; tkLoaded = true; tkChanged();
+  tkItems = r.items; tkRepo = r.repo; tkCfg = cfg; tkLoaded = true; tkStale = false; tkChanged();
   tkMarks = state.trouble ? state.trouble.marksRev : -1;
   tkDraw();
 }
@@ -334,7 +340,7 @@ async function tkDeleteItem(number) {
   const it = tkFind(number);
   if (!it) return '';
   const inside = tkItems.filter((c) => c.parent === it.number).length;
-  if (!window.confirm(`Delete #${it.number} "${it.title}" for good? It cannot be brought back.${inside ? ` The ${inside} item${inside === 1 ? '' : 's'} under it stay, no longer connected to it.` : ''}\n\nTo keep it but put it aside, set it to Dropped instead.`)) return '';
+  if (!await askYes(`Delete #${it.number} "${it.title}" for good? It cannot be brought back.${inside ? ` The ${inside} item${inside === 1 ? '' : 's'} under it stay, no longer connected to it.` : ''}\n\nTo keep it but put it aside, set it to Dropped instead.`, { yes: 'Delete', danger: true })) return '';
   const r = await api.tracker({ type: 'delete', number: it.number });
   if (r.error) return r.error;
   for (const c of tkItems) if (c.parent === it.number) { c.parent = null; if (!c.tab && tkTabOf(it) !== 'Main') c.tab = tkTabOf(it); }
@@ -612,7 +618,7 @@ $('tk-map').addEventListener('pointerdown', (e) => {
   const box = e.target.closest('[data-node]');
   if (line) {
     const n = Number(line.dataset.line), it = tkFind(n), p = it && tkFind(it.parent);
-    if (p && window.confirm(`Take #${n} off #${p.number}? It stays on this tab, straight under it.`)) tkLink(n, null);
+    if (p) askYes(`Take #${n} off #${p.number}? It stays on this tab, straight under it.`, { yes: 'Take it off' }).then((ok) => { if (ok) tkLink(n, null); });
     return;
   }
   e.preventDefault();
@@ -746,7 +752,7 @@ async function tkTabNamed(value) {
 }
 async function tkRemoveTab(name) {
   const n = tkItems.filter((i) => tkTabOf(i) === name).length;
-  if (!window.confirm(`Remove the tab "${name}"?${n ? ` Its ${n} box${n === 1 ? '' : 'es'} go back to Main (nothing is deleted).` : ''}`)) return;
+  if (!await askYes(`Remove the tab "${name}"?${n ? ` Its ${n} box${n === 1 ? '' : 'es'} go back to Main (nothing is deleted).` : ''}`, { yes: 'Remove tab' })) return;
   tkSaveTabs(tkTabs().filter((t) => t !== name));
   for (const i of tkItems) if (i.tab === name) i.tab = '';
   tkChanged();
@@ -784,22 +790,17 @@ $('tk-hidedone').addEventListener('click', () => {
   tkDraw();
 });
 
-// ---- right-click on a box: quick changes without opening it ----
-function tkMenuClose() { $('tk-menu').hidden = true; }
-function tkMenuOpen(number, x, y) {
-  const it = tkFind(number);
-  if (!it) return;
-  const btn = (act, value, label, on) => `<button type="button" role="menuitem" data-act="${act}" data-value="${esc(value)}"${on ? ' class="on" aria-checked="true"' : ''}>${label}</button>`;
-  const p = it.parent != null && tkShown.has(it.parent) ? tkFind(it.parent) : null;
-  const tabs = tkTabs().filter((t) => t !== tkTabOf(it));
-  setHtml($('tk-menu'), `<div class="tk-mhead">#${it.number} ${esc(it.title)}</div>
-    ${btn('open', '', 'Open')}${btn('under', '', 'Add something under it')}${p ? btn('off', '', `Take it off #${p.number}`) : ''}
-    <div class="tk-msec">Where it stands</div><div class="tk-mrow">${Object.entries(TK_STATUS).map(([k, v]) => btn('status', k, v, it.status === k)).join('')}</div>
-    <div class="tk-msec">Priority</div><div class="tk-mrow">${btn('priority', 'high', 'High', it.priority === 'high')}${btn('priority', 'normal', 'Normal', it.priority === 'normal')}${btn('priority', 'low', 'Low', it.priority === 'low')}</div>
-    ${tabs.length ? `<div class="tk-msec">Move to tab</div><div class="tk-mrow">${tabs.map((t) => btn('tab', t, esc(t))).join('')}</div>` : ''}
-    <div class="tk-msep"></div>${btn('delete', '', 'Delete…')}`);
+// ---- right-click menus: on a box, a tab, a line, the tab's own box, the empty map, a column ----
+// One menu (#tk-menu) filled for what was clicked; tkMenu says what that was.
+let tkMenu = null;
+function tkMenuClose() { $('tk-menu').hidden = true; tkMenu = null; }
+const tkMBtn = (act, value, label, on, danger) => `<button type="button" role="menuitem" data-act="${act}" data-value="${esc(value)}"${on ? ' class="on" aria-checked="true"' : danger ? ' class="danger"' : ''}>${label}</button>`;
+const tkMRow = (title, buttons) => `<div class="tk-msec">${title}</div><div class="tk-mrow">${buttons}</div>`;
+const tkMSep = '<div class="tk-msep"></div>';
+function tkMenuShow(ctx, head, html, x, y) {
+  tkMenu = ctx;
+  setHtml($('tk-menu'), `${head ? `<div class="tk-mhead">${head}</div>` : ''}${html}`);
   const m = $('tk-menu');
-  m.dataset.number = number;
   m.hidden = false;
   // Kept inside the window.
   const w = m.offsetWidth, h = m.offsetHeight;
@@ -808,27 +809,110 @@ function tkMenuOpen(number, x, y) {
   const first = m.querySelector('button');
   if (first) first.focus();
 }
+// The parts every map menu ends with: things for the whole tab.
+const tkMTabTail = () => `${tkMSep}${tkMBtn('add', '', 'Add something to this tab')}${tkMBtn('hidedone', '', tkHideDone ? 'Show finished boxes' : 'Hide finished boxes')}${tkView === 'map' ? tkMBtn('relayout', '', 'Lay this tab out again') : ''}${tkMBtn('refresh', '', 'Refresh from GitHub')}`;
+function tkBoxMenu(number, x, y) {
+  const it = tkFind(number);
+  if (!it) return;
+  const p = it.parent != null && tkShown.has(it.parent) ? tkFind(it.parent) : null;
+  const tabs = tkTabs().filter((t) => t !== tkTabOf(it));
+  tkMenuShow({ kind: 'box', number }, `#${it.number} ${esc(it.title)}`,
+    `${tkMBtn('open', '', 'Open')}${tkMBtn('under', '', 'Add something under it')}${p ? tkMBtn('off', '', `Take it off #${p.number}`) : ''}${tkMBtn('github', '', 'Open on GitHub')}${tkMBtn('copy', '', `Copy "#${it.number} ${esc(it.title.length > 24 ? `${it.title.slice(0, 24)}…` : it.title)}"`)}
+    ${tkMRow('Where it stands', Object.entries(TK_STATUS).map(([k, v]) => tkMBtn('status', k, v, it.status === k)).join(''))}
+    ${tkMRow('Priority', `${tkMBtn('priority', 'high', 'High', it.priority === 'high')}${tkMBtn('priority', 'normal', 'Normal', it.priority === 'normal')}${tkMBtn('priority', 'low', 'Low', it.priority === 'low')}`)}
+    ${tabs.length ? tkMRow('Move to tab', tabs.map((t) => tkMBtn('tab', t, esc(t))).join('')) : ''}
+    ${tkMSep}${tkMBtn('delete', '', 'Delete…', false, true)}`, x, y);
+}
+function tkTabMenu(name, x, y) {
+  const tabs = tkTabs(), at = tabs.indexOf(name), main = name === 'Main';
+  tkMenuShow({ kind: 'tabitem', tab: name }, esc(name),
+    `${name !== tkTab ? tkMBtn('gotab', '', 'Open') : ''}${main ? '' : tkMBtn('rename', '', 'Rename')}${!main && at > 1 ? tkMBtn('tabup', '', 'Move up') : ''}${!main && at < tabs.length - 1 ? tkMBtn('tabdown', '', 'Move down') : ''}${tkMBtn('newtab', '', 'New tab')}${main ? '' : `${tkMSep}${tkMBtn('removetab', '', 'Remove tab…', false, true)}`}`, x, y);
+}
+function tkRootMenu(x, y) {
+  tkMenuShow({ kind: 'root' }, esc(tkTab === 'Main' ? 'Main' : tkTab),
+    `${tkTab === 'Main' ? '' : tkMBtn('rename', '', 'Rename this tab')}${tkMTabTail()}`, x, y);
+}
+function tkLineMenu(number, x, y) {
+  const it = tkFind(number), p = it && tkFind(it.parent);
+  if (!p) return;
+  tkMenuShow({ kind: 'line', number }, `#${it.number} under #${p.number}`, `${tkMBtn('off', '', `Take #${it.number} off #${p.number}`)}${tkMBtn('open', '', `Open #${it.number}`)}${tkMBtn('openparent', '', `Open #${p.number}`)}`, x, y);
+}
+function tkColMenu(col, x, y) {
+  const c = TK_COLS.find((k) => k[0] === col);
+  tkMenuShow({ kind: 'col', col }, esc(c ? c[1] : ''), `${col === 'done' ? '' : tkMBtn('addcol', col, `Add something to ${esc(c[1])}`)}${tkMTabTail()}`, x, y);
+}
+
 for (const id of ['tk-map', 'tk-board']) {
   $(id).addEventListener('contextmenu', (e) => {
-    const box = e.target.closest('[data-node], [data-tk]');
-    const n = box && Number(box.dataset.node || box.dataset.tk);
-    if (!n) return;
     e.preventDefault();
-    tkMenuOpen(n, e.clientX, e.clientY);
+    const box = e.target.closest('[data-node], [data-tk]');
+    const line = e.target.closest('[data-line]');
+    const col = e.target.closest('[data-col]');
+    if (box && (box.dataset.node === 'root')) tkRootMenu(e.clientX, e.clientY);
+    else if (box) tkBoxMenu(Number(box.dataset.node || box.dataset.tk), e.clientX, e.clientY);
+    else if (line) tkLineMenu(Number(line.dataset.line), e.clientX, e.clientY);
+    else if (col) tkColMenu(col.dataset.col, e.clientX, e.clientY);
+    else tkMenuShow({ kind: 'empty' }, esc(tkTab), tkMTabTail().replace(tkMSep, ''), e.clientX, e.clientY);
   });
 }
+$('tk-tabs').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const t = e.target.closest('[data-tabname]');
+  if (t) tkTabMenu(t.dataset.tabname, e.clientX, e.clientY);
+  else tkMenuShow({ kind: 'tabs' }, '', tkMBtn('newtab', '', 'New tab'), e.clientX, e.clientY);
+});
+
+// Moves a tab one place up or down in the list (Main stays first).
+function tkMoveTab(name, by) {
+  const tabs = tkTabs().filter((t) => t !== 'Main'), at = tabs.indexOf(name), to = at + by;
+  if (at < 0 || to < 0 || to >= tabs.length) return;
+  tabs.splice(to, 0, tabs.splice(at, 1)[0]);
+  tkSaveTabs(tabs);
+  tkDraw();
+}
+// Forgets where the boxes of the tab shown were put by hand, so the tree lays them out again.
+async function tkRelayout() {
+  if (!await askYes(`Lay out "${tkTab}" again? The boxes you moved by hand go back to their places in the tree.`, { yes: 'Lay out again' })) return;
+  const prefix = `${tkTab === 'Main' ? 'root' : `tab:${tkTab}`}/`;
+  const layout = {};
+  for (const [k, v] of Object.entries(state.config.trackerLayout || {})) if (!k.startsWith(prefix)) layout[k] = v;
+  for (const k of Object.keys(tkMoved)) if (k.startsWith(prefix)) delete tkMoved[k];
+  state.config.trackerLayout = layout;
+  api.setConfig({ trackerLayout: layout });
+  tkDraw();
+}
+function tkAddFocus(status) {
+  const f = $('tk-add');
+  if (status && [...f.elements.status.options].some((o) => o.value === status)) f.elements.status.value = status;
+  f.elements.title.focus();
+}
+
 $('tk-menu').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-act]');
-  if (!b) return;
-  const n = Number($('tk-menu').dataset.number), v = b.dataset.value;
+  if (!b || !tkMenu) return;
+  const ctx = tkMenu, n = ctx.number, v = b.dataset.value, act = b.dataset.act;
   tkMenuClose();
-  if (b.dataset.act === 'open') tkOpenItem(n);
-  else if (b.dataset.act === 'under') { tkUnder = n; tkUnderLine(); $('tk-add').elements.title.focus(); }
-  else if (b.dataset.act === 'off') tkLink(n, null);
-  else if (b.dataset.act === 'status') tkMove(n, v, true);
-  else if (b.dataset.act === 'priority') tkSetPriority(n, v);
-  else if (b.dataset.act === 'tab') tkSetTab(n, v);
-  else if (b.dataset.act === 'delete') { const error = await tkDeleteItem(n); if (error) tkError(error); }
+  if (act === 'open') tkOpenItem(n);
+  else if (act === 'openparent') tkOpenItem(tkFind(n).parent);
+  else if (act === 'under') { tkUnder = n; tkUnderLine(); tkAddFocus(); }
+  else if (act === 'off') tkLink(n, null);
+  else if (act === 'github') { const it = tkFind(n); if (it && it.url) window.open(it.url, '_blank', 'noreferrer'); }
+  else if (act === 'copy') { const it = tkFind(n); if (it) navigator.clipboard.writeText(`#${it.number} ${it.title}`).catch(() => tkError('Could not copy.')); }
+  else if (act === 'status') tkMove(n, v, true);
+  else if (act === 'priority') tkSetPriority(n, v);
+  else if (act === 'tab') tkSetTab(n, v);
+  else if (act === 'delete') { const error = await tkDeleteItem(n); if (error) tkError(error); }
+  else if (act === 'gotab') tkGoTab(ctx.tab);
+  else if (act === 'rename') { tkTabEdit = { mode: 'rename', name: ctx.tab || tkTab }; tkDraw(); }
+  else if (act === 'tabup') tkMoveTab(ctx.tab, -1);
+  else if (act === 'tabdown') tkMoveTab(ctx.tab, 1);
+  else if (act === 'newtab') { tkTabEdit = { mode: 'new' }; tkDraw(); }
+  else if (act === 'removetab') tkRemoveTab(ctx.tab);
+  else if (act === 'add') { tkUnder = null; tkUnderLine(); tkAddFocus(); }
+  else if (act === 'addcol') { tkUnder = null; tkUnderLine(); tkAddFocus(v); }
+  else if (act === 'hidedone') $('tk-hidedone').click();
+  else if (act === 'relayout') tkRelayout();
+  else if (act === 'refresh') tkLoad();
 });
 document.addEventListener('pointerdown', (e) => { if (!$('tk-menu').hidden && !e.target.closest('#tk-menu')) tkMenuClose(); }, true);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('tk-menu').hidden) { e.preventDefault(); tkMenuClose(); } });
