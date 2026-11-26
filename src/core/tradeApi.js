@@ -159,6 +159,38 @@ class TradeClient {
     return this.items;
   }
 
+  // Two more of the site's own lists, asked for once per run and kept (a failure is tried again):
+  // every filter of its search page (/data/filters) and every stackable of the bulk exchange
+  // (/data/static). Each gives the site's groups, [] when it does not answer.
+  async dataList(name) {
+    if (!['filters', 'static'].includes(name)) return [];
+    this.lists = this.lists || {};
+    if (!this.lists[name]) {
+      this.lists[name] = (async () => {
+        const res = await this.fetchImpl(`${SITE}/api/trade/data/${name}`, { headers: { Accept: 'application/json' } });
+        const json = await res.json();
+        if (!res.ok || !json || !Array.isArray(json.result)) throw new Error(`no ${name} list (${res.status})`);
+        return json.result;
+      })().catch(() => { this.lists[name] = null; return []; });
+    }
+    return this.lists[name];
+  }
+
+  // A bulk exchange search with any number of wants and haves (the Trade page's Search).
+  // Nothing kept: each press asks again. { queryId, total, results: [raw listing] }.
+  async bulkFind(league, body) {
+    if (!league) throw new TradeError('Choose a league in Settings first.');
+    if (this.busy) throw new TradeError('A search is already running.');
+    this.busy = true;
+    try {
+      const found = await this.call('exchange', `${SITE}/api/trade/exchange/${encodeURIComponent(league)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const results = Object.values(found.result || {}).filter((r) => r && r.listing && Array.isArray(r.listing.offers) && r.listing.offers.length);
+      return { queryId: found.id || '', total: Number(found.total) || results.length, results };
+    } finally {
+      this.busy = false;
+    }
+  }
+
   // What the site's own buttons on a listing do, for a signed-in account that is in the game:
   // the token of "Travel to Hideout" (an instant buyout) or of "Direct Whisper" is handed back
   // to the site, which then acts in the game. One request, never repeated by itself.
@@ -325,6 +357,30 @@ function readOffer(raw, chaosOf = () => null) {
   };
 }
 
+// Every offer of one bulk exchange listing, each a row of its own: { id, pay, get, price, stock,
+// seller, status, whisper }. The whisper line is the site's own: the listing's line with {0}
+// (what is bought) and {1} (what is paid) filled from each side's own piece; empty when the
+// site sent no such pieces.
+function readBulk(raw, chaosOf = () => null) {
+  const l = (raw && raw.listing) || {}, acc = l.account || {};
+  const out = [];
+  (Array.isArray(l.offers) ? l.offers : []).forEach((o, i) => {
+    const pay = (o && o.exchange) || {}, get = (o && o.item) || {};
+    const payAmount = Number(pay.amount), getAmount = Number(get.amount);
+    if (!(payAmount > 0) || !(getAmount > 0)) return;
+    const fill = (piece, n) => (typeof piece === 'string' && piece.includes('{0}') ? piece.replace('{0}', String(n)) : '');
+    const a = fill(get.whisper, getAmount), b = fill(pay.whisper, payAmount);
+    const whisper = typeof l.whisper === 'string' && a && b ? l.whisper.replace('{0}', a).replace('{1}', b) : '';
+    out.push({
+      id: `${raw.id}#${i}`, pay: { amount: payAmount, currency: String(pay.currency || '') }, get: { amount: getAmount, currency: String(get.currency || '') },
+      price: { amount: payAmount / getAmount, currency: String(pay.currency || '') }, chaos: chaosOf(payAmount / getAmount, String(pay.currency || '')),
+      stock: Number(get.stock) || null, seller: acc.lastCharacterName || acc.name || '',
+      status: acc.online ? (acc.online.status === 'afk' ? 'afk' : 'online') : 'offline', listedAt: l.indexed ? Date.parse(l.indexed) || 0 : 0, whisper,
+    });
+  });
+  return out;
+}
+
 // The trade site's short names for currencies -> the names prices are kept under.
 const CURRENCIES = {
   chaos: 'Chaos Orb', divine: 'Divine Orb', exalted: 'Exalted Orb', mirror: 'Mirror of Kalandra', alch: 'Orb of Alchemy',
@@ -337,4 +393,4 @@ const currencyName = (id) => CURRENCIES[id] || '';
 const exchangeUrl = (league, queryId) => `${SITE}/trade/exchange/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 const searchUrl = (league, queryId) => `${SITE}/trade/search/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`;
 
-module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, tokensOf, itemDetail, modText, plainText, socketText, searchUrl, exchangeUrl, currencyName };
+module.exports = { TradeClient, TradeError, parseLimits, readListing, readOffer, readBulk, tokensOf, itemDetail, modText, plainText, socketText, searchUrl, exchangeUrl, currencyName };

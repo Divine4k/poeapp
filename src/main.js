@@ -43,8 +43,9 @@ const { placeWindow } = require('./core/windowPlace');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, gemType, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
 const ultimatum = require('./core/ultimatum');
-const { TradeClient, readListing, readOffer, tokensOf, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
+const { TradeClient, readListing, readOffer, readBulk, tokensOf, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
 const tradeFind = require('./core/tradeFind');
+const tradeFilters = require('./core/tradeFilters');
 const { JewelService } = require('./jewels');
 const { readJewelText, tradeQuery: jewelTradeQuery } = require('./core/jewels/timeless');
 const { dustValue } = require('./core/dust');
@@ -2311,7 +2312,9 @@ function syncOverlay() {
 // works from the page.
 let findItemList = null; // the site's items to pick from, read once per run
 let findStatList = null; // the stat list, searchable by words
-let findLast = null;     // { form, name, queryId, ids, total, shown, tokens, asked, url, at, unknown }
+let findLast = null;     // { mode, form, name, queryId, ids, total, shown, tokens, asked, url, at, unknown }
+let findCatalogue = null; // { groups, from }: every filter of the site's search page (core/tradeFilters.js)
+let findStaticList = null; // the bulk exchange's stackables to pick from
 let findBusy = false;
 
 // The sign-in. The app never sees a password: a window shows pathofexile.com's own login page
@@ -2385,16 +2388,43 @@ async function tradeSignOut() {
   if (trouble) trouble.event('tradeSite', { what: 'signed out' });
 }
 
+// Every filter of the site's search page: the site's own list, asked once per run; the
+// built-in copy while the site does not give one (tried again at the next ask).
+async function findFilters() {
+  if (findCatalogue && findCatalogue.from === 'site') return findCatalogue;
+  const done = diag.start('price check: the trade site\'s list of search filters');
+  const groups = tradeFilters.readFilters({ result: await tradeClient.dataList('filters') });
+  findCatalogue = groups ? { groups, from: 'site' } : { groups: tradeFilters.BUILT_IN, from: 'built-in' };
+  const n = findCatalogue.groups.reduce((a, g) => a + g.filters.length, 0);
+  done(`${findCatalogue.from === 'site' ? 'the site\'s own list' : 'the site gave none, the built-in copy'}: ${findCatalogue.groups.length} groups, ${n} filters`);
+  if (trouble) trouble.event('tradeFind', { filters: findCatalogue.from, groups: findCatalogue.groups.map((g) => `${g.id} ${g.filters.length}`).join(', ') });
+  return findCatalogue;
+}
+// The bulk exchange's stackables: the site's own list, else what poe.ninja prices (its ids are the site's).
+async function findStatic() {
+  if (findStaticList && findStaticList.from === 'site') return findStaticList.list;
+  let list = tradeFind.readStatic({ result: await tradeClient.dataList('static') }), from = 'site';
+  if (!list.length) {
+    from = 'poe.ninja';
+    const byGroup = new Map([['Currency', [{ id: 'chaos', text: 'Chaos Orb' }]]]);
+    for (const e of prices.byNorm.values()) if (e && e.tradeId) { const g = byGroup.get(e.category) || []; g.push({ id: e.tradeId, text: e.name, image: e.icon || '' }); byGroup.set(e.category, g); }
+    list = tradeFind.readStatic({ result: [...byGroup].map(([label, entries]) => ({ id: label, label, entries })) });
+    diag.count('trade search: bulk names from poe.ninja (the site gave no list)');
+  }
+  findStaticList = { list, from };
+  return list;
+}
+
 // What the page gets of the last search: listings as they are shown, never a token.
 function findView() {
   const l = findLast;
   return {
-    league: config.league, busy: findBusy, saved: config.tradeSearches || [],
+    league: config.league, busy: findBusy, saved: tradeFind.cleanSaved(config.tradeSearches), // older saved ones read into today's shape
     site: { in: tradeSite.in, name: tradeSite.name, window: !!tradeLoginWin },
     canType: !!hook && watch.running,
     last: l ? {
-      form: l.form, name: l.name, total: l.total, at: l.at, url: l.url, unknown: l.unknown, left: Math.max(0, l.ids.length - l.shown.length), error: l.error || '',
-      listings: l.shown.map((x) => ({ ...x, asked: l.asked[x.id] || 0, travel: tradeSite.in && !!(l.tokens.get(x.id) || {}).hideout })),
+      mode: l.mode, form: l.form, name: l.name, total: l.total, at: l.at, url: l.url, unknown: l.unknown, left: Math.max(0, l.ids.length - l.shown.length), error: l.error || '',
+      listings: l.shown.map((x) => ({ ...x, asked: l.asked[x.id] || 0, travel: tradeSite.in && !!(l.tokens.get(x.id.split('#')[0]) || {}).hideout })),
     } : null,
   };
 }
@@ -2410,26 +2440,50 @@ function findTake(l, raws) {
   l.shown = markBait(l.shown.concat(read));
 }
 async function findSearch(form) {
-  const f = tradeFind.cleanForm(form);
-  if (tradeFind.isEmpty(f)) { diag.count('trade search: not done, nothing filled in'); throw new Error('Pick an item, type a name, choose a kind of item or add a stat first.'); }
+  const cat = await findFilters();
+  const f = tradeFind.cleanForm(form, cat.groups);
+  if (tradeFind.isEmpty(f, cat.groups)) { diag.count(`trade search: not done, nothing filled in (${f.mode})`); throw new Error(f.mode === 'bulk' ? 'Pick what you want first.' : 'Pick an item, type a name, fill in a filter or add a stat first.'); }
   if (!config.league) throw new Error('Choose a league in Settings first.');
+  if (!tradeSite.checked) await tradeSiteCheck();
+  if (tradeFind.needsSignIn(f) && !tradeSite.in) { diag.count('trade search: not done, a weighted sum without the sign-in'); throw new Error('The trade site takes a weighted sum only from someone signed in. Sign in under the form, or pick another kind of group.'); }
+  if (f.mode === 'bulk') return findBulk(f);
   if (findBusy) { diag.count('trade search: not done, one is already running'); throw new Error('A search is already running.'); }
   findBusy = true;
   const timed = diag.start('price check: search from the Trade page (waiting included)');
   try {
     statIndex = statIndex || StatIndex.load();
-    const { body, unknown } = tradeFind.buildFind(f, statIndex);
-    if (!tradeSite.checked) await tradeSiteCheck();
+    const { body, unknown } = tradeFind.buildFind(f, statIndex, cat.groups);
     await findTurn();
     const r = await tradeClient.search(config.league, body);
-    const l = { form: f, name: tradeFind.nameOf(f), body, queryId: r.queryId, ids: r.ids, total: r.total, shown: [], tokens: new Map(), asked: {}, url: r.queryId ? searchUrl(config.league, r.queryId) : '', at: Date.now(), unknown, error: '' };
+    const l = { mode: 'items', form: f, name: tradeFind.nameOf(f), body, queryId: r.queryId, ids: r.ids, total: r.total, shown: [], tokens: new Map(), asked: {}, url: r.queryId ? searchUrl(config.league, r.queryId) : '', at: Date.now(), unknown, error: '' };
     if (r.ids.length) { await findTurn(); findTake(l, await tradeClient.fetchItems(r.ids.slice(0, 10), r.queryId)); }
     findLast = l;
     timed(`${r.total} listed for "${l.name}", ${l.shown.length} read${tradeSite.in ? ', signed in' : ''}${unknown.length ? `, ${unknown.length} stats not known` : ''}`);
-    if (trouble) trouble.event('tradeFind', { search: l.name, total: r.total, read: l.shown.length, signedIn: tradeSite.in, stats: f.stats.length, unknown: unknown.length || undefined });
+    if (trouble) trouble.event('tradeFind', { search: l.name, total: r.total, read: l.shown.length, signedIn: tradeSite.in, filters: Object.keys(body.query.filters).join(' ') || undefined, groups: f.groups.map((g) => `${g.type} ${g.stats.length}`).join(', ') || undefined, sort: Object.keys(body.sort)[0], unknown: unknown.length || undefined });
   } catch (e) {
     timed(`failed: ${e.message || e}`, false, true);
     if (trouble) trouble.event('tradeFind', { failed: String(e && e.message) });
+    throw e;
+  } finally { findBusy = false; }
+}
+// A bulk exchange search: every offer of every listing, read at once (the site sends them with the search).
+async function findBulk(f) {
+  if (findBusy) { diag.count('trade search: not done, one is already running'); throw new Error('A search is already running.'); }
+  findBusy = true;
+  const timed = diag.start('price check: bulk exchange search from the Trade page (waiting included)');
+  try {
+    const body = tradeFind.buildBulk(f);
+    await findTurn();
+    const r = await tradeClient.bulkFind(config.league, body);
+    const l = { mode: 'bulk', form: f, name: tradeFind.nameOf(f), body, queryId: r.queryId, ids: [], total: r.total, shown: [], tokens: new Map(), asked: {}, url: r.queryId ? exchangeUrl(config.league, r.queryId) : '', at: Date.now(), unknown: [], error: '' };
+    for (const raw of r.results) { l.tokens.set(raw.id, tokensOf(raw)); l.shown.push(...readBulk(raw, chaosOfPrice)); }
+    l.ids = l.shown.map((x) => x.id);
+    findLast = l;
+    timed(`${r.total} listed for "${l.name}", ${l.shown.length} offers read${l.shown.some((x) => !x.whisper) ? `, ${l.shown.filter((x) => !x.whisper).length} without a whisper line` : ''}`);
+    if (trouble) trouble.event('tradeFind', { bulk: l.name, total: r.total, offers: l.shown.length, signedIn: tradeSite.in, minimum: body.query.minimum });
+  } catch (e) {
+    timed(`failed: ${e.message || e}`, false, true);
+    if (trouble) trouble.event('tradeFind', { failed: String(e && e.message), bulk: true });
     throw e;
   } finally { findBusy = false; }
 }
@@ -2450,7 +2504,9 @@ async function findAction(a) {
   const l = findLast, row = l && a.id ? l.shown.find((x) => x.id === String(a.id)) : null;
   switch (a.op) {
     case 'get': if (!tradeSite.checked) await tradeSiteCheck(); break;
-    case 'lists': return { categories: tradeFind.CATEGORIES, rarities: tradeFind.RARITIES, sellers: tradeFind.SELLERS, kinds: tradeFind.KIND_WORDS };
+    case 'lists': { const cat = await findFilters(); return { groups: cat.groups, from: cat.from, statGroups: tradeFilters.STAT_GROUPS, sellers: tradeFilters.SELLERS, bulkSellers: tradeFilters.BULK_SELLERS, kinds: tradeFind.KIND_WORDS }; }
+    case 'static': return { items: tradeFind.findStatic(await findStatic(), String(a.text || '')) };
+    case 'clean': { const cat = await findFilters(); return { form: tradeFind.cleanForm(a.form, cat.groups) }; }
     case 'items': {
       if (!findItemList) { const groups = await tradeClient.itemList(); if (groups.length) findItemList = tradeFind.readItems({ result: groups }); }
       if (!findItemList) { diag.count('trade search: the site gave no item list'); return { items: [], problem: 'The trade site did not give its list of items. Type the name and search by it instead.' }; }
@@ -2471,14 +2527,15 @@ async function findAction(a) {
     }
     // One trip per click: the site's own "Travel to Hideout" for that listing.
     case 'travel': {
-      const token = row ? (l.tokens.get(row.id) || {}).hideout : '';
+      const token = row ? (l.tokens.get(row.id.split('#')[0]) || {}).hideout : '';
       if (!tradeSite.in || !token) { diag.count(`trade search: no hideout trip (${tradeSite.in ? 'the listing has none' : 'not signed in'})`); throw new Error(tradeSite.in ? 'That listing cannot be travelled to. Search again: the site gives each listing a fresh pass.' : 'Sign in to the trade site first.'); }
       const timed = diag.start('price check: travel to a seller\'s hideout through the trade site');
-      try { await tradeClient.act(token); l.asked[row.id] = Date.now(); timed('the site accepted it'); if (trouble) trouble.event('tradeFind', { travel: row.name || row.base }); } catch (e) { timed(`failed: ${e.message || e}`, false, true); throw e; }
+      try { await tradeClient.act(token); l.asked[row.id] = Date.now(); timed('the site accepted it'); if (trouble) trouble.event('tradeFind', { travel: row.name || row.base || row.seller }); } catch (e) { timed(`failed: ${e.message || e}`, false, true); throw e; }
       break;
     }
     case 'want': {
       if (!l) { diag.count('trade search: nothing to put on the buying list'); break; }
+      if (l.mode === 'bulk') { diag.count('trade search: a bulk search is not put on the buying list'); throw new Error('The buying list takes item searches only.'); }
       const first = l.shown.find((x) => x.icon);
       book.addWant({ name: l.name, icon: first ? first.icon : null, body: l.body, url: l.url, listings: l.shown.slice(0, 10).map(slimListing) });
       saveTradesSoon(); say(`${l.name} is on the buying list.`); push();
@@ -2486,8 +2543,9 @@ async function findAction(a) {
     }
     case 'open': if (l && /^https:\/\/www\.pathofexile\.com\/trade\//.test(l.url)) shell.openExternal(l.url); break;
     case 'save': {
-      const form = tradeFind.cleanForm(a.form);
-      if (tradeFind.isEmpty(form)) throw new Error('There is nothing in this search to save yet.');
+      const cat = await findFilters();
+      const form = tradeFind.cleanForm(a.form, cat.groups);
+      if (tradeFind.isEmpty(form, cat.groups)) throw new Error('There is nothing in this search to save yet.');
       const name = String(a.name || '').trim().slice(0, 80) || tradeFind.nameOf(form);
       applyConfig({ tradeSearches: [{ name, form }].concat((config.tradeSearches || []).filter((x) => x.name !== name)) });
       break;
@@ -2775,7 +2833,7 @@ function hoodSizes() {
   return {
     'Maps in this session': session.summary(prices).runs.length, 'Items named on this PC': learned.length, 'Shared item pictures': index.shared.length, 'Item pictures from poe.ninja': index.art.length,
     'Prices known': prices.size || status.prices.count, 'Items waiting for a name': backlog.items.length, 'Trade offers kept': book.offers.length, 'Finished trades kept': book.history.length, 'Missed offers kept': book.missed.length, 'Things on the buying list': book.wants.length,
-    'Results of the last trade search': findLast ? findLast.shown.length : 0, 'Items of the trade site kept': findItemList ? findItemList.length : 0,
+    'Results of the last trade search': findLast ? findLast.shown.length : 0, 'Bulk names of the trade site kept': findStaticList ? findStaticList.list.length : 0, 'Items of the trade site kept': findItemList ? findItemList.length : 0,
     'Advanced price searches kept for a minute': advKept.size, 'Marks on advanced prices': Array.isArray(advMarks) ? advMarks.length : 0,
     'Slots in the last reading': lastInventory.cells.length, 'Saved sessions': archive ? archive.list().length : 0, 'Files waiting to be written': savesWaiting.size + savesRunning.size,
   };

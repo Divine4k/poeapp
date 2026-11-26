@@ -49,8 +49,13 @@ http.createServer((req, res) => {
     });
     return;
   }
-  const file = path.join(root, decodeURIComponent(req.url.split('?')[0]));
-  if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
+  // The window loads a few plain-logic files from src/core as ../core/... (regex.js, and the
+  // Search demo's tradeFilters.js); a browser asks for those as /core/....
+  const url = decodeURIComponent(req.url.split('?')[0]);
+  const core = path.join(root, '..', 'core');
+  const base = url.startsWith('/core/') ? core : root;
+  const file = path.join(base, url.startsWith('/core/') ? url.slice(5) : url);
+  if (!file.startsWith(base) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
   fs.createReadStream(file).pipe(res);
 }).listen(port, () => console.log(`http://localhost:${port}/index.html (jewel tables in ${dir})`));
