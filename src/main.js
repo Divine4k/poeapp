@@ -1520,13 +1520,24 @@ async function runBulkSearch() {
   if (tradeCheck !== tc) return;
   push();
 }
-function pickUnique(item) {
+// The choices come from poe.ninja; when it prices none on this base (Vaal Aspects and other
+// unique pieces), from the trade site's own item list, without prices (`unpriced`).
+async function pickUnique(item) {
   const base = item.baseType;
-  const choices = prices.uniquesOfBase(base).map((c) => ({ ...c, dust: dustValue({ ...item, name: c.name }) }));
-  const why = choices.length ? `Unidentified ${base}: it can be ${choices.length === 1 ? choices[0].name : `any of ${choices.length} uniques`}. Pick which in the window over the game.` : `Unidentified ${base}: no unique on this base has a price on poe.ninja. Identify it first.`;
-  tradeCheck = checkBase({ kind: 'pick', filters: { ok: false, why }, item, choices, picked: '', base, why });
+  const say = (choices) => choices.length ? `Unidentified ${base}: it can be ${choices.length === 1 ? choices[0].name : `any of ${choices.length} uniques`}. Pick which in the window over the game.` : `Unidentified ${base}: no unique on this base is known. Identify it first.`;
+  let choices = prices.uniquesOfBase(base).map((c) => ({ ...c, dust: dustValue({ ...item, name: c.name }) }));
+  tradeCheck = checkBase({ kind: 'pick', filters: { ok: false, why: say(choices) }, item, choices, picked: '', base, why: say(choices), unpriced: false });
+  const tc = tradeCheck;
+  if (!choices.length) {
+    const listed = await tradeClient.uniquesOfBase(base).catch(() => []);
+    if (tradeCheck !== tc) return;
+    choices = listed.map((c) => ({ name: c.name, chaos: null, high: null, icon: null, dust: dustValue({ ...item, name: c.name }) }));
+    diag.count(`price check: unidentified ${base}, ${choices.length} uniques from the trade site's item list`);
+    Object.assign(tc, { choices, why: say(choices), filters: { ok: false, why: say(choices) }, unpriced: true, rev: ++tradeRev });
+  }
   if (choices.length === 1) { pickChoice(choices[0].name); return; }
   if (choices.length) showCheckPanel();
+  push();
 }
 // name: one of the choices, or '' to go back to the list.
 function pickChoice(name) {

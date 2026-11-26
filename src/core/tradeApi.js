@@ -133,16 +133,30 @@ class TradeClient {
   // says how a transfigured gem is named in a search (gemType in tradeQuery). [] when the site
   // does not give it; that is tried again with the next gem.
   async gems() {
-    if (!this.gemList) {
-      this.gemList = (async () => {
+    const groups = await this.itemList();
+    const group = groups.find((g) => g && (g.id === 'gems' || g.id === 'gem'));
+    return group && Array.isArray(group.entries) ? group.entries.map((e) => ({ type: e.type || '', text: e.text || '', disc: e.disc || '' })) : [];
+  }
+  // The uniques the site's item list has on a base type, [{ name }]: what an unidentified unique
+  // can be when poe.ninja prices none of them (Vaal Aspects and other unique pieces). [] when the
+  // site does not give the list.
+  async uniquesOfBase(base) {
+    const out = new Set();
+    for (const g of await this.itemList()) for (const e of (g && Array.isArray(g.entries) ? g.entries : [])) if (e && e.name && e.type === base) out.add(e.name);
+    return [...out].map((name) => ({ name }));
+  }
+  // The site's whole item list (its groups), asked for once and kept; a failure is tried again.
+  async itemList() {
+    if (!this.items) {
+      this.items = (async () => {
         const res = await this.fetchImpl(`${SITE}/api/trade/data/items`, { headers: { Accept: 'application/json' } });
         const json = await res.json();
-        const group = ((json && json.result) || []).find((g) => g && (g.id === 'gems' || g.id === 'gem'));
-        if (!res.ok || !group || !Array.isArray(group.entries)) throw new Error(`no gem list (${res.status})`);
-        return group.entries.map((e) => ({ type: e.type || '', text: e.text || '', disc: e.disc || '' }));
-      })().catch(() => { this.gemList = null; return []; });
+        const groups = json && json.result;
+        if (!res.ok || !Array.isArray(groups)) throw new Error(`no item list (${res.status})`);
+        return groups;
+      })().catch(() => { this.items = null; return []; });
     }
-    return this.gemList;
+    return this.items;
   }
 
   // The bulk exchange (currency and other stackables): offers selling `want` for `have`, as the

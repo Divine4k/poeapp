@@ -17,6 +17,8 @@ const CLASSES = {
   'Two Hand Maces': ['Two-Handed Mace', 'weapon.twomace'],
   'Life Flasks': ['Flask', 'flask'], 'Mana Flasks': ['Flask', 'flask'], 'Hybrid Flasks': ['Flask', 'flask'], 'Utility Flasks': ['Flask', 'flask'],
   Tinctures: ['Tincture', 'tincture'],
+  // Unique pieces (Vaal Aspects, Harbinger pieces): always unique, searched by name and base only.
+  Pieces: ['Piece', ''],
 };
 
 // How many inventory cells an item takes, [wide, tall], for the kinds where every base is the

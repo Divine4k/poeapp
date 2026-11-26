@@ -259,12 +259,12 @@
   // An unidentified unique: the uniques its base can be, dearest first. A click searches for it.
   function pickView(d) {
     const rowsHtml = d.choices.map((c) => `<li><button type="button" data-pick="${esc(c.name)}">${art(c.icon, '', 1, 1, 'sm')}
-        <span class="pc-pn">${esc(c.name)}${c.dust ? `<small>${c.dust.toLocaleString()} dust</small>` : ''}</span><span class="pc-lp"${c.high ? ' title="Priced per variant on poe.ninja: from the cheapest to the dearest one commonly listed"' : ''}>${c.high ? rangeHtml(c.chaos, c.high) : valueHtml(c.chaos)}</span></button></li>`).join('');
+        <span class="pc-pn">${esc(c.name)}${c.dust ? `<small>${c.dust.toLocaleString()} dust</small>` : ''}</span><span class="pc-lp"${c.high ? ' title="Priced per variant on poe.ninja: from the cheapest to the dearest one commonly listed"' : ''}>${c.chaos == null ? '' : c.high ? rangeHtml(c.chaos, c.high) : valueHtml(c.chaos)}</span></button></li>`).join('');
     return `<div class="pc-head">
         <div class="pc-meta"><h1>Unidentified ${esc(d.base)}</h1><p class="pc-about">${d.choices.length} uniques come on this base</p>
           <p class="pc-say">Which one is it? Pick it to see its price and what is listed.</p></div>
         ${headTools(false)}</div>
-      <div class="pc-listings pick"><div class="pc-lh"><span>Dearest first</span><span>poe.ninja</span></div><ul class="pc-list pick">${rowsHtml}</ul></div>
+      <div class="pc-listings pick"><div class="pc-lh">${d.unpriced ? '<span>Not on poe.ninja: pick it to search the trade site</span><span></span>' : '<span>Dearest first</span><span>poe.ninja</span>'}</div><ul class="pc-list pick">${rowsHtml}</ul></div>
       ${footHtml(d)}`;
   }
 
