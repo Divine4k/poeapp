@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   logCheck: () => ipcRenderer.invoke('log-check'),
   runSnapshot: (runId) => ipcRenderer.invoke('run-snapshot', runId),
   itemsList: () => ipcRenderer.invoke('items-list'),
+  tradeBook: () => ipcRenderer.invoke('trade-book'),
   savedSession: (id) => ipcRenderer.invoke('saved-session', id),
   priceCategories: () => ipcRenderer.invoke('price-categories'),
   priceList: (a) => ipcRenderer.invoke('price-list', a),

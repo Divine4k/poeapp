@@ -126,7 +126,8 @@
     defaultMessages: { thanks: 'Thank you, good luck!', busy: 'I am busy right now. I will invite you in a few minutes if you can wait.', sold: 'Sorry, {item} is already sold.', still: 'Hi, are you still interested in {item} for {price}?' },
     labels: { invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party', busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?' },
     offers: [
-      offer(3, 'in', 'Zana_Mapper', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, state: 'here', here: true, next: 'trade', waiting: 'In your hideout', grid: 24 }),
+      offer(3, 'in', 'Zana_Mapper', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, state: 'here', here: true, next: 'trade', waiting: 'In your hideout', grid: 24, group: 'mb', buyers: 2, noShow: 1 }),
+      offer(5, 'in', 'Einhar_Fan', 'Mageblood Heavy Belt', 1, { amount: 180, currency: 'divine' }, 'Big sales', 14, 2, { value: 38160, grid: 24, next: 'invite', sales: 4, at: now - 20000, lastAt: now - 20000, group: 'mb', buyers: 2 }),
       offer(2, 'in', 'xXCurrencyFlipXx', 'Chaos Orb', 400, { amount: 1.5, currency: 'Divine Orb' }, '', 0, 0, { value: 318, market: 400, low: true, asks: 2 }),
       offer(1, 'out', 'KiracsApprentice', 'The Nurse', 1, { amount: 75, currency: 'chaos' }, 'cards', 4, 9, { value: 75, market: 78, state: 'there', next: null, waiting: 'Waiting for the seller to trade' }),
     ],
@@ -143,6 +144,18 @@
     return base;
   };
   window.api = {
+    // The trade book for the Trade page's History, Numbers and People parts: made-up trades over two weeks.
+    tradeBook: async () => {
+      const items = [['The Brass Dome Gladiator Plate', 318], ['Tabula Rasa Simple Robe', 12], ['Divine Orb', 212], ["Inpulsa's Broken Heart Sadist Garb", 380], ['Lifesprig Driftwood Wand', 5]];
+      const who = ['Einhar_Fan', 'Zana_Mapper', 'NikoTheMad', 'Alva_Temple', 'JunOrtoi', 'Kirac_Scout'];
+      const history = [], missed = [];
+      for (let i = 0; i < 60; i++) {
+        const [item, c] = items[i % items.length], at = now - i * 5.3 * 3600000, player = who[(i * 7) % who.length];
+        if (i % 4 === 3) missed.push({ at, player: who[(i * 5) % who.length], item, qty: 1, price: { amount: c, currency: 'chaos' }, invited: i % 8 === 3, came: false, value: c });
+        else history.push({ id: `d${i}`, dir: i % 9 === 0 ? 'out' : 'in', player, item, qty: 1, price: { amount: c, currency: 'chaos' }, at, askedAt: at - (40 + (i % 5) * 35) * 1000, value: c });
+      }
+      return { rev: 1, notes: { Zana_Mapper: 'Buys Brass Domes. Whisper when I find one.' }, history, missed };
+    },
     onTrade: (cb) => setTimeout(() => cb(state.trade), 0), overlaySize: () => {},
     onCheck: (cb) => setTimeout(() => cb({ ...state.tradeCheck, divine: 212, auto: true, sockets: true, league: 'Keepers', coins: { chaos: dot('#c9a227'), divine: dot('#e8e4dc') } }), 0), checkSize: () => {}, checkKeys: () => {}, onCheckPress: (cb) => { window.demoPress = cb; },
     // The stash searches menu, opened as search.html in a browser.

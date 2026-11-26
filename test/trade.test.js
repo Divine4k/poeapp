@@ -312,3 +312,43 @@ test('front window helper: only a fresh report of the game counts', async () => 
   setTimeout(() => w.report('PathOfExile'), 40);
   assert.equal(await w.waitForGame(1000, Date.now()), true);
 });
+
+test('an offer that goes away unsold is kept as missed, with whether the buyer was invited and came', () => {
+  const b = new TradeBook();
+  const say = (player, text) => b.onLog({ type: 'whisper', dir: 'in', player, text, ts: 1000 });
+  const robe = 'Hi, I would like to buy your Tabula Rasa Simple Robe listed for 10 chaos in Standard (stash tab "Sell"; position: left 3, top 5)';
+  const a = say('Ann', robe), c = say('Cid', robe);
+  assert.equal(b.summary(null).offers[0].buyers, 2, 'two buyers for one listing are counted together');
+  b.applied(a.id, 'invite');
+  b.remove(a.id); // invited, never came
+  b.remove(c.id); // never answered
+  assert.deepEqual(b.missed.map((m) => [m.player, m.invited, m.came]), [['Cid', false, false], ['Ann', true, false]]);
+  const again = say('Ann', robe);
+  const o = b.summary(null).offers.find((x) => x.id === again.id);
+  assert.equal(o.noShow, 1);
+  assert.equal(o.sales, 0);
+});
+
+test('a sale is not a missed offer, keeps when it was asked for, and the book survives a restart with its notes', () => {
+  const b = new TradeBook();
+  const o = b.onLog({ type: 'whisper', dir: 'in', player: 'Ann', ts: 5000, text: 'Hi, I would like to buy your Tabula Rasa Simple Robe listed for 10 chaos in Standard (stash tab "Sell"; position: left 3, top 5)' });
+  b.onLog({ type: 'joined', name: 'Ann' });
+  b.applied(o.id, 'trade');
+  b.onLog({ type: 'trade', result: 'accepted', ts: 65000 });
+  b.applied(o.id, 'kick');
+  assert.equal(b.missed.length, 0);
+  assert.equal(b.history[0].askedAt, 5000);
+  b.setNote('Ann', '  pays   fast ');
+  const rev = b.rev;
+  const led = b.ledger({ get: (n) => (n === 'Chaos Orb' ? { chaos: 1 } : null) });
+  assert.equal(led.history[0].value, 10);
+  assert.equal(led.notes.Ann, 'pays fast');
+  const again = new TradeBook();
+  again.restore(JSON.parse(JSON.stringify(b.toJSON())), 70000);
+  assert.equal(again.notes.Ann, 'pays fast');
+  assert.equal(again.known().get('Ann').sales, 1);
+  b.setNote('Ann', '');
+  assert.equal(b.notes.Ann, undefined);
+  assert.ok(b.rev > rev);
+  assert.equal(chatCommand('ignore', { player: 'Ann' }), '/ignore Ann');
+});

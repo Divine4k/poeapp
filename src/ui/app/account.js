@@ -90,4 +90,4 @@ $('account-delete-form').addEventListener('submit', async (e) => {
   if (!r.error) { f.parentElement.open = false; accMode = 'register'; accView(); }
 });
 
-setInterval(() => { if (!document.hidden && $('trade-offers').offsetParent !== null) TradeCard.tick($('trade-offers')); }, 1000); // only while the offers are on screen
+setInterval(() => { if (!document.hidden && $('trade-offers').offsetParent !== null) tradeTick(); }, 1000); // only while the offers are on screen

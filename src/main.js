@@ -2459,6 +2459,21 @@ const actions = {
   tradeDismissAll: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeClear: () => { for (const o of book.offers.slice()) book.remove(o.id); saveTradesSoon(); },
   tradeForget: (a) => { book.removeHistory(String(a.id || '')); saveTradesSoon(); },
+  // The History part's Export: the window made the text from what it shows; here it is saved where the owner picks.
+  tradeExport: async (a) => {
+    const text = String(a.text || '').slice(0, 2_000_000);
+    const r = await dialog.showSaveDialog(win, { title: 'Save trades', defaultPath: 'trades.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
+    if (r.canceled || !r.filePath) return;
+    try { await fs.promises.writeFile(r.filePath, text, 'utf8'); say(`Saved ${path.basename(r.filePath)}.`); } catch (err) { say(`Could not save the file: ${err.message}`, true); }
+  },
+  tradeNote: (a) => { book.setNote(a.player, a.text); saveTradesSoon(); },
+  // A player picked on the Trade page's People part, with no open offer: whisper (left open to finish) or /ignore.
+  tradePlayer: async (a) => {
+    const what = a.do === 'ignore' ? 'ignore' : 'whisper';
+    const text = chatCommand(what, { player: String(a.player || '') });
+    if (!text) { say('That player name cannot be typed in the game.', true); return; }
+    await sendChat(text, what === 'whisper' ? { send: false } : undefined);
+  },
   // The Search button: what was ticked and typed replaces the choices, then one search is sent.
   tradeSearch: async (a) => {
     if (tradeCheck && tradeCheck.kind === 'bulk') { await runBulkSearch(); return; }
@@ -2568,11 +2583,12 @@ function setupIpc() {
   handle('trouble-new', async () => (trouble && canTrouble() ? trouble.newReport() : null));
   handle('trouble-add-image', (_e, id, bytes, type) => (trouble ? trouble.addImage(String(id || ''), bytes, String(type || '')) : 'Not ready.'));
   handle('trouble-image', (_e, id, name) => (trouble ? trouble.image(String(id || ''), String(name || '')) : null));
+  handle('trade-book', () => book.ledger(prices));
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];
     if (!fn) return false;
     // Typing a note is not news; everything else pressed in the window is.
-    if (trouble && a.type !== 'troubleNote') trouble.event('action', a);
+    if (trouble && a.type !== 'troubleNote') trouble.event('action', a.type === 'tradeExport' ? { type: a.type } : a); // not the whole file's text
     await diag.run(`button: ${a.type}`, () => fn(a));
     changed();
     return true;

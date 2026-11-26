@@ -122,6 +122,7 @@ function chatCommand(action, offer, { messages = {}, characterName = '' } = {}) 
     case 'kick': return `/kick ${who}`;
     case 'hideout': return `/hideout ${who}`;
     case 'whois': return `/whois ${who}`;
+    case 'ignore': return `/ignore ${who}`;
     case 'home': return '/hideout';
     case 'whisper': return `@${who} `; // typed into chat and left open for you to finish
     case 'leave': { const me = clean(characterName); return /^[^\s:@/]+$/.test(me) ? `/kick ${me}` : '/leave'; }
@@ -132,7 +133,7 @@ function chatCommand(action, offer, { messages = {}, characterName = '' } = {}) 
 
 const LABELS = {
   invite: 'Invite', trade: 'Trade', thanks: 'Say thanks', kick: 'Kick', hideout: 'Go to hideout', leave: 'Leave party',
-  busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?', whois: 'Who is', home: 'Back to my hideout', whisper: 'Whisper',
+  busy: 'Busy', sold: 'Tell them it is sold', still: 'Still interested?', whois: 'Who is', ignore: 'Ignore in game', home: 'Back to my hideout', whisper: 'Whisper',
 };
 
 // The steps that follow a finished trade by themselves, in order, for the options switched on.
@@ -178,6 +179,9 @@ const listingKey = (o) => (o.tab ? `${o.item}|${o.tab}|${o.left}|${o.top}` : '')
 const SOLD_MEMORY_MS = 60 * 60 * 1000;
 const MAX_OFFERS = 30;
 const MAX_HISTORY = 500;
+const MAX_MISSED = 1000;
+// What several buyers of one thing share: the listing's slot, or the item's name for bulk offers.
+const groupKey = (o) => listingKey(o) || `bulk|${o.item}`;
 
 class TradeBook {
   constructor() {
@@ -191,6 +195,10 @@ class TradeBook {
     this.seq = 1;
     this.lastTs = 0; // time of the newest log line taken in, so a restart does not count one twice
     this.seen = { whispers: 0, offers: 0, lastWhisperAt: 0 }; // since the app started, to show the log is being read
+    this.missed = []; // buyers' offers that ended without a sale, newest first: { at, player, item, qty, price, invited, came }
+    this.notes = {}; // the owner's own note per player
+    this.rev = 0; // moves when the history, the missed offers or a note changes: the Trade page reads the book again
+    this.index = null; // what is known per player, kept until rev moves
   }
 
   get(id) { return this.offers.find((o) => String(o.id) === String(id)) || null; }
@@ -211,6 +219,7 @@ class TradeBook {
       for (const o of this.offers.filter((x) => x.dir === 'in' && x.player === ev.name)) {
         hit = true;
         o.here = ev.type === 'joined';
+        if (o.here) o.came = true;
         if (o.here && (o.state === 'new' || o.state === 'invited')) o.state = 'here';
         else if (!o.here && (o.state === 'here' || o.state === 'trading')) o.state = 'invited';
         else if (!o.here && o.state === 'done') this.remove(o.id); // traded and gone
@@ -237,7 +246,7 @@ class TradeBook {
     if (same) { same.asks++; same.lastAt = at; return true; }
     const offer = {
       id: this.seq++, dir, player: ev.player, ...t, at, lastAt: at, asks: 1,
-      state: 'new', here: false, thanked: false, soldAlready: false, test: !!ev.test,
+      state: 'new', here: false, came: false, thanked: false, soldAlready: false, test: !!ev.test,
     };
     const soldAt = this.sold.get(listingKey(offer));
     if (dir === 'in' && soldAt && at - soldAt < SOLD_MEMORY_MS) {
@@ -245,7 +254,7 @@ class TradeBook {
       offer.soldAlready = true;
     }
     this.offers.push(offer);
-    if (this.offers.length > MAX_OFFERS) this.offers.splice(0, this.offers.length - MAX_OFFERS);
+    while (this.offers.length > MAX_OFFERS) this.remove(this.offers[0].id);
     return offer;
   }
 
@@ -261,7 +270,8 @@ class TradeBook {
     o.doneAt = at;
     this.lastDone = o.id;
     if (o.test) return true;
-    this.history.unshift({ id: `${at.toString(36)}-${o.id}`, dir: o.dir, player: o.player, item: o.item, qty: o.qty, price: o.price, league: o.league, at });
+    this.history.unshift({ id: `${at.toString(36)}-${o.id}`, dir: o.dir, player: o.player, item: o.item, qty: o.qty, price: o.price, league: o.league, at, askedAt: o.at });
+    this.rev++;
     if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
     if (o.dir === 'in' && listingKey(o)) {
       this.sold.set(listingKey(o), at);
@@ -284,8 +294,43 @@ class TradeBook {
     else if (action === 'sold' || action === 'kick' || action === 'leave' || action === 'home') this.remove(id);
   }
 
-  remove(id) { this.offers = this.offers.filter((o) => String(o.id) !== String(id)); }
-  removeHistory(id) { this.history = this.history.filter((h) => h.id !== id); }
+  // A buyer's offer that goes away unsold is kept as missed (not one for a thing already sold).
+  miss(o) {
+    if (!o || o.dir !== 'in' || o.test || o.state === 'done' || o.soldAlready) return;
+    this.missed.unshift({ at: o.at, player: o.player, item: o.item, qty: o.qty, price: o.price, invited: o.state !== 'new', came: !!o.came });
+    if (this.missed.length > MAX_MISSED) this.missed.length = MAX_MISSED;
+    this.rev++;
+  }
+  remove(id) {
+    this.miss(this.get(id));
+    this.offers = this.offers.filter((o) => String(o.id) !== String(id));
+  }
+  removeHistory(id) { this.history = this.history.filter((h) => h.id !== id); this.rev++; }
+  setNote(player, text) {
+    const who = String(player || ''), note = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (!who) return;
+    if (note) this.notes[who] = note; else delete this.notes[who];
+    this.rev++;
+  }
+  // Per player: how often they bought from you and how often they were invited and never came.
+  known() {
+    if (this.index && this.index.rev === this.rev) return this.index.map;
+    const map = new Map();
+    const of = (p) => map.get(p) || map.set(p, { sales: 0, noShow: 0 }).get(p);
+    for (const h of this.history) if (h.dir === 'in') of(h.player).sales++;
+    for (const m of this.missed) if (m.invited && !m.came) of(m.player).noShow++;
+    this.index = { rev: this.rev, map };
+    return map;
+  }
+  // Everything the Trade page's History, Numbers and People parts read, asked for when they open.
+  ledger(prices) {
+    const value = (x) => priceChaos(x.price, prices);
+    return {
+      rev: this.rev, notes: { ...this.notes },
+      history: this.history.map((h) => ({ ...h, value: value(h) })),
+      missed: this.missed.map((m) => ({ ...m, value: value(m) })),
+    };
+  }
   clearTests() { this.offers = this.offers.filter((o) => !o.test); }
 
   // The newest buyer's offer: what the invite, trade, busy and whisper keys act on.
@@ -307,7 +352,10 @@ class TradeBook {
   // prices: object with get(name) -> { chaos } | null, or null.
   summary(prices, now = Date.now()) {
     const value = (x) => priceChaos(x.price, prices);
+    const known = this.known(), buyers = new Map();
+    for (const o of this.offers) if (o.dir === 'in' && o.state !== 'done') buyers.set(groupKey(o), (buyers.get(groupKey(o)) || 0) + 1);
     const offers = this.offers.map((o) => {
+      const who = o.dir === 'in' ? known.get(o.player) : null;
       const entry = prices ? prices.get(currencyName(o.item)) : null;
       const v = value(o);
       const market = entry ? entry.chaos * (o.qty || 1) : null;
@@ -316,6 +364,8 @@ class TradeBook {
         ...o, value: v, market, low: o.dir === 'in' && v != null && market != null && market > 0 && v < market * 0.8,
         next, nextLabel: next ? LABELS[next] : '', waiting: waitingText(o),
         grid: o.tab ? (this.quadTabs.has(o.tab) ? 24 : 12) : 0,
+        group: groupKey(o), buyers: o.dir === 'in' ? buyers.get(groupKey(o)) || 1 : 1,
+        sales: who ? who.sales : 0, noShow: who ? who.noShow : 0, playerNote: this.notes[o.player] || '',
       };
     });
     const day = new Date(now); day.setHours(0, 0, 0, 0);
@@ -325,7 +375,7 @@ class TradeBook {
       return { count: rows.length, chaos: rows.reduce((a, h) => a + (value(h) || 0), 0), unpriced: rows.filter((h) => value(h) == null).length };
     };
     return {
-      afk: this.afk, offers, seen: { ...this.seen },
+      afk: this.afk, offers, seen: { ...this.seen }, rev: this.rev,
       history: this.history.slice(0, 100).map((h) => ({ ...h, value: value(h) })),
       days: this.days(value, now),
       totals: { soldToday: sum('in', start), boughtToday: sum('out', start), soldAll: sum('in', 0), boughtAll: sum('out', 0) },
@@ -349,7 +399,7 @@ class TradeBook {
   }
 
   toJSON() {
-    return { seq: this.seq, lastTs: this.lastTs, history: this.history, quadTabs: [...this.quadTabs], sold: [...this.sold], offers: this.offers.filter((o) => !o.test) };
+    return { seq: this.seq, lastTs: this.lastTs, history: this.history, missed: this.missed, notes: this.notes, quadTabs: [...this.quadTabs], sold: [...this.sold], offers: this.offers.filter((o) => !o.test) };
   }
 
   // Offers older than maxAgeMs are not brought back: the buyer has long moved on.
@@ -374,7 +424,11 @@ class TradeBook {
     this.history = Array.isArray(data.history) ? data.history.filter((h) => h && h.item && h.at) : [];
     this.quadTabs = new Set(Array.isArray(data.quadTabs) ? data.quadTabs : []);
     this.sold = new Map((Array.isArray(data.sold) ? data.sold : []).filter((e) => Array.isArray(e) && now - e[1] < SOLD_MEMORY_MS));
-    this.offers = (Array.isArray(data.offers) ? data.offers : []).filter((o) => o && o.player && o.item && now - (o.lastAt || 0) < maxAgeMs)
+    this.missed = Array.isArray(data.missed) ? data.missed.filter((m) => m && m.item && m.at && m.player) : [];
+    this.notes = data.notes && typeof data.notes === 'object' ? { ...data.notes } : {};
+    const kept = (Array.isArray(data.offers) ? data.offers : []).filter((o) => o && o.player && o.item);
+    for (const o of kept) if (now - (o.lastAt || 0) >= maxAgeMs) this.miss(o); // went stale while the app was closed
+    this.offers = kept.filter((o) => now - (o.lastAt || 0) < maxAgeMs)
       .map((o) => ({ ...o, here: false, state: o.state === 'here' || o.state === 'trading' ? 'invited' : o.state }));
   }
 }

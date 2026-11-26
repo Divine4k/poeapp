@@ -178,31 +178,49 @@
 
 <main class="view" id="tab-trade" role="tabpanel" hidden>
   <div class="trade">
-    <section class="trade-live" aria-label="Open offers">
-      <div class="trade-head">
-        <h2 class="pagetitle">Trade</h2>
-        <span class="row"><button type="button" id="btn-trade-clear" data-act="tradeClear" data-confirm="Dismiss every open offer?">Dismiss all</button><button type="button" data-settings="trade">Trade settings</button></span>
+    <div class="trade-head">
+      <h2 class="pagetitle">Trade</h2>
+      <div class="strat-tabs" id="trade-tabs" role="tablist" aria-label="Trade"><button type="button" role="tab" data-tt="offers" aria-selected="true">Offers<span class="tx-count" id="trade-count" hidden></span></button><button type="button" role="tab" data-tt="history" aria-selected="false">History</button><button type="button" role="tab" data-tt="numbers" aria-selected="false">Numbers</button><button type="button" role="tab" data-tt="people" aria-selected="false">People</button></div>
+      <span class="row"><button type="button" id="btn-trade-clear" data-act="tradeClear" data-confirm="Dismiss every open offer?">Dismiss all</button><button type="button" data-settings="trade">Trade settings</button></span>
+    </div>
+    <p class="notice bad" id="trade-warn" hidden></p>
+    <div class="tx-view tx-offers" id="trade-offers">
+      <section class="panel tq" aria-label="Open offers"><div class="tq-list" id="trade-queue"></div><div class="tq-foot" id="trade-foot"></div></section>
+      <section class="panel td" id="trade-detail" aria-label="The picked offer"></section>
+    </div>
+    <div class="tx-view panel tx-ledger" id="trade-ledger" hidden>
+      <div class="tx-bar">
+        <input type="search" id="th-find" placeholder="Find an item or a player" aria-label="Find an item or a player">
+        <div class="strat-tabs tx-seg" id="th-kind" role="group" aria-label="Kind"><button type="button" data-v="all" aria-pressed="true">All</button><button type="button" data-v="in" aria-pressed="false">Sold</button><button type="button" data-v="out" aria-pressed="false">Bought</button></div>
+        <div class="strat-tabs tx-seg" id="th-when" role="group" aria-label="When"><button type="button" data-v="7" aria-pressed="true">7 days</button><button type="button" data-v="1" aria-pressed="false">Today</button><button type="button" data-v="30" aria-pressed="false">30 days</button><button type="button" data-v="0" aria-pressed="false">All</button></div>
+        <div class="strat-tabs tx-seg" id="th-mode" role="group" aria-label="Show as"><button type="button" data-v="each" aria-pressed="true">Each trade</button><button type="button" data-v="item" aria-pressed="false">Per item</button></div>
+        <button type="button" id="th-csv">Export as CSV</button>
       </div>
-      <p class="notice bad" id="trade-warn" hidden></p>
-      <p class="map-meta" id="trade-hint"></p>
-      <p class="map-meta" id="trade-seen"></p>
-      <div class="trade-offers" id="trade-offers"></div>
-    </section>
-    <section class="trade-side" aria-label="Trade history">
-      <div class="totals trade-totals" id="trade-totals"></div>
-      <figure class="sales" id="sales">
-        <figcaption><b>Sold per day</b><span id="sales-sub"></span></figcaption>
-        <div class="sales-plot" id="sales-plot"></div>
-        <div class="sales-tip" id="sales-tip" hidden></div>
-      </figure>
-      <h2>Finished trades</h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>When</th><th></th><th>Item</th><th class="num">Price</th><th>Player</th><th></th></tr></thead>
-          <tbody id="trade-history"></tbody>
-        </table>
+      <div class="table-wrap"><table><thead id="th-head"></thead><tbody id="th-body"></tbody></table></div>
+      <div class="tx-sum" id="th-sum"></div>
+    </div>
+    <div class="tx-view tx-numbers" id="trade-numbers" hidden>
+      <div class="tx-bar"><div class="strat-tabs tx-seg" id="tn-when" role="group" aria-label="Period"><button type="button" data-v="14" aria-pressed="true">14 days</button><button type="button" data-v="1" aria-pressed="false">Today</button><button type="button" data-v="0" aria-pressed="false">All</button></div></div>
+      <div class="panel tn-stats" id="tn-stats"></div>
+      <div class="tn-cols">
+        <section class="panel tn-main">
+          <figure class="sales" id="sales">
+            <figcaption><b>Sold per day</b><span id="sales-sub"></span></figcaption>
+            <div class="sales-plot" id="sales-plot"></div>
+            <div class="sales-tip" id="sales-tip" hidden></div>
+          </figure>
+          <div class="tn-hours" id="tn-hours"></div>
+        </section>
+        <section class="panel tn-side" id="tn-side"></section>
       </div>
-    </section>
+    </div>
+    <div class="tx-view tx-people" id="trade-people" hidden>
+      <section class="panel tp">
+        <div class="tx-bar"><input type="search" id="tp-find" placeholder="Find a player" aria-label="Find a player"><div class="strat-tabs tx-seg" id="tp-kind" role="group" aria-label="Players"><button type="button" data-v="all" aria-pressed="true">All</button><button type="button" data-v="regular" aria-pressed="false">Regulars</button><button type="button" data-v="noshow" aria-pressed="false">Did not come</button></div></div>
+        <div class="tp-list" id="tp-list"></div>
+      </section>
+      <section class="panel td" id="tp-detail" aria-label="The picked player"></section>
+    </div>
   </div>
 </main>
 
