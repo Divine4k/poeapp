@@ -121,3 +121,50 @@ test('capture helper: the script is plain enough for the PowerShell that comes w
   assert.ok(!/\$"|=>|\?\.|out (IntPtr|int|var) \w+\)/.test(SCRIPT), 'no newer C# than version 5');
   assert.match(SCRIPT, /^'@$/m);
 });
+
+test('helpers are started on a thread of their own and still talk both ways', async () => {
+  if (process.platform === 'win32') return; // uses sh
+  const { spawnAside } = require('../src/aside');
+  let startedMs = -1;
+  const p = spawnAside('sh', ['-c', 'echo ready; while read line; do echo "got $line"; done; echo bye'], { stdio: ['pipe', 'pipe', 'ignore'] }, (ms) => { startedMs = ms; });
+  let out = '';
+  p.stdout.on('data', (d) => { assert.ok(Buffer.isBuffer(d)); out += d; });
+  const until = async (what) => { for (let i = 0; i < 200 && !out.includes(what); i++) await new Promise((r) => setTimeout(r, 10)); assert.ok(out.includes(what), `"${what}" in "${out}"`); };
+  await until('ready');
+  assert.ok(startedMs >= 0);
+  p.stdin.write('one\n'); await until('got one');
+  p.stdin.write('two\n'); await until('got two');
+  const exited = new Promise((r) => p.on('exit', r));
+  p.stdin.end(); await until('bye');
+  await exited;
+  // a program that does not exist is an error, not a crash; and kill ends one that would run on
+  const bad = spawnAside('no-such-program-here', [], {});
+  await new Promise((r) => bad.on('error', r));
+  const long = spawnAside('sh', ['-c', 'sleep 30'], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const gone = new Promise((r) => long.on('exit', r));
+  setTimeout(() => long.kill(), 100);
+  await gone;
+  // large output arrives whole
+  const big = spawnAside('sh', ['-c', 'head -c 3000000 /dev/zero'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  let n = 0; big.stdout.on('data', (d) => { n += d.length; });
+  await new Promise((r) => big.on('exit', r));
+  assert.equal(n, 3000000);
+});
+
+test('capture: an app window only counts as in the way when it is over the inventory', () => {
+  const { overReadArea } = require('../src/capturehelper');
+  const display = { bounds: { x: 0, y: 0, width: 1920, height: 1080 } };
+  const over = (win, d = display, w = 1920, h = 1080) => overReadArea(win, d, w, h);
+  assert.equal(over({ x: 0, y: 800, width: 400, height: 200 }), false, 'trade offers at the bottom left');
+  assert.equal(over({ x: 700, y: 0, width: 500, height: 60 }), false, 'a message at the top');
+  assert.equal(over({ x: 1500, y: 100, width: 400, height: 300 }), false, 'top right, above the grid');
+  assert.equal(over({ x: 1500, y: 700, width: 300, height: 200 }), true, 'on the grid');
+  assert.equal(over({ x: 900, y: 500, width: 400, height: 400 }), true, 'reaching into the grid from the left');
+  assert.equal(over({ x: 800, y: 500, width: 380, height: 400 }), false, 'beside it, a slot away');
+  assert.equal(over({ x: 0, y: 0, width: 1920, height: 1080 }), true, 'layout mode, the whole screen');
+  // on another screen, and on a scaled screen
+  assert.equal(over({ x: 1920 + 1500, y: 700, width: 300, height: 200 }), false);
+  const left = { bounds: { x: -1280, y: 0, width: 1280, height: 720 } };
+  assert.equal(over({ x: -300, y: 450, width: 200, height: 150 }, left, 1920, 1080), true);
+  assert.equal(over({ x: -1280, y: 0, width: 300, height: 100 }, left, 1920, 1080), false);
+});

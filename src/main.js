@@ -2822,6 +2822,7 @@ app.whenReady().then(() => {
     searchMenu = new SearchMenu({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'search.html') });
     checkPanel = new CheckPanel({ preload: path.join(__dirname, 'preload.js'), page: path.join(__dirname, 'ui', 'check.html'), onClose: () => { if (tradeCheck) tradeCheck.inGame = false; }, onKeys: (on) => typingKeys(on) });
   });
+  watch.on('started', (ms) => diag.time('helper: front-window helper started (on its own thread)', ms));
   watch.on('change', syncOverlay);
   watch.on('change', () => { if (trouble) trouble.event('front', { game: watch.gameInFront(), own: watch.ownInFront(), name: watch.name || '' }); });
   // Away from the game nothing is drawn over the screen.
@@ -2831,9 +2832,9 @@ app.whenReady().then(() => {
   step('front-window helper started', () => {
     watch.start();
   });
-  // One of the app's windows over the game showing? Then captures go the old way, which leaves them out.
+  // Where the app's windows over the game are: with one over the inventory, captures go the old way, which leaves them out.
   const onScreen = (w) => !!(w && !w.isDestroyed() && w.isVisible());
-  watchOwnWindows(() => [overlay, toast, checkPanel, searchMenu].some((o) => o && onScreen(o.win)) || onScreen(layoutWin));
+  watchOwnWindows(() => [overlay && overlay.win, toast && toast.win, checkPanel && checkPanel.win, searchMenu && searchMenu.win, layoutWin].filter(onScreen).map((w) => w.getBounds()));
   setTimeout(warmUpCapture, 6000);
   step('prices and item pictures from disk', () => {
     const cached = PriceTable.fromJSON(readJson('prices.json', null));

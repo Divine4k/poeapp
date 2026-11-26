@@ -26,7 +26,7 @@ const MAX_LOG = 4000;    // lines of "what happened" kept
 const TOP = 8;           // worst freezes kept for good, however long the app runs
 const QUICK_MS = 2;      // jobs quicker than this are counted but get no line of their own
 // ...except what you set off yourself and what goes out to a website: always a line.
-const ALWAYS = ['start step', 'item pictures:', 'price check:', 'key:', 'button:', 'web:', 'inventory: reading', 'asked by the window:', 'start:'];
+const ALWAYS = ['helper:', 'start step', 'item pictures:', 'price check:', 'key:', 'button:', 'web:', 'inventory: reading', 'asked by the window:', 'start:'];
 // Counted only, never a line: they come round all the time and say nothing one by one.
 const NEVER = ['main process: heartbeat', 'under the hood:', 'asked by the window: run-snapshot', 'asked by the window: get-state'];
 const MAX_SAMPLES = 360; // usage readings kept: half an hour at one every 5 s
@@ -36,6 +36,7 @@ const DEFAULT_LIMIT = 100;
 // When a job counts as slow, in ms, by the start of its name. The first match wins. Work that
 // keeps the app from doing anything else has a low limit; waiting for a website a high one.
 const LIMITS = [
+  ['helper:', 6000],
   ['start step: Electron ready', 2500],
   ['start step', 150],
   ['under the hood: report sent', 8000],

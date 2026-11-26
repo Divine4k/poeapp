@@ -10,7 +10,7 @@
 //
 // Whether its pictures may be used at all is decided in capture.js, by comparing them with the
 // app's own pictures first.
-const { spawn } = require('child_process');
+const { spawnAside } = require('./aside');
 
 // One request per line on its input: "x y width height". The answer: 16 bytes (the letters
 // PCAP, width, height, 1 for done or 0 for failed), then width x height x 4 bytes, blue green
@@ -117,7 +117,8 @@ class AnswerReader {
 
 class CaptureHelper {
   // spawnImpl: for tests.
-  constructor({ spawnImpl = spawn, timeoutMs = 1500 } = {}) {
+  constructor({ spawnImpl = spawnAside, timeoutMs = 1500, onStarted = () => {} } = {}) {
+    this.onStarted = onStarted;
     this.spawnImpl = spawnImpl;
     this.timeoutMs = timeoutMs;
     this.proc = null;
@@ -133,7 +134,7 @@ class CaptureHelper {
     if (this.proc || !this.usable) return;
     let proc;
     try {
-      proc = this.spawnImpl('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(SCRIPT, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+      proc = this.spawnImpl('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(SCRIPT, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] }, (ms) => this.onStarted(ms));
     } catch (_) { this.trouble(); return; }
     this.proc = proc;
     const reader = new AnswerReader();
@@ -197,4 +198,15 @@ function slotsSame(a, b, rect) {
   return same;
 }
 
-module.exports = { CaptureHelper, AnswerReader, slotsSame, SCRIPT };
+// Is one of them over the part of the screen the reader looks at (the inventory's grid, with a
+// slot's width around it)? Only then does it matter whether a picture leaves the app's windows
+// out: anywhere else on the screen they change nothing that is read.
+function overReadArea(win, display, width, height) {
+  const { ROWS, gridRect } = require('./core/inventory/grid');
+  const g = gridRect(width, height), b = display.bounds, fx = width / b.width, fy = height / b.height;
+  const area = { x0: g.x0 - g.cell, y0: g.y0 - g.cell, x1: width, y1: g.y0 + (ROWS + 1) * g.cell };
+  const w = { x0: (win.x - b.x) * fx, y0: (win.y - b.y) * fy, x1: (win.x + win.width - b.x) * fx, y1: (win.y + win.height - b.y) * fy };
+  return w.x0 < area.x1 && w.x1 > area.x0 && w.y0 < area.y1 && w.y1 > area.y0;
+}
+
+module.exports = { CaptureHelper, AnswerReader, slotsSame, overReadArea, SCRIPT };

@@ -3,7 +3,7 @@
 // recording software uses). Nothing here reads game memory, touches game files or sends input.
 const { desktopCapturer, screen } = require('electron');
 const { diag } = require('./diagnose');
-const { CaptureHelper, slotsSame } = require('./capturehelper');
+const { CaptureHelper, slotsSame, overReadArea } = require('./capturehelper');
 const { COLS, ROWS } = require('./core/inventory/grid');
 
 // ---- the quick way ----
@@ -14,13 +14,14 @@ const { COLS, ROWS } = require('./core/inventory/grid');
 // first readings with the inventory open both pictures are taken and the 60 slots compared
 // byte for byte (judge). Reading loot is only as good as its pixels, so on any doubt the app
 // stays with the old way.
-const helper = new CaptureHelper();
+const helper = new CaptureHelper({ onStarted: (ms) => diag.time('helper: capture helper started (on its own thread)', ms) });
 const TRUST_AFTER = 3;   // readings in a row whose slots matched
 const SAME_SLOTS = 56;   // of 60: a tooltip or the mouse may move between the two pictures
 const CHECK_EVERY = 30;  // once trusted, every so many pictures both are taken and compared again
 let quickShots = 0;
 const quick = { state: process.platform === 'win32' ? 'trial' : 'off', good: 0, bad: 0, why: '' };
-let ownWindowsShown = () => false; // set by main.js: is one of the app's windows over the game?
+let ownWindows = () => []; // set by main.js: where the app's own windows over the game are right now
+let ownWindowsShown = () => false; // replaced per capture, see captureFrame
 function quickFact() {
   diag.facts['Screen capture'] = quick.state === 'trusted' ? 'the quick way (helper process), after its pictures matched the old way'
     : quick.state === 'trial' ? `the old way, the quick way is being compared (${quick.good} of ${TRUST_AFTER} matched)`
@@ -86,14 +87,16 @@ async function captureFrame(displayId) {
   const width = Math.round(display.size.width * display.scaleFactor);
   const height = Math.round(display.size.height * display.scaleFactor);
   if (quick.state !== 'off' && !helper.usable) quickOff('the helper could not be started');
+  const inTheWay = ownWindows().some((w) => overReadArea(w, display, width, height));
+  ownWindowsShown = () => inTheWay;
   // The app's own windows are left out of the old way's pictures (see guard in overlay.js);
-  // whether the helper's copy leaves them out too is not known, so with one of them showing
-  // the old way is used.
+  // whether the helper's copy leaves them out too is not known, so with one of them over the
+  // inventory the old way is used. One showing elsewhere on the screen changes nothing.
   // Trusted is not for ever: every so often both pictures are taken again and compared (judge),
   // so a change on the PC in the middle of a session (HDR, a colour filter) is caught.
   const again = quick.state === 'trusted' && ++quickShots % CHECK_EVERY === 0 && !ownWindowsShown();
   if (quick.state === 'trusted' && !again) {
-    if (ownWindowsShown()) diag.count('inventory: old way of capture, a window of the app was showing');
+    if (ownWindowsShown()) diag.count('inventory: old way of capture, a window of the app was over the inventory');
     else {
       const frame = await quickShot(display, width, height);
       if (frame) return frame;
@@ -143,6 +146,6 @@ function cursorOnDisplay(displayId) {
 // Starts the helper ahead of the first reading (it takes a second or two to be ready).
 function warmUp() { if (quick.state !== 'off') helper.start(); }
 function shutDown() { helper.stop(); }
-function watchOwnWindows(fn) { ownWindowsShown = fn; }
+function watchOwnWindows(fn) { ownWindows = fn; }
 
-module.exports = { captureFrame, cursorInFrame, cursorOnDisplay, judge, warmUp, shutDown, watchOwnWindows, quick };
+module.exports = { captureFrame, cursorInFrame, cursorOnDisplay, judge, warmUp, shutDown, watchOwnWindows, overReadArea, quick };

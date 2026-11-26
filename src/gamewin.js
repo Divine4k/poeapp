@@ -5,7 +5,7 @@
 // Windows only. A small PowerShell helper asks Windows four times a second which process owns
 // the front window and prints its name. It reads nothing else and sends nothing.
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawnAside } = require('./aside');
 const { EventEmitter } = require('events');
 
 const SCRIPT = `
@@ -42,7 +42,8 @@ class GameWatch extends EventEmitter {
     if (this.proc || process.platform !== 'win32') return;
     const script = SCRIPT.replace('PARENT_PID', String(process.pid));
     try {
-      this.proc = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      // Started on a thread of its own (aside.js): starting PowerShell held the app up for seconds.
+      this.proc = (this.spawnImpl || spawnAside)('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }, (ms) => this.emit('started', ms));
     } catch (_) { this.proc = null; return; }
     let rest = '';
     this.proc.stdout.on('data', (d) => {
