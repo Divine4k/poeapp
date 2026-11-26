@@ -50,6 +50,7 @@ const LIMITS = [
   ['inventory:', 250],
   ['price check: copy', 450],
   ['price check: advanced plan', 30],
+  ['price check: advanced line test', 45000], // a search for each line left out, each waiting its turn with the trade site
   ['price check: advanced', 9000], // up to three searches, each waiting its turn with the trade site
   ['price check:', 2500],
   ['web:', 2000],

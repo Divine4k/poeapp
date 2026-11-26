@@ -47,6 +47,7 @@ function classOf(stat, armour) {
 // filters: from buildFilters, as the standard check ticked them. Returns the sets of ticks to
 // try, strictest first, each { id, ticks: { <stat key>: bool }, lines }:
 //   'all'     every line that is not junk: items that are nearly the same
+//   ('most'   all but one line, put in by dropRung once the lines were tried one at a time)
 //   'strong'  the strong lines only
 //   'usual'   the standard check's own ticks (always the last one)
 // Sets that tick the same lines are given once (as the later one). [] for what this is not
@@ -79,4 +80,47 @@ function applyRung(filters, rung) {
   return { ...filters, stats: filters.stats.map((s) => (rung.ticks[s.key] === undefined || rung.ticks[s.key] === s.enabled ? s : { ...s, enabled: rung.ticks[s.key] })) };
 }
 
-module.exports = { rungs, applyRung, classOf, NEAR_ENOUGH, NOBODY_PAYS };
+// ---- one line at a time ----
+// When too few items have every line, the lines are left out together only as a last resort.
+// First each one is left out by itself and searched (the owner, 2026-11-26: "it doesn't really
+// matter how long it takes to accurately price check it as long as it's accurate"): the line
+// that can go while the price stays highest is the one that matters least, and only that one
+// is dropped. Each try is a search, and the trade site allows about fifteen a minute.
+const MAX_PROBES = 6;
+
+// The lines that may be left out one at a time: ticked in this set and not among the usual
+// ticks (those are what any comparison stands on). What a buyer can add himself comes first,
+// then the weaker tiers; at most MAX_PROBES. Each { key, text }.
+function probeLines(filters, rung, usual) {
+  const rank = (s) => (s.kind === 'crafted' || s.kind === 'implicit' ? 0 : 20 - Math.min(19, (s.tiers && s.tiers[0]) || 9));
+  return filters.stats
+    .filter((s) => rung.ticks[s.key] && !(usual && usual.ticks[s.key]) && s.kind !== 'fractured' && !String(s.key).startsWith('influence:'))
+    .sort((a, b) => rank(a) - rank(b))
+    .slice(0, MAX_PROBES)
+    .map((s) => ({ key: s.key, text: s.text }));
+}
+
+// The filters with one line unticked.
+const withoutLine = (filters, key) => ({ ...filters, stats: filters.stats.map((s) => (s.key === key && s.enabled ? { ...s, enabled: false } : s)) });
+
+// tried: what each search without one line found, [{ key, text, total, low }] (low: about the
+// cheapest real price in chaos, null when none). Returns the one to leave out, or null when no
+// try found enough: the one whose items are dearest (leaving it out costs the least), unless
+// another is nearly as dear (three quarters) with at least twice as many listed, which is the
+// better evidence.
+function judgeLines(tried) {
+  const ok = (tried || []).filter((t) => t.total >= NEAR_ENOUGH && t.low > 0).sort((a, b) => b.low - a.low || b.total - a.total);
+  if (!ok.length) return null;
+  const best = ok[0];
+  const wider = ok.filter((t) => t !== best && t.low >= best.low * 0.75 && t.total >= best.total * 2).sort((a, b) => b.total - a.total)[0];
+  return wider || best;
+}
+
+// The set of ticks after leaving one line out of a set.
+function dropRung(rung, line) {
+  const ticks = { ...rung.ticks, [line.key]: false };
+  return { id: 'most', ticks, lines: Object.values(ticks).filter(Boolean).length, dropped: line.text };
+}
+
+module.exports = { rungs, applyRung, classOf, probeLines, withoutLine, judgeLines, dropRung, NEAR_ENOUGH, NOBODY_PAYS, MAX_PROBES };
+

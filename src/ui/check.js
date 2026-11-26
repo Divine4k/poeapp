@@ -343,16 +343,20 @@
       const sure = SURE[a.sure] || SURE.guess, speed = a.speed ? SPEED[a.speed] : null;
       top = `<span class="pa-price" title="From what sells quickly to what a patient seller gets (typical: ${esc(fmtValue(a.typical))})">${priceHtml(a.low, a.high)}${other ? `<small>${esc(other)}</small>` : ''}</span>
         <span class="pa-pill p-${esc(a.sure)}" title="${esc(sure[1])}">${sure[0]}</span>${speed ? `<span class="pa-pill p-speed" title="${esc(speed[1])}">${speed[0]}</span>` : ''}`;
-    } else if (a.state === 'working') top = '<span class="pa-wait">Working out its own price…</span>';
+    } else if (a.state === 'working' && a.probe) top = `<span class="pa-wait" title="Each line is left out by itself and searched: the one that can go while the price stays highest is dropped. One search each, as fast as the trade site allows.">Too few have them all: trying without each line (${a.probe.at} of ${a.probe.of})…</span>`;
+    else if (a.state === 'working') top = '<span class="pa-wait">Working out its own price…</span>';
     else if (a.state === 'waiting') top = `<span class="pa-wait">${d.state === 'searching' ? 'Comes after the standard search…' : d.state === 'error' ? 'Needs the standard search to go through first.' : 'Its own price comes with the search.'}</span>`;
     else top = `<span class="pa-wait${a.state === 'error' ? ' pa-bad' : ''}" title="${esc(a.why || '')}">${esc(a.state === 'none' ? (a.why || 'Nothing to go by.') : a.state === 'later' ? (a.why || 'The trade site asked for a pause.') : `It could not be worked out: ${a.why || ''}`)}</span>`;
     // who it fits and what carries it (known at once, before any search)
     let fits;
     const lines = a.near ? `<b>${a.near.lines}</b>` : '';
     // its own ticks: which lines it is being compared by (they are the ticked ones below)
-    if (a.near && a.near.id !== 'usual') fits = done || a.state === 'none'
-      ? (a.near.id === 'all' ? `Compared with items that have all ${lines} of its modifiers (ticked below).` : `Compared by its ${lines} strongest modifiers (ticked below); too few have them all.`)
-      : (a.near.id === 'all' ? `Looking for items with all ${lines} of its modifiers…` : `Too few have them all: looking by its ${lines} strongest…`);
+    if (a.near && a.near.id !== 'usual') {
+      const n = a.near, same = n.id === 'all' || n.first;
+      fits = done || a.state === 'none'
+        ? (n.id === 'most' ? `Compared by ${lines} of its modifiers; left out: <b>${esc(n.dropped || '')}</b>.` : same ? `Compared with items that have the same ${lines} modifiers (ticked below).` : `Compared by its ${lines} strongest modifiers (ticked below).`)
+        : (n.id === 'most' ? `Looking without <b>${esc(n.dropped || '')}</b>…` : same ? `Looking for items with the same ${lines} modifiers…` : `Looking by its ${lines} strongest modifiers…`);
+    }
     else if (a.touched) fits = 'Read from the lines you ticked.';
     else if (a.kind === 'score' && a.worth) fits = dots([a.fits.length ? `Fits <b>${esc(a.fits.join(' and '))}</b>` : '', ...a.parts.map((p) => `<span title="How much of its worth comes from this">${esc(p.as)} <b>${p.share}%</b></span>`)]);
     else if (a.kind === 'score') fits = 'Nothing closer is listed: read from the usual search.';
@@ -364,6 +368,10 @@
     const how = dots([
       // a stricter set of lines found one or two: the closest there is, so it is said first
       done && c ? `<span class="pa-warn" title="With ${c.id === 'all' ? 'every modifier' : 'its strongest modifiers'} ticked, only ${c.total} ${c.total === 1 ? 'is' : 'are'} listed. Too few to price by, but the closest there is: if this is far above the price here, tick those lines and look.">only ${c.total} with ${c.id === 'all' ? 'everything' : 'its strongest'}: <b>${esc(fmtValue(c.low))}${c.high > c.low ? `–${esc(fmtValue(c.high))}` : ''}</b></span>` : '',
+      // priced from one or two: what the usual ticks find, to hold against it
+      done && a.usual ? `<span title="Items that share only what the usual search ticks. They are lesser items; the price here is from the few that really are like it.">by the usual ticks: <b>${a.usual.total.toLocaleString()}</b>${a.usual.low ? ` from <b>${esc(fmtValue(a.usual.low))}</b>` : ''}</span>` : '',
+      // the lines tried one at a time, with what each search found in its hover text
+      done && a.lines && a.lines.length ? `<span title="${esc(a.lines.map((l) => `Without ${l.text}: ${l.total} listed${l.low ? ` from ${fmtValue(l.low)}` : ''}`).join('\n'))}">${a.lines.length} lines tried one by one</span>` : '',
       ...(done ? (a.facts || []).map(esc) : []),
       done && a.source === 'score' && a.step > 0 ? STEP_WORDS[a.step] || '' : '',
       a.base ? `<span title="poe.ninja's price for ${esc(a.base.what)}, whatever is rolled on it">base alone ≈ <b>${esc(fmtValue(a.base.chaos))}</b></span>` : '',

@@ -380,7 +380,7 @@ test('the lowest value asked for keeps whole numbers whole and never asks for no
 
 // ---- its own ticks (ticks.js) ----
 const { buildFilters, buildQuery } = require('../src/core/tradeQuery');
-const { rungs, applyRung, classOf } = require('../src/core/advanced/ticks');
+const { rungs, applyRung, classOf, probeLines, withoutLine, judgeLines, dropRung } = require('../src/core/advanced/ticks');
 // The owner's gloves of 2026-11-26: 5 chaos by the usual ticks, about 30 divine with every real
 // modifier ticked (9 listed). What he ticked by hand is what the advanced check must tick.
 const GLOVES = `Item Class: Gloves
@@ -470,6 +470,40 @@ test('its own ticks: what is never ticked, and what it is not for', () => {
   assert.ok(chest[0].lines > chest[1].lines);
 });
 
+test('too few with every line: each is tried by itself, and the one that matters least is dropped', () => {
+  const f = buildFilters(parseItemText(GLOVES), index);
+  const r = rungs(f);
+  const all = applyRung(f, r[0]);
+  // what may go: not the usual ticks, not the fractured modifier; what a buyer can add himself first
+  const lines = probeLines(all, r[0], r[r.length - 1]);
+  assert.deepEqual(lines.map((l) => l.text.replace(/^\+?\d+% (of |to )?/, '')), ['Freezes you inflict spread to other Enemies within 1.1 metres', 'Projectiles Pierce an additional Target', 'Physical Damage Converted to Lightning Damage', 'Item Rarity', 'Chaos Resistance']);
+  // one search each, with that line unticked and nothing else changed
+  const one = withoutLine(all, lines[1].key);
+  assert.deepEqual(one.stats.filter((s) => s.enabled).length, 6);
+  assert.equal(one.stats.find((s) => s.key === lines[1].key).enabled, false);
+  assert.equal(all.stats.find((s) => s.key === lines[1].key).enabled, true);
+  // without Item Rarity there are hundreds from 5c (it carries the price); without the pierce implicit a dozen from 3,900c
+  const tried = [
+    { key: 'stat:3', text: '+9% to Item Rarity', total: 759, low: 5 },
+    { key: 'stat:1', text: 'Projectiles Pierce an additional Target', total: 12, low: 3900 },
+    { key: 'stat:5', text: '+27% to Chaos Resistance', total: 31, low: 1800 },
+    { key: 'stat:0', text: 'Freezes you inflict spread', total: 2, low: 9000 }, // two listings are no evidence
+    { key: 'stat:4', text: '25% converted to Lightning', total: 0, low: null },
+  ];
+  assert.equal(judgeLines(tried).key, 'stat:1');
+  // nearly as dear with twice as many listed is the better evidence
+  assert.equal(judgeLines([{ key: 'a', total: 3, low: 4000 }, { key: 'b', total: 9, low: 3300 }, { key: 'c', total: 40, low: 900 }]).key, 'b');
+  // the owner's boots, as the live site answered on 2026-11-26: all four strong lines 2 listed at 2 divine;
+  // without Item Rarity 20 from 1 divine, without Chaos Resistance 271 from 3 chaos: rarity is the one to let go
+  assert.equal(judgeLines([{ key: 'rarity', total: 20, low: 164 }, { key: 'chaos', total: 271, low: 3 }]).key, 'rarity');
+  assert.equal(judgeLines([{ key: 'a', total: 2, low: 4000 }, { key: 'b', total: 0, low: null }]), null);
+  assert.equal(judgeLines([]), null);
+  // the set of ticks that follows: all but that one line
+  const most = dropRung(r[0], tried[1]);
+  assert.deepEqual([most.id, most.lines, most.dropped, most.ticks['stat:1'], most.ticks['stat:3']], ['most', 6, 'Projectiles Pierce an additional Target', false, true]);
+  assert.equal(r[0].ticks['stat:1'], true); // the set it came from is left as it was
+});
+
 const NOW = 1_800_000_000_000;
 const listed = (chaos, days, extra = {}) => ({ chaos, listedAt: NOW - days * DAY, ...extra });
 
@@ -540,6 +574,7 @@ test('the outcome in a few words, for Under the hood', () => {
   assert.equal(advanced.outcome({ state: 'done', source: 'score', step: 1, total: 46, seen: 6, looked: 20, low: 30, high: 45.25, sure: 'fair', speed: 'fast' }), '30 to 45.3 chaos, fair, sells fast, from its own search (step 2 of 3, 6 of the 20 looked at count, 46 like it)');
   assert.equal(advanced.outcome({ state: 'none', why: 'nothing listed' }), 'none: nothing listed');
   assert.equal(advanced.outcome({ state: 'done', source: 'near', near: { id: 'all', lines: 7 }, total: 9, low: 4100, high: 6560, sure: 'fair', speed: 'fast' }), '4100 to 6560 chaos, fair, sells fast, from the 9 listed with all 7 of its lines');
+  assert.equal(advanced.outcome({ state: 'done', source: 'near', near: { id: 'most', lines: 6, dropped: 'Projectiles Pierce an additional Target' }, total: 12, low: 3900, high: 5000, sure: 'fair', speed: 'fast' }), '3900 to 5000 chaos, fair, sells fast, from the 12 listed with 6 (all but "Projectiles Pierce an additional Target") of its lines');
   assert.match(advanced.outcome({ state: 'done', source: 'standard', total: 759, low: 5, high: 5, sure: 'fair', speed: 'crowded' }), /fair, many listed, from the usual search \(759 found\)/);
 });
 
