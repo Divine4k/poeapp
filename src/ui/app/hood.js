@@ -95,6 +95,7 @@ function hoodDraw() {
   $('hd-running').hidden = !run.length;
   $('hd-running').textContent = run.length ? `Under way right now: ${run.map((r) => `${r.name} (for ${hdMs(r.ms)})`).join(', ')}` : '';
   $('hd-copylast').hidden = !s.lastRun;
+  $('hd-sendlast').hidden = !s.lastRun;
   // ---- what happened ----
   const lq = $('hd-logfilter').value.trim().toLowerCase(), onlyBad = $('hd-logbad').checked;
   const log = (s.log || []).filter((l) => (!onlyBad || l.bad) && (!lq || `${l.kind} ${l.text} ${l.detail || ''}`.toLowerCase().includes(lq))).slice(-250).reverse();
@@ -113,6 +114,19 @@ $('tab-hood').addEventListener('click', async (e) => {
   const sort = e.target.closest('[data-hdsort]');
   if (sort) { hdSort = sort.dataset.hdsort; hoodDraw(); return; }
   if (e.target.closest('#hd-reset')) { hdBusy = false; hoodLoad('reset'); return; }
+  // Send to Claude: the same report, put where Claude reads them (the reports repository), with
+  // a line of your own if you like. Several can be sent; they wait there until they are read.
+  const send = e.target.closest('#hd-send, #hd-sendlast');
+  if (send) {
+    if (send.disabled) return;
+    const was = send.textContent, note = $('hd-note');
+    send.disabled = true; send.textContent = 'Sending…';
+    const r = await api.hood({ op: send.id === 'hd-sendlast' ? 'sendLast' : 'send', note: note.value });
+    send.disabled = false;
+    if (r && r.sent) { send.textContent = 'Sent'; note.value = ''; setTimeout(() => { send.textContent = was; }, 2500); }
+    else { send.textContent = was; await tell(`The report was not sent: ${r || 'no answer from the app'}`); }
+    return;
+  }
   const copy = e.target.closest('#hd-copy, #hd-copylast');
   if (copy) {
     const was = copy.textContent;

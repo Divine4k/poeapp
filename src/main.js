@@ -56,6 +56,7 @@ const { Troubleshoot, scrub } = require('./troubleshoot');
 const diagnose = require('./diagnose');
 const { diag } = diagnose; // times and counts for the Under the hood page (src/core/diag.js)
 const { report: hoodReport } = require('./core/diag');
+const { uploadFolder } = require('./github');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -2203,6 +2204,41 @@ function createWindow() {
 }
 
 // ---- IPC -----------------------------------------------------------------------
+// "Send to Claude" on the Under the hood page: the same text as Copy for Claude, put into the
+// reports repository as hood/<when>-<who>/README.md (with the numbers behind it), so several can
+// pile up there and be read later without pasting each into a chat. Returns '' or what went wrong.
+async function sendHood(last, note) {
+  const done = diag.start('under the hood: report sent to GitHub');
+  try {
+    const snap = last ? diagnose.lastRun() : diag.snapshot();
+    if (!snap) { done('no run before this one is kept', false, true); return 'There is no run before this one to send.'; }
+    const gh = await cloud.github();
+    if (gh.error || !gh.token) { done('no token', false, true); return gh.error || 'No GitHub token is saved. An admin sets it in Settings, Developer tools.'; }
+    const who = (cloud.name || 'someone').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24) || 'someone';
+    const d = new Date(), two = (n) => String(n).padStart(2, '0');
+    const id = `${d.getFullYear()}${two(d.getMonth() + 1)}${two(d.getDate())}-${two(d.getHours())}${two(d.getMinutes())}${two(d.getSeconds())}-${who}${last ? '-before' : ''}`;
+    const words = String(note || '').trim().slice(0, 2000);
+    const title = last ? `Map Companion, under the hood: the run before this one (${snap.ended || 'it did not close normally: a crash, or the PC went off'})` : 'Map Companion, under the hood';
+    const text = `${words ? `> Note from ${who}: ${words.replace(/\n/g, '\n> ')}\n\n` : ''}${hoodReport(snap, { title, version: last ? '' : (trouble && trouble.version) || '' })}`;
+    const meta = { id, by: who, role: cloud.role || '', at: Date.now(), app: APP_VERSION, commit: (trouble && trouble.version) || '', last: !!last, note: words };
+    const r = await uploadFolder({
+      fetchImpl: webFetch, token: gh.token, repo: gh.repo, folder: `hood/${id}`,
+      files: [
+        { path: 'README.md', data: Buffer.from(text) },
+        { path: 'meta.json', data: Buffer.from(JSON.stringify(meta, null, 1)) },
+        { path: 'diagnostics.json.gz', data: zlib.gzipSync(Buffer.from(JSON.stringify(snap))) },
+      ],
+      message: `Under the hood ${id}${words ? `: ${words.split('\n')[0].slice(0, 70)}` : ''}`,
+    });
+    done(`hood/${id}`);
+    diag.note('hood', `Report sent to GitHub: hood/${id}`);
+    return { sent: `hood/${id}`, url: r.url };
+  } catch (e) {
+    done(`failed: ${e.message || e}`, false, true);
+    return e.message || String(e);
+  }
+}
+
 // What Under the hood knows about how the app is set up: the settings without anything
 // private or long, and what the status chips say.
 function hoodFacts() {
@@ -2690,9 +2726,10 @@ function setupIpc() {
   });
   // The Under the hood page (admins and moderators): the numbers, start them over, or the
   // whole thing as text on the clipboard, to paste into a chat with Claude.
-  ipcMain.handle('hood', (_e, a) => {
+  ipcMain.handle('hood', async (_e, a) => {
     if (!canTrouble()) return null;
     const op = a && a.op;
+    if (op === 'send' || op === 'sendLast') return sendHood(op === 'sendLast', a.note);
     if (op === 'reset') diag.reset();
     if (op === 'copy') { clipboard.writeText(hoodReport(diag.snapshot(), { title: 'Map Companion, under the hood', version: (trouble && trouble.version) || '' })); return true; }
     // The run before this one, kept on disk: what the app was doing before it was closed, or crashed.
