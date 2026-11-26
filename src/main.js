@@ -49,6 +49,9 @@ const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
 const { ScreenRecorder } = require('./recorder');
 const { Troubleshoot } = require('./troubleshoot');
+const diagnose = require('./diagnose');
+const { diag } = diagnose; // times and counts for the Under the hood page (src/core/diag.js)
+const { report: hoodReport } = require('./core/diag');
 
 const PRICE_REFRESH_MS = 30 * 60 * 1000;
 const UPDATE_CHECK_MS = 2 * 60 * 1000;
@@ -125,7 +128,9 @@ function readJson(name, fallback) {
   try { return JSON.parse(fs.readFileSync(dataFile(name), 'utf8')); } catch (_) { return fallback; }
 }
 function writeJson(name, value) {
+  const done = diag.start(`file: ${name} (the app waits)`);
   try { fs.writeFileSync(dataFile(name), JSON.stringify(value)); } catch (e) { console.error('save failed', name, e.message); }
+  done();
 }
 // The same, for files that change in the middle of things (a setting, a box dragged on the
 // Tracker, an item learned during a reading): written a moment later and without holding the
@@ -151,7 +156,10 @@ async function saveWaiting(name) {
   savesRunning.set(name, w.get);
   const file = dataFile(name), tmp = `${file}.tmp`;
   let text;
+  const made = diag.start(`file: ${name}, made into text`);
   try { text = JSON.stringify(w.get()); } catch (e) { console.error('save failed', name, e.message); savesRunning.delete(name); return; }
+  made(`${Math.round(text.length / 1024)} KB`);
+  const done = diag.start(`file writing in the background: ${name}`);
   try {
     await fs.promises.writeFile(tmp, text);
     // Swapped in at once (not in the background), so it cannot land after a newer write.
@@ -160,6 +168,7 @@ async function saveWaiting(name) {
     // The swap can fail on Windows while another program looks at the file: written the plain way.
     if (!savesClosed) { try { fs.writeFileSync(file, text); } catch (e) { console.error('save failed', name, e.message); } }
   }
+  done();
   savesRunning.delete(name);
 }
 function flushSaves() {
@@ -295,12 +304,19 @@ function pushNow() {
   clearTimeout(pushTimer); pushTimer = null;
   const open = win && !win.isDestroyed();
   const recording = trouble && trouble.recording;
+  const built = diag.start('state update: put together');
   const s = open || recording ? buildState(!!recording) : null;
-  if (open) win.webContents.send('state', s);
+  built();
+  if (open) { const sent = diag.start('state update: sent to the window'); win.webContents.send('state', s); sent(); }
   if (recording) trouble.state(s);
+  const over = diag.start('state update: overlay and price check window');
   syncOverlay();
   if (checkPanel && checkPanel.visible && tradeCheck) checkPanel.update(checkPanelData());
+  over();
+  // How big one update is, measured now and then (measuring costs a little itself).
+  if (s && Date.now() - stateSizedAt > 30000) { stateSizedAt = Date.now(); try { diag.gauge('One state update', Math.round(JSON.stringify(s).length / 1024), 'KB'); } catch (_) { /* not measured */ } }
 }
+let stateSizedAt = 0;
 function changed() { scheduleSave(); push(); }
 
 // ---- game log ----------------------------------------------------------------
@@ -353,7 +369,7 @@ function startLog() {
     logTrace.push({ at: Date.now(), raw: line.replace(/^\S+ \S+ \d+ \S+ /, '').slice(0, 220), type: ev ? ev.type : null, kind: ev ? ev.kind || null : null, code: ev ? ev.code || null : null, did: ev ? '' : 'Nothing: not a line the tracker acts on' });
     if (logTrace.length > 40) logTrace.shift();
   });
-  logTail.on('event', (ev) => {
+  logTail.on('event', (ev) => diag.run('game log: one line handled', () => {
     const before = session.currentId;
     const wasActive = !!(session.current && session.current.segmentStart !== null);
     session.handleLogEvent(ev, { characterName: config.characterName, loadout: config.loadout });
@@ -380,7 +396,7 @@ function startLog() {
     if (tookIn) saveTradesSoon();
     else if (ev.type === 'whisper' || ev.type === 'party') return; // nothing to redraw
     changed();
-  });
+  }, ev.type));
   logTail.start();
 }
 
@@ -730,6 +746,7 @@ async function readInventory(force) {
     const t0 = performance.now();
     const frame = await captureFrame(config.inventory.displayId);
     const captureMs = performance.now() - t0;
+    diag.time('inventory: capture of the screen', captureMs, `${frame.width}x${frame.height}`);
     const rect = gridRect(frame.width, frame.height);
     status.inventory.error = null;
     const wasOpen = status.inventory.open;
@@ -745,6 +762,7 @@ async function readInventory(force) {
     const result = reader.read(frame, { cursor: cursorCell(cursorInFrame(frame), rect) });
     // How long a reading takes on this PC, for troubleshooting recordings: whether the reading
     // should move to a worker, or the capture be made smaller.
+    diag.time('inventory: reading the slots', performance.now() - t1, result ? `${result.recognised} recognised${result.hidden ? `, ${result.hidden} covered` : ''}${follow ? ', follow-up' : ''}` : 'nothing read');
     if (trouble && trouble.recording) trouble.event('inventoryRead', { captureMs: Math.round(captureMs), readMs: Math.round(performance.now() - t1), hidden: result ? result.hidden : null, follow: !!follow });
     if (!result) return;
     status.inventory.lastReadAt = Date.now();
@@ -1206,9 +1224,13 @@ function setupTrouble() {
     },
     who: () => ({ name: cloud && cloud.signedIn ? cloud.name : '', role: cloud ? cloud.role : '' }),
     version: require('../package.json').version, // the exact commit is filled in once the updater knows it
-    cloud, fetchImpl: webFetch, say,
+    cloud, fetchImpl: webFetch, say, diag,
     changed: () => { syncCaptureHiding(); troubleRev++; push(); },
   });
+  // A recording keeps how long each job took (the quickest ones left out) and every slow
+  // moment and freeze, at its place on the timeline.
+  diag.onTime = (name, ms, slow, detail) => { if (trouble.recording && ms >= 2 && !slow) trouble.event('timing', { name, ms: Math.round(ms * 10) / 10, detail: detail || undefined }); };
+  diag.onSlow = (m) => { if (trouble.recording) trouble.event(m.kind === 'freeze' ? 'freeze' : 'slow', { name: m.name, ms: m.ms, limit: m.limit, detail: m.detail }); };
   // Admins and moderators see everyone's recordings: the reports repository is looked at once a minute.
   const look = () => { if (trouble && canTrouble() && !trouble.current) trouble.syncRemote().catch(() => {}); };
   setTimeout(look, 8000);
@@ -1216,7 +1238,12 @@ function setupTrouble() {
   // What the app writes to its console goes into a recording too.
   for (const level of ['log', 'warn', 'error']) {
     const was = console[level].bind(console);
-    console[level] = (...args) => { was(...args); if (trouble) trouble.event('console', { level, text: args.map((x) => (x instanceof Error ? x.stack : typeof x === 'string' ? x : JSON.stringify(x))).join(' ') }); };
+    console[level] = (...args) => {
+      was(...args);
+      const text = args.map((x) => (x instanceof Error ? x.stack : typeof x === 'string' ? x : JSON.stringify(x))).join(' ');
+      if (level === 'error') diag.error('main process', text);
+      if (trouble) trouble.event('console', { level, text });
+    };
   }
 }
 // The overlays are left out of screen captures, except while a troubleshooting recording starts
@@ -1430,6 +1457,7 @@ async function runBulkSearch() {
   if (!tc || tc.kind !== 'bulk' || !tc.want || tc.state === 'searching') return;
   tc.state = 'searching'; tc.error = ''; tc.rev = ++tradeRev;
   push();
+  const timed = diag.start('price check: bulk search');
   try {
     const r = await tradeClient.exchange(config.league, tc.want, tc.have);
     const offers = r.offers.map((o) => readOffer(o, chaosOfPrice)).filter(Boolean).sort((a, b) => a.price.amount - b.price.amount).slice(0, 10);
@@ -1443,6 +1471,8 @@ async function runBulkSearch() {
   } catch (e) {
     tc.state = 'error'; tc.error = e.message || String(e);
   }
+  timed(tc.state === 'error' ? `failed: ${tc.error}` : `${tc.total} offers`);
+  keyAnswered();
   tc.rev = ++tradeRev;
   if (tradeCheck !== tc) return;
   push();
@@ -1498,7 +1528,7 @@ async function runCrafts(tc, filters = tc.filters) {
   for (const i of ideas) Object.assign(i, { state: 'waiting', chaos: null, delta: null, n: 0, why: '', run });
   tc.rev = ++tradeRev; push();
   const stale = () => tradeCheck !== tc || tc.craft.run !== run || tc.state === 'searching';
-  const typical = async (f) => {
+  const typical = (f) => diag.run('price check: one bench craft priced (waiting included)', async () => {
     for (let i = 0; i < 50 && tradeClient.busy; i++) await sleep(100);
     const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
     if (wait > 20000) throw Object.assign(new Error('The trade site asked for a pause. It is tried again after the next search.'), { later: true });
@@ -1507,7 +1537,7 @@ async function runCrafts(tc, filters = tc.filters) {
     const r = await tradeClient.check(config.league, buildQuery(f));
     const ls = markBait(r.listings.map((l) => readListing(l, chaosOfPrice)));
     return typicalPrice(ls.filter((l) => !l.bait).map((l) => l.chaos));
-  };
+  });
   let base;
   try { base = await typical(filters); } catch (e) { base = { value: null, n: 0, why: e.message, later: e.later }; }
   if (base === undefined || stale()) return;
@@ -1561,12 +1591,18 @@ async function runTradeSearch(announce) {
   if (!tc || !tc.filters.ok || tc.state === 'searching') return;
   tc.state = 'searching'; tc.error = ''; tc.rev = ++tradeRev;
   push();
+  const timed = diag.start('price check: search (waiting included)');
+  let waited = 0;
   try {
     // A craft's search may still be out, or the site may want a short pause: wait for it here
     // rather than say no.
+    const w0 = performance.now();
     for (let i = 0; i < 50 && tradeClient.busy; i++) await sleep(100);
     const wait = Math.max(tradeClient.waitMs('search'), tradeClient.waitMs('fetch'));
     if (wait > 0 && wait <= 10000) await sleep(wait + 150);
+    waited = performance.now() - w0;
+    // Time spent only waiting for the trade site's permission to ask again (its rate limit).
+    if (waited > 5) diag.time('price check: waiting for the trade site\'s pause', waited);
     const r = await tradeClient.check(config.league, buildQuery(withCrafts(tc.filters, craftsOn(tc))));
     tc.compare = compareSpec(tc.filters);
     tc.listings = markBait(r.listings.map((l) => readListing(l, chaosOfPrice, tc.compare)));
@@ -1581,6 +1617,8 @@ async function runTradeSearch(announce) {
   } catch (e) {
     tc.state = 'error'; tc.error = e.message || String(e);
   }
+  timed(`${tc.state === 'error' ? `failed: ${tc.error}` : `${tc.total} listings`}${waited > 5 ? `, ${Math.round(waited)} ms of it waiting` : ''}`);
+  keyAnswered();
   tc.rev = ++tradeRev;
   if (tradeCheck !== tc) return; // another item was checked meanwhile
   if (announce && !tc.inGame) showToast(tradeMessage(tc, prices.divine)); // the window in game says it itself
@@ -1630,8 +1668,15 @@ function showCheckPanel() {
 // One press of the check hotkey: copy the hovered item (a single Ctrl+Alt+C sent to the game, the
 // same thing price-check tools do), then read the clipboard once.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// From the check key to the answer on screen, for the Under the hood page.
+let checkKeyAt = 0;
+function keyAnswered() {
+  if (checkKeyAt) diag.time('price check: from the key to the answer', performance.now() - checkKeyAt, tradeCheck ? tradeCheck.kind || 'gear' : 'price list');
+  checkKeyAt = 0;
+}
 async function checkHovered({ count = true } = {}) {
   const started = Date.now();
+  checkKeyAt = performance.now();
   if (checkPanel) { checkPanel.hide(); if (tradeCheck) tradeCheck.inGame = false; } // the last item's window goes; a new one opens if this is gear
   if (config.inventory.autoCopy && hook) {
     const before = clipboard.readText();
@@ -1643,8 +1688,11 @@ async function checkHovered({ count = true } = {}) {
       if (trouble) trouble.ownKeys(20); // the last released keys arrive a moment later; yours after that are yours
       let text = '';
       for (let i = 0; i < 16 && !text; i++) { await sleep(25); text = clipboard.readText(); }
+      diag.time('price check: copy from the game', performance.now() - checkKeyAt, text ? '' : 'nothing came');
+      const read = diag.start('price check: item text read');
       if (!text) { clipboard.writeText(before); say('No item under the mouse in game. Hover an item and press the key again.', true); showCheckToast(started); changed(); return; }
       checkText(text, { count });
+      read();
     } catch (e) {
       // Whatever went wrong is said as it is, not passed off as an empty clipboard.
       clipboard.writeText(before);
@@ -1660,6 +1708,8 @@ async function checkHovered({ count = true } = {}) {
     if (priceCheck && priceCheck.error && priceCheck.at >= started) priceCheck.error = 'Nothing to check: "Check item price" is switched off (Settings, Price check). Switch it on, or press Ctrl+C on the item before the key.';
   }
   showCheckToast(started);
+  // No search went out (currency, a map, nothing found): the answer is there already.
+  if (!(tradeCheck && tradeCheck.at >= started && tradeCheck.state === 'searching')) keyAnswered();
   changed();
 }
 
@@ -1710,7 +1760,7 @@ function registerHotkeys() {
   // Keys that only mean something in the game are held only while the game is in front.
   // Anywhere else they stay with the program you are in (Ctrl+D bookmarks, F5 refreshes).
   gameKeysOn = watch.gameInFront();
-  const noted = (job, accel, fn) => () => { if (trouble) trouble.event('hotkey', { job, key: accel }); return fn(); };
+  const noted = (job, accel, fn) => () => { if (trouble) trouble.event('hotkey', { job, key: accel }); return diag.run(`key: ${job}`, fn, accel); };
   const reg = (key, accel, fn) => {
     if (!accel) return;
     try { status.hotkeys[key] = globalShortcut.register(accel, noted(key, accel, fn)); } catch (_) { status.hotkeys[key] = false; }
@@ -2023,7 +2073,7 @@ function createWindow() {
     backgroundColor: '#1b1f24', title: 'Map Companion', autoHideMenuBar: true, icon: path.join(__dirname, 'ui', 'icon.png'), show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  win.once('ready-to-show', () => { if (second) win.maximize(); win.show(); });
+  win.once('ready-to-show', () => { if (second) win.maximize(); win.show(); diag.time('start: from opening the app to its window', process.uptime() * 1000); });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); if (searchMenu) searchMenu.destroy(); });
@@ -2384,17 +2434,21 @@ const actions = {
 };
 
 function setupIpc() {
-  ipcMain.handle('get-state', () => buildState());
-  ipcMain.handle('set-config', (_e, patch) => { applyConfig(patch || {}); return true; });
-  ipcMain.handle('account', (_e, a) => accountAction(a));
+  // Every question the window asks is timed for the Under the hood page. what(a): the kind of
+  // question, where one channel carries several.
+  const handle = (channel, fn, what) => ipcMain.handle(channel, (e, ...args) => diag.run(`asked by the window: ${channel}${what ? ` ${what(...args)}` : ''}`, () => fn(e, ...args)));
+  const kind = (a) => String((a && (a.type || a.op)) || '');
+  handle('get-state', () => buildState());
+  handle('set-config', (_e, patch) => { applyConfig(patch || {}); return true; });
+  handle('account', (_e, a) => accountAction(a), kind);
   // The game log check: is the file being written to, what arrived, and what the tracker did.
-  ipcMain.handle('log-check', () => ({
+  handle('log-check', () => ({
     path: status.log.path, ok: status.log.ok, error: status.log.error, now: Date.now(),
     stats: logTail ? { ...logTail.stats } : null,
     inMap: !!(session.current && session.current.segmentStart !== null), mapName: session.current ? session.current.name || session.current.code : null,
     location: session.location, trace: logTrace.slice().reverse(),
   }));
-  ipcMain.handle('inventory', () => {
+  handle('inventory', () => {
     const cells = lastInventory.cells.map((c) => {
       const each = c.name ? prices.chaosOf(c.name) : 0;
       return { cell: c.cell, status: c.status, name: c.name, qty: c.qty, source: c.source, score: c.score, how: c.how, near: c.near, guess: c.guess, image: c.image, each, total: each * (c.qty || 0) };
@@ -2402,7 +2456,7 @@ function setupIpc() {
     return { rev: lastInventory.rev, at: lastInventory.at, cols: COLS, rows: ROWS, cells };
   });
   // The inventory pictures kept for one map, with each slot's value at today's prices.
-  ipcMain.handle('run-snapshot', (_e, runId) => {
+  handle('run-snapshot', (_e, runId) => {
     const data = snapshots ? snapshots.get(String(runId || '')) : { trips: [] };
     return {
       cols: COLS, rows: ROWS,
@@ -2412,10 +2466,10 @@ function setupIpc() {
       })),
     };
   });
-  ipcMain.handle('jewels', (_e, a) => jewelAction(a));
-  ipcMain.handle('items-list', () => itemDatabase());
-  ipcMain.handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
-  ipcMain.handle('price-categories', () => {
+  handle('jewels', (_e, a) => jewelAction(a), kind);
+  handle('items-list', () => itemDatabase());
+  handle('saved-session', (_e, id) => (archive ? archive.get(String(id || '')) : null));
+  handle('price-categories', () => {
     const counts = prices.categoryCounts();
     const icons = prices.categoryIcons();
     const iconOf = (name) => { const e = prices.get(name); return e && e.icon ? e.icon : null; };
@@ -2426,12 +2480,12 @@ function setupIpc() {
         .filter((g) => g.categories.length),
     };
   });
-  ipcMain.handle('price-list', (_e, a) => {
+  handle('price-list', (_e, a) => {
     const r = prices.list(String((a && a.category) || ''), String((a && a.query) || ''), 400);
     return { total: r.total, rows: r.rows.map((e) => ({ name: e.name, chaos: e.chaos, category: e.category, icon: e.icon || null, change: e.change == null ? null : e.change, volume: e.volume == null ? null : e.volume, listings: e.listings == null ? null : e.listings, spark: e.spark || null })) };
   });
-  ipcMain.handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
-  ipcMain.handle('layout-get', () => layoutData());
+  handle('search', (_e, q) => prices.search(String(q || ''), 40).map((e) => ({ name: e.name, chaos: e.chaos })));
+  handle('layout-get', () => layoutData());
   ipcMain.on('check-size', (e, h) => { if (checkPanel && checkPanel.win && e.sender === checkPanel.win.webContents) checkPanel.setHeight(h); });
   // A number typed in the price check window: the keys it needs are held while it is typed.
   ipcMain.on('check-keys', (e, on) => {
@@ -2440,27 +2494,38 @@ function setupIpc() {
   });
   ipcMain.on('search-size', (e, h) => { if (searchMenu && searchMenu.win && e.sender === searchMenu.win.webContents) searchMenu.setHeight(h); });
   ipcMain.on('overlay-size', (e, h) => { if (overlay && overlay.win && e.sender === overlay.win.webContents) overlay.setHeight(h); });
-  ipcMain.handle('trouble-list', () => (trouble ? trouble.list() : []));
-  ipcMain.handle('trouble-details', (_e, id) => (trouble ? trouble.details(String(id || '')) : null));
-  ipcMain.handle('trouble-video', async (_e, id) => {
+  handle('trouble-list', () => (trouble ? trouble.list() : []));
+  handle('trouble-details', (_e, id) => (trouble ? trouble.details(String(id || '')) : null));
+  handle('trouble-video', async (_e, id) => {
     if (!trouble) return null;
     try { return await trouble.videoFor(String(id || '')); } catch (e) { say(`The video could not be fetched: ${e.message || e}`, true); push(); return null; }
   });
-  ipcMain.handle('dev', (_e, a) => devAction(a || {}));
-  ipcMain.handle('tracker', (_e, a) => trackerAction(a || {}));
+  handle('dev', (_e, a) => devAction(a || {}), kind);
+  handle('tracker', (_e, a) => trackerAction(a || {}), kind);
   // Written reports: a new one (answers its id), pictures added to it, and pictures to show.
-  ipcMain.handle('trouble-new', async () => (trouble && canTrouble() ? trouble.newReport() : null));
-  ipcMain.handle('trouble-add-image', (_e, id, bytes, type) => (trouble ? trouble.addImage(String(id || ''), bytes, String(type || '')) : 'Not ready.'));
-  ipcMain.handle('trouble-image', (_e, id, name) => (trouble ? trouble.image(String(id || ''), String(name || '')) : null));
+  handle('trouble-new', async () => (trouble && canTrouble() ? trouble.newReport() : null));
+  handle('trouble-add-image', (_e, id, bytes, type) => (trouble ? trouble.addImage(String(id || ''), bytes, String(type || '')) : 'Not ready.'));
+  handle('trouble-image', (_e, id, name) => (trouble ? trouble.image(String(id || ''), String(name || '')) : null));
   ipcMain.handle('action', async (_e, a) => {
     const fn = a && actions[a.type];
     if (!fn) return false;
     // Typing a note is not news; everything else pressed in the window is.
     if (trouble && a.type !== 'troubleNote') trouble.event('action', a);
-    await fn(a);
+    await diag.run(`button: ${a.type}`, () => fn(a));
     changed();
     return true;
   });
+  // The Under the hood page (admins and moderators): the numbers, start them over, or the
+  // whole thing as text on the clipboard, to paste into a chat with Claude.
+  ipcMain.handle('hood', (_e, a) => {
+    if (!canTrouble()) return null;
+    const op = a && a.op;
+    if (op === 'reset') diag.reset();
+    if (op === 'copy') { clipboard.writeText(hoodReport(diag.snapshot(), { title: 'Map Companion, under the hood', version: (trouble && trouble.version) || '' })); return true; }
+    return { ...diag.snapshot(), every: diagnose.SAMPLE_MS };
+  });
+  // What a window measured about itself: its drawing times, its own freezes and errors.
+  ipcMain.on('hood-page', (e, d) => diagnose.pageNews(e.sender, d));
 }
 
 // ---- start ---------------------------------------------------------------------
@@ -2477,6 +2542,7 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   if (!firstCopy) return;
+  diagnose.start({ sampled: (u) => { if (trouble && trouble.recording) trouble.event('usage', { cpu: Math.round(u.cpu * 10) / 10, mem: Math.round(u.mem), pcCpu: u.pcCpu == null ? null : Math.round(u.pcCpu), pcFree: Math.round(u.pcFree) }); } });
   loadConfig();
   prices.setCustom(config.customPrices);
   session.restore(readJson('session.json', null));
@@ -2547,6 +2613,7 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
+  diagnose.stop();
   globalShortcut.unregisterAll();
   if (jewelService) jewelService.stop();
   watch.stop();

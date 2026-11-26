@@ -83,6 +83,11 @@ async function trOpen(id) {
   $('tr-facts').textContent = note
     ? [d.by ? `by ${d.by}` : 'not logged in', `${(d.images || []).length} picture${(d.images || []).length === 1 ? '' : 's'}`].join(' · ')
     : [`${trClock(d.endedAt - d.startedAt)} long`, d.by ? `by ${d.by}` : 'not logged in', `${(d.events || []).length} events`, d.video ? `video ${d.video.width}x${d.video.height}, ${trSize(d.video.bytes)}` : null].filter(Boolean).join(' · ');
+  // Under the hood in a few lines: freezes, slow jobs, processor and memory (the whole of it
+  // goes up with the recording as diagnostics.json.gz and in its README).
+  const hood = d.hood ? window.Diagnostics.briefLines(d.hood) : [];
+  $('tr-hood').hidden = !hood.length;
+  $('tr-hood').textContent = hood.length ? `Under the hood${note ? ', up to this report' : ', during the recording'}: ${hood.join(' ')}` : '';
   $('tr-note').value = d.note || '';
   // A written report has no video and no timeline, but pictures.
   for (const el of ['tr-events-head', 'tr-events-hint', 'tr-events', 'tr-strip']) $(el).hidden = note;

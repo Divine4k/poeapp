@@ -15,10 +15,10 @@ function render() {
   const open = openTab();
   if (open !== 'trade') drawPage(open);
   if (open !== 'mapping' && open !== 'items') renderItems(); // the dot on the Items entry
-  renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderDev(); renderTracker(); renderSettings(); renderRefresh();
+  renderInventory(false); renderPrices(false); renderAccount(); renderTrouble(); renderHood(); renderDev(); renderTracker(); renderSettings(); renderRefresh();
   clockStart();
 }
-const TABS = ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'trouble', 'tracker', 'settings'];
+const TABS = ['mapping', 'inventory', 'items', 'trade', 'mapcheck', 'costs', 'prices', 'jewels', 'trouble', 'hood', 'tracker', 'settings'];
 const openTab = () => TABS.find((id) => !$(`tab-${id}`).hidden) || 'mapping';
 // What a page needs drawn from the state. Pages not listed draw themselves when shown (showTab).
 function drawPage(name) {
@@ -77,7 +77,10 @@ function setState(s) {
   // Without its window in game, a trade search is shown on its page: the listings do not fit
   // in the short message.
   if (!first && s.tradeCheck && s.tradeCheck.kind !== 'bulk' && s.tradeCheck.at !== hadTrade && !s.tradeCheck.inGame) showTab('prices');
+  // How long the window takes over one update, for the Under the hood page.
+  const t0 = performance.now();
   render();
+  window.Hood.note(document.hidden ? 'a state update, window not on screen' : `drawing a state update, ${tabShown} page`, performance.now() - t0);
 }
 
 // ---- sidebar order: drag a page up or down --------------------------------------------
@@ -148,19 +151,28 @@ function setWide(on) {
 $('btn-widen').addEventListener('click', () => setWide(!document.body.classList.contains('wide-side')));
 try { setWide(localStorage.getItem('wideSide') === '1'); } catch (_) { setWide(false); }
 
-// Developer tools is one sidebar entry with two pages in it (Troubleshooting, Tracker; the
-// Tracker for admins only). The entry opens the one last used.
-const DEV_TABS = ['trouble', 'tracker'];
+// Developer tools is one sidebar entry with its pages in it (Troubleshooting, Under the hood,
+// Tracker; the Tracker for admins only). The entry opens the one last used.
+const DEV_TABS = ['trouble', 'hood', 'tracker'];
 let devTab = 'trouble';
-try { if (localStorage.getItem('devTab') === 'tracker') devTab = 'tracker'; } catch (_) { /* storage off */ }
+let tabShown = 'mapping'; // the page on screen
+try { const was = localStorage.getItem('devTab'); if (DEV_TABS.includes(was)) devTab = was; } catch (_) { /* storage off */ }
+// The page switch of Developer tools: on its pages, for whoever has more than one of them.
+function devBar() {
+  const tr = state && state.trouble, admin = !!(tr && tr.admin);
+  $('dev-bar').hidden = !DEV_TABS.includes(tabShown) || !(tr && (tr.can || admin));
+  $('dev-bar').querySelector('[data-tab=tracker]').hidden = !admin;
+}
 function showTab(name) {
-  if (name === 'devtools') name = devTab === 'tracker' && state.trouble && state.trouble.admin ? 'tracker' : 'trouble';
+  if (name === 'devtools') name = devTab === 'tracker' && !(state.trouble && state.trouble.admin) ? 'trouble' : devTab;
+  const t0 = performance.now();
+  tabShown = name;
   if (DEV_TABS.includes(name) && name !== devTab) { devTab = name; try { localStorage.setItem('devTab', name); } catch (_) { /* not kept */ } }
   if (name !== 'settings') stopListening(); // a key that was being chosen is left as it was
   const side = DEV_TABS.includes(name) ? 'devtools' : name;
   for (const b of document.querySelectorAll('.sidenav .navi')) b.setAttribute('aria-selected', String(b.dataset.tab === side));
   for (const b of document.querySelectorAll('#dev-bar [data-tab]')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
-  $('dev-bar').hidden = !DEV_TABS.includes(name) || !(state.trouble && state.trouble.admin);
+  devBar();
   if (name === 'settings') $('btn-settings').setAttribute('aria-current', 'page'); else $('btn-settings').removeAttribute('aria-current');
   for (const id of TABS) $(`tab-${id}`).hidden = id !== name;
   $('strat').hidden = name !== 'mapping'; // strategies sit in the top bar, for the Mapping page only
@@ -170,6 +182,8 @@ function showTab(name) {
   if (name === 'jewels') jewelsShown();
   if (name === 'trouble') troubleShown();
   if (name === 'tracker') trackerShown();
+  if (name === 'hood') hoodShown();
   if (name === 'settings') renderSettings();
   drawPage(name); clockStart();
+  window.Hood.note(`opening the ${name} page`, performance.now() - t0);
 }

@@ -50,9 +50,9 @@
 <div class="page">
 <header class="bar">
   <!-- Strategies: only on the Mapping page. -->
-  <!-- Developer tools: its two pages, on those pages only (admins; moderators have just the one). -->
+  <!-- Developer tools: its pages, on those pages only (the Tracker for admins alone). -->
   <div class="strat" id="dev-bar" hidden>
-    <div class="strat-tabs" role="tablist" aria-label="Developer tools"><button type="button" role="tab" data-tab="trouble" aria-selected="false">Troubleshooting</button><button type="button" role="tab" data-tab="tracker" aria-selected="false">Tracker</button></div>
+    <div class="strat-tabs" role="tablist" aria-label="Developer tools"><button type="button" role="tab" data-tab="trouble" aria-selected="false">Troubleshooting</button><button type="button" role="tab" data-tab="hood" aria-selected="false">Under the hood</button><button type="button" role="tab" data-tab="tracker" aria-selected="false">Tracker</button></div>
   </div>
   <div class="strat" id="strat">
     <div class="strat-tabs" id="strat-tabs" role="tablist" aria-label="Strategies"></div>
@@ -288,6 +288,35 @@
   <div class="jw-tip" id="jw-tip" role="tooltip" hidden></div>
 </main>
 
+<main class="view hood" id="tab-hood" role="tabpanel" hidden>
+  <div class="hd-head">
+    <h2 class="pagetitle">Under the hood</h2>
+    <span class="dim" id="hd-since"></span>
+    <span class="row hd-btns"><button type="button" id="hd-copy" title="Everything on this page as text on the clipboard, to paste into a chat with Claude">Copy for Claude</button><button type="button" class="link" id="hd-reset" title="Forget the numbers so far and count from now">Start over</button></span>
+  </div>
+  <p class="fine hd-what">What the app is doing in the background: how hard it works the PC, how long each job takes, and every moment it was slow or stood still. Counted all the time, kept only until the app closes, and sent nowhere by itself. Each recording and report takes these numbers along.</p>
+  <section class="panel statbar hd-tiles" id="hd-tiles" aria-label="Right now"></section>
+  <div class="hd-grid">
+    <section class="panel hd-box" aria-label="Processor and memory">
+      <h3 class="hd-h">Processor and memory</h3>
+      <div id="hd-charts"></div>
+      <div id="hd-parts"></div>
+    </section>
+    <section class="panel hd-box" aria-label="Slow moments">
+      <h3 class="hd-h">Slow moments and freezes <span class="dim">newest first</span></h3>
+      <ul class="hd-list" id="hd-slow"></ul>
+    </section>
+  </div>
+  <section class="panel hd-box" aria-label="Every job">
+    <div class="hd-jobhead"><h3 class="hd-h">Every job, timed</h3><input type="search" id="hd-filter" placeholder="Find a job" aria-label="Find a job"></div>
+    <div id="hd-jobs"></div>
+  </section>
+  <section class="panel hd-box" aria-label="Errors">
+    <h3 class="hd-h">Errors</h3>
+    <ul class="hd-list" id="hd-errors"></ul>
+  </section>
+</main>
+
 <main class="view" id="tab-trouble" role="tabpanel" hidden>
   <div class="trouble">
     <section class="tr-side" aria-label="Record and check">
@@ -328,6 +357,7 @@
           </span>
         </div>
         <p class="map-meta" id="tr-facts"></p>
+        <p class="fine tr-hood" id="tr-hood" hidden></p>
         <p class="tr-fixed" id="tr-fixed" hidden></p>
         <p class="tr-tracked" id="tr-tracked" hidden>In the tracker: <a href="#" id="tr-tracklink"></a> <button type="button" class="link" id="tr-untrack" title="Take it out of that box">Take out</button></p>
         <video id="tr-video" controls preload="metadata"></video>
@@ -790,7 +820,9 @@
 
 <script src="demo.js"></script>
 <script src="keys.js"></script>
+<script src="hoodpage.js"></script>
 <script src="../core/recording.js"></script>
+<script src="../core/diag.js"></script>
 <script src="steps.js"></script>
 <script src="tradecard.js"></script>
 <script src="app/core.js"></script>
@@ -805,6 +837,7 @@
 <script src="app/events.js"></script>
 <script src="app/logcheck.js"></script>
 <script src="app/trouble.js"></script>
+<script src="app/hood.js"></script>
 <script src="app/forms.js"></script>
 <script src="app/prices.js"></script>
 <script src="app/jewels.js"></script>

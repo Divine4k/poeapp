@@ -231,6 +231,37 @@
     troubleNew: async () => '20261124-201500-Divine4k',
     troubleAddImage: async () => '',
     troubleImage: async () => null,
+    // Under the hood (open index.html?account=in&role=admin): made-up numbers through the real Diag.
+    hoodPage: () => {},
+    hood: async (q) => {
+      const D = window.Diagnostics;
+      if (!window.demoHood || (q && q.op === 'reset')) {
+        let t = Date.now() - 31 * 60000;
+        const d = window.demoHood = new D.Diag({ now: () => t });
+        d.pc = '16 threads (made-up processor), 32 GB memory, Windows_NT 10.0';
+        let k = 7;
+        const rnd = () => { k = (k * 16807) % 2147483647; return k / 2147483647; };
+        for (let i = 0; i < 372; i++) {
+          t += 5000;
+          const busy = i > 200 && i < 230;
+          d.sample({ cpu: 0.6 + rnd() * 1.2 + (busy ? 6 + rnd() * 3 : 0), mem: 412 + i * 0.35 + rnd() * 6, pcCpu: 38 + rnd() * 14 + (busy ? 25 : 0), pcFree: 14200 - i * 2, parts: [
+            { name: 'Main process', cpu: 0.3 + rnd() * 0.5 + (busy ? 4 : 0), mem: 118 + i * 0.2 }, { name: 'Main window', cpu: 0.2 + rnd() * 0.4, mem: 142 + i * 0.1 }, { name: 'Drawing (GPU)', cpu: 0.1 + rnd() * 0.3, mem: 96 },
+            { name: 'Trade overlay', cpu: rnd() * 0.1, mem: 38 }, { name: 'Price check window', cpu: rnd() * 0.2 + (busy ? 1.5 : 0), mem: 44 }, { name: 'Network Service', cpu: rnd() * 0.1, mem: 21 }] });
+          d.time('state update: put together', 0.4 + rnd() * 1.6); d.time('state update: sent to the window', 0.3 + rnd()); d.time('window: drawing a state update, mapping page', 0.5 + rnd() * 4);
+          if (i % 3 === 0) { d.time('inventory: capture of the screen', 28 + rnd() * 40, '2560x1440'); d.time('inventory: reading the slots', i === 210 ? 212 : 4 + rnd() * 9, '14 recognised'); }
+          if (i % 40 === 5) { d.time('price check: copy from the game', 55 + rnd() * 60); d.time('web: trade site, search', 240 + rnd() * 500, 'POST /api/trade/search/Standard -> 200'); d.time('web: trade site, listings', 180 + rnd() * 300); d.time('price check: from the key to the answer', i === 205 ? 3180 : 600 + rnd() * 900, 'gear'); }
+          if (i % 60 === 0) d.time('web: poe.ninja', 300 + rnd() * 400);
+          if (i % 25 === 0) d.time('file: session.json (the app waits)', 3 + rnd() * 9);
+          if (i === 210) d.stall('main process', 236);
+          if (i === 215) d.stall('main window', 118);
+          if (i === 300) d.error('web: trade site, search', 'POST /api/trade/search/Standard answered 429 (too many requests: the site asks the app to slow down)');
+        }
+        d.gauge('One state update', 184, 'KB');
+        d.now = () => Date.now();
+      }
+      if (q && q.op === 'copy') { try { await navigator.clipboard.writeText(D.report(window.demoHood.snapshot())); } catch (_) { return false; } return true; }
+      return { ...window.demoHood.snapshot(), every: 5000 };
+    },
     dev: async (q) => {
       if (q.type === 'github') return { repo: 'Divine4k/poeapp-reports', hasToken: true, tokenEnd: 'x9Qa', by: 'Divine4k', at: now - 86400000 };
       if (q.type === 'users') return { users: [['Divine4k', 'admin', 31], ['Marek', 'moderator', 12], ['Anna', '', 4], ['newplayer', '', 0]].map(([name, role, sessions], i) => ({ name, role, sessions, last: sessions ? now - i * 86400000 : 0, created: now - (40 - i) * 86400000 })) };

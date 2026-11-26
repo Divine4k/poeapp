@@ -10,11 +10,13 @@
 // Each recording is a folder under recordings/ in the app's own folder:
 //   meta.json  video.webm  events.json.gz  state-start.json.gz  state-end.json.gz
 //   inventory-start.json.gz  inventory-end.json.gz
+//   diagnostics.json.gz (Under the hood: times, freezes, processor and memory; src/core/diag.js)
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const { Trace, keyNames, keyLabel, buttonName, stateBrief, briefChanges, readme, recordingId, ID } = require('./core/recording');
 const { uploadFolder, readFile, latestTree, readBlob } = require('./github');
+const { report: hoodReport, brief: hoodBrief } = require('./core/diag');
 
 const { performance } = require('perf_hooks');
 
@@ -40,8 +42,9 @@ class Troubleshoot {
   // snapshot(): { state, inventory } of the app right now (inventory may be null).
   // who(): { name, role }. version: of the app. cloud: for the GitHub settings. fetchImpl: the web.
   // changed(): the page should redraw. say(text, bad): a message for the person.
-  constructor({ dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed = () => {}, say = () => {}, partBytes = PART }) {
-    Object.assign(this, { dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed, say, partBytes });
+  // diag: the app's Diag (Under the hood), when there is one.
+  constructor({ dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed = () => {}, say = () => {}, partBytes = PART, diag = null }) {
+    Object.assign(this, { dir, recorder, displayId, snapshot, who, version, cloud, fetchImpl, changed, say, partBytes, diag });
     this.trace = new Trace({ now: clock });
     this.current = null; // { id, startedAt, folder, video, timer }
     this.busy = '';      // 'starting' | 'stopping' while that is going on
@@ -133,6 +136,8 @@ class Troubleshoot {
     this.lastBrief = null;
     this.current.video = video;
     this.current.videoProblem = videoProblem;
+    // Under the hood, for this recording alone: everything timed from here to the stop.
+    this.current.hood = this.diag ? this.diag.fork() : null;
     this.current.timer = setTimeout(() => { this.say('The recording stopped by itself after 5 minutes, so it stays small enough to send.', true); this.stop(); }, MAX_MS);
     this.busy = '';
     this.trace.add('start', { version: this.version, by: me.name || '', video: video ? `${video.width}x${video.height} ${video.mime}` : `none: ${videoProblem}` });
@@ -149,6 +154,9 @@ class Troubleshoot {
     this.trace.add('stop', {});
     this.changed();
     const endedAt = Date.now();
+    // Taken before the closing work below, which is not part of what was recorded.
+    let hood = null;
+    if (cur.hood) { hood = { t0: this.trace.startedAt, during: cur.hood.snapshot(), whole: this.diag.snapshot() }; cur.hood.end(); }
     const video = cur.video ? await this.recorder.stop() : null;
     let snap = null;
     try { snap = await this.snapshot(); } catch (e) { snap = { problem: e.message || String(e) }; }
@@ -157,7 +165,9 @@ class Troubleshoot {
       this.write(cur.id, 'state-end.json.gz', snap.state || snap);
       if (snap.inventory) this.write(cur.id, 'inventory-end.json.gz', snap.inventory);
       this.write(cur.id, 'events.json.gz', this.trace.toJSON());
+      if (hood) this.write(cur.id, 'diagnostics.json.gz', hood);
       this.saveMeta({
+        hood: hood ? hoodBrief(hood.during) : null,
         id: cur.id, startedAt: cur.startedAt, endedAt, by: me.name || '', role: me.role || '', version: this.version,
         screen: cur.video ? cur.video.screen : null,
         video: video && video.bytes ? { bytes: video.bytes, mime: cur.video.mime, file: cur.video.file || 'video.webm', width: cur.video.width, height: cur.video.height, fps: cur.video.fps || null, problem: video.problem || null } : null,
@@ -368,7 +378,10 @@ class Troubleshoot {
     let snap = null;
     try { snap = await this.snapshot(); } catch (e) { snap = { problem: e.message || String(e) }; }
     try { this.write(id, 'state-start.json.gz', (snap && snap.state) || snap); } catch (_) { /* the report works without it */ }
-    this.saveMeta({ id, kind: 'note', startedAt: at, endedAt: at, by: me.name || '', role: me.role || '', version: this.version, events: 0, dropped: 0, note: '', images: [], sent: null, video: null });
+    // Under the hood up to now: what the app had been doing before the report was written.
+    let hood = null;
+    try { if (this.diag) { hood = { whole: this.diag.snapshot() }; this.write(id, 'diagnostics.json.gz', hood); } } catch (_) { hood = null; }
+    this.saveMeta({ hood: hood ? hoodBrief(hood.whole) : null, id, kind: 'note', startedAt: at, endedAt: at, by: me.name || '', role: me.role || '', version: this.version, events: 0, dropped: 0, note: '', images: [], sent: null, video: null });
     this.changed();
     return id;
   }
@@ -438,6 +451,15 @@ class Troubleshoot {
     if (m.remote && m.seen === false) { m.seen = true; this.saveMeta(m); this.countUnseen(); this.changed(); }
     return { ...m, events, ...this.standing(m) };
   }
+  // Under the hood as text, for the README: during the recording, then the whole run of the app.
+  hoodText(id) {
+    let h = null;
+    try { h = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(this.folder(id), 'diagnostics.json.gz')))); } catch (_) { return ''; }
+    return [
+      h.during ? hoodReport(h.during, { title: 'Under the hood, during the recording', t0: h.t0 }) : '',
+      h.whole ? hoodReport(h.whole, { title: h.during ? 'Under the hood, since the app was started' : 'Under the hood, from the start of the app to this report' }) : '',
+    ].filter(Boolean).join('\n');
+  }
   video(id) {
     if (!ID.test(String(id))) return null;
     const m = this.meta(id);
@@ -494,9 +516,9 @@ class Troubleshoot {
         }
         this.saveMeta(m);
       }
-      files.push({ path: 'README.md', data: Buffer.from(readme({ ...m, dropped: m.dropped }, d.events)) });
+      files.push({ path: 'README.md', data: Buffer.from(readme({ ...m, dropped: m.dropped }, d.events, this.hoodText(id))) });
       add('meta.json');
-      for (const n of ['events.json.gz', 'state-start.json.gz', 'state-end.json.gz', 'inventory-start.json.gz', 'inventory-end.json.gz', ...(m.images || [])]) add(n);
+      for (const n of ['diagnostics.json.gz', 'events.json.gz', 'state-start.json.gz', 'state-end.json.gz', 'inventory-start.json.gz', 'inventory-end.json.gz', ...(m.images || [])]) add(n);
       const first = m.note.trim().split('\n')[0].slice(0, 70);
       const r = await uploadFolder({
         fetchImpl: this.fetchImpl, token: gh.token, repo: gh.repo, folder: `recordings/${id}`, files,

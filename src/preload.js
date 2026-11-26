@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
   troubleAddImage: (id, bytes, type) => ipcRenderer.invoke('trouble-add-image', id, bytes, type),
   troubleImage: (id, name) => ipcRenderer.invoke('trouble-image', id, name),
   dev: (a) => ipcRenderer.invoke('dev', a),
+  // Under the hood: the numbers for its page ({ op: 'get' | 'reset' | 'copy' }), and what a window measured about itself
+  hood: (a) => ipcRenderer.invoke('hood', a),
+  hoodPage: (d) => ipcRenderer.send('hood-page', d),
   tracker: (a) => ipcRenderer.invoke('tracker', a), // the Tracker page: list, add, update
   // the trade overlay window
   onTrade: (cb) => ipcRenderer.on('trade', (_e, data) => cb(data)),

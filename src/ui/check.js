@@ -317,7 +317,9 @@
   }
 
   // rowsMoved: the ticks were changed by something other than a click on them (a ready-made search).
-  function draw(rowsMoved) {
+  // Timed for the Under the hood page: this window must stay quick while mods are clicked.
+  function draw(rowsMoved) { return window.Hood ? window.Hood.run('drawing the price check window', () => drawNow(rowsMoved)) : drawNow(rowsMoved); }
+  function drawNow(rowsMoved) {
     const d = data;
     const kind = d && d.kind === 'bulk' ? 'bulk' : d && d.kind === 'pick' && !(d.filters && d.filters.ok) && d.choices && d.choices.length ? 'pick' : d && d.filters && d.filters.ok ? 'search' : '';
     if (!kind) { shownMain = null; panel.innerHTML = ''; sendSize(0); return; }

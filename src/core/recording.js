@@ -106,6 +106,7 @@ function eventLine(e) {
   else if (kind === 'wheel') what = `wheel ${rest.amount} at ${rest.x},${rest.y}`;
   else if (kind === 'log') what = rest.line;
   else if (kind === 'notice') what = `${rest.bad ? '(problem) ' : ''}${rest.text}`;
+  else if (kind === 'timing' || kind === 'slow' || kind === 'freeze' || kind === 'usage') what = eventText(e);
   else what = JSON.stringify(rest);
   return `${clockOf(t)}  ${kind.padEnd(8)} ${what}`;
 }
@@ -116,6 +117,9 @@ const laneOf = (k) => (k === 'key' || k === 'mouse' || k === 'wheel' ? 'input' :
 // Game log lines worth a line of their own; the rest are counted, and shown under Everything.
 const GAME_NEWS = /You have entered|has been slain|has joined the area|has left the area|@From|@To|Trade accepted|Trade cancelled|AFK mode|level \d+|Connecting to instance|abnormal disconnect/i;
 const QUIET_APP = new Set(['console']);
+// Under the hood: how long each job took and the usage readings are counted, not listed (they
+// are under Everything); a slow job or a freeze gets its own line.
+const QUIET_HOOD = new Set(['timing', 'usage']);
 const GROUP_GAP_MS = 1200; // keys and clicks closer together than this are one row
 
 // Turns the raw list into rows: a key press and its release become one press with how long it
@@ -150,8 +154,8 @@ function summarise(events, { everything = false } = {}) {
       continue;
     }
     close();
-    if (!everything && ((lane === 'game' && !GAME_NEWS.test(e.line || '')) || (QUIET_APP.has(e.kind) && e.level === 'log'))) { quiet++; continue; }
-    rows.push({ t: e.t, end: e.t, lane, kind: e.kind, text: eventText(e), bad: !!e.bad || (e.kind === 'console' && e.level === 'error') });
+    if (!everything && ((lane === 'game' && !GAME_NEWS.test(e.line || '')) || (QUIET_APP.has(e.kind) && e.level === 'log') || QUIET_HOOD.has(e.kind))) { quiet++; continue; }
+    rows.push({ t: e.t, end: e.t, lane, kind: e.kind, text: eventText(e), bad: !!e.bad || (e.kind === 'console' && e.level === 'error') || e.kind === 'slow' || e.kind === 'freeze' });
   }
   // A group's line: what was pressed, in order, with repeats folded ("W ×3").
   for (const r of rows) {
@@ -197,6 +201,10 @@ function eventText(e) {
   if (kind === 'account') return `Account: ${r.type}${r.error ? ` (${r.error})` : ''}`;
   if (kind === 'checkPanel') return `Price check window closed (${r.closed})`;
   if (kind === 'inventoryRead') return `Inventory read: capture ${r.captureMs} ms, reading ${r.readMs} ms${r.hidden ? `, ${r.hidden} slots covered` : ''}${r.follow ? ' (follow-up)' : ''}`;
+  if (kind === 'timing') return `Took ${r.ms} ms: ${r.name}${r.detail ? ` (${r.detail})` : ''}`;
+  if (kind === 'slow') return `Slow: ${r.name} took ${r.ms} ms${r.limit ? ` (over ${r.limit} ms counts as slow)` : ''}${r.detail ? `. ${r.detail}` : ''}`;
+  if (kind === 'freeze') return `The ${r.name} froze for ${r.ms} ms${r.detail ? ` (${r.detail})` : ''}`;
+  if (kind === 'usage') return `Usage: the app ${r.cpu}% processor, ${r.mem} MB memory${r.pcCpu != null ? `; the whole PC ${r.pcCpu}% processor, ${r.pcFree} MB memory free` : ''}`;
   if (kind === 'key') return `${r.dir === 'up' ? 'Released' : 'Pressed'} ${r.key}${r.by === 'app' ? ' (sent by the app)' : ''}`;
   if (kind === 'mouse') return `${r.dir === 'up' ? 'Released' : 'Clicked'} ${r.button} at ${r.x}, ${r.y}`;
   if (kind === 'wheel') return `Wheel ${r.amount} at ${r.x}, ${r.y}`;
@@ -205,7 +213,8 @@ function eventText(e) {
 
 const MAX_LINES = 6000;
 // The README.md that goes up with a recording: the note first, then the facts, then the timeline.
-function readme(meta, events) {
+// hood: the Under the hood text (report() in core/diag.js) when there is one.
+function readme(meta, events, hood = '') {
   // A written report: the note, who and when, and its pictures shown inline on GitHub.
   if (meta.kind === 'note') {
     return [
@@ -216,8 +225,10 @@ function readme(meta, events) {
       `- App version: ${meta.version || 'unknown'}`,
       `- Written: ${new Date(meta.startedAt).toISOString()}`,
       '- `state-start.json.gz`: everything the app window showed when the report was started.',
+      ...(hood ? ['- `diagnostics.json.gz`: the numbers behind "Under the hood" below, in full.'] : []),
       '',
       ...((meta.images || []).length ? ['## Pictures', '', ...meta.images.map((n) => `![${n}](${n})`), ''] : []),
+      ...(hood ? [hood] : []),
     ].join('\n');
   }
   const lines = events.length > MAX_LINES ? events.slice(0, MAX_LINES) : events;
@@ -245,7 +256,9 @@ function readme(meta, events) {
     '- `events.json.gz`: every event below in full.',
     '- `state-start.json.gz`, `state-end.json.gz`: everything the app window was given, at the start and the end.',
     '- `inventory-start.json.gz`, `inventory-end.json.gz`: what the inventory reader saw (as the F9 report).',
+    ...(hood ? ['- `diagnostics.json.gz`: the numbers behind "Under the hood" below, in full: `during` the recording and for the `whole` time the app had been running.'] : []),
     '',
+    ...(hood ? [hood] : []),
     '## Timeline',
     '',
     '```',
