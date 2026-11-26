@@ -186,8 +186,8 @@
       const kinds = [['Exalted Orb', 4, 14], ['Orb of Scouring', 15, 0.4], ['Chaos Orb', 10, 1], ['Divine Orb', 1, 212], ['Vaal Orb', 12, 0.6], ['Orb of Annulment', 3, 9]];
       const items = [];
       for (let i = 0; i < 46; i++) {
-        const [name, count, each] = kinds[i % kinds.length], x = (i * 5) % 12, y = Math.floor(i / 4);
-        const u = { id: `u${i}`, challenge: i % 3 ? 'Survive' : 'Defeat waves of enemies', areaLevel: i % 2 ? 83 : 69, sacrifice: { name, count }, reward: 'Doubles sacrificed Currency', mods: ['Stormcaller Runes II', 'Razor Dance III', 'Hindering Flasks'], tab: 'MAPS', x, y, listed: null, note: '' };
+        const [name, count, each] = kinds[i % kinds.length], x = (i * 5) % 12, y = Math.floor(i / 4) % 5;
+        const u = { id: `u${i}`, challenge: i % 3 ? 'Survive' : 'Defeat waves of enemies', areaLevel: i % 2 ? 83 : 69, sacrifice: { name, count }, reward: 'Doubles sacrificed Currency', mods: ['Stormcaller Runes II', 'Razor Dance III', 'Hindering Flasks'], tab: 'Ultimatum', x, y, listed: null, note: '' };
         u.value = { kind: 'double', chaos: count * each, cost: count * each, why: `You put in ${count} × ${name} and get twice that back.` };
         if (i === 7) { u.reward = 'Mirrored Rare Item'; u.sacrifice = { name: 'Rare Ring', count: 1 }; u.value = { kind: 'unknown', chaos: null, cost: null, why: 'No price for "Mirrored Rare Item".' }; }
         if (i === 9) { u.reward = "Atziri's Acuity"; u.sacrifice = { name: "Atziri's Step", count: 1 }; u.value = { kind: 'item', chaos: 330, prize: 340, cost: 10, why: "Atziri's Acuity less what you put in." }; }
@@ -197,7 +197,7 @@
       items.sort((p, q) => (q.value.chaos === null ? -1 : q.value.chaos) - (p.value.chaos === null ? -1 : p.value.chaos));
       const cells = {}; for (const u of items) cells[`${u.x},${u.y}`] = u.id;
       await new Promise((r) => setTimeout(r, 600));
-      return { last: { at: Date.now(), account: a.account || 'Name#1234', league: 'Keepers', total: items.length, items, tabs: [{ name: 'MAPS', size: 12, cells, count: items.length }] }, busy: false, league: 'Keepers' };
+      return { last: { at: Date.now(), account: a.account || 'Name#1234', league: 'Keepers', total: items.length, items, tabs: [{ name: 'Ultimatum', kind: 'slots', cols: 12, rows: 5, cells, count: items.length, shape: 'x 0-59, y 0-0' }] }, busy: false, league: 'Keepers' };
     },
     setConfig: async (patch) => { merge(state.config, patch); listener(state); return true; },
     action: async (a) => {

@@ -74,10 +74,18 @@ test('dearest first, those without a price last; a far cell makes the tab a quad
     .map(readUltimatum).map((u) => ({ ...u, value: valueOf(u, chaosOf) }));
   assert.deepEqual(sortByWorth(list).map((u) => u.id), ['c', 'a', 'b']);
   const [tab] = tabsOf(list);
-  assert.equal(tab.size, 24);
-  assert.equal(tab.count, 3);
+  assert.deepEqual([tab.kind, tab.cols, tab.rows, tab.count], ['grid', 24, 24, 3]);
   assert.equal(tab.cells['13,2'], 'c');
-  assert.equal(tabsOf(list.slice(0, 2))[0].size, 12);
+  assert.equal(tabsOf(list.slice(0, 2))[0].cols, 12);
+});
+
+test('a tab whose slots the site numbers in one line is drawn twelve to a row', () => {
+  const list = [0, 5, 12, 40].map((x, i) => readUltimatum(raw(`s${i}`, 'Chaos Orb', 2, 'Doubles sacrificed Currency', x, 0)));
+  const [tab] = tabsOf(list);
+  assert.deepEqual([tab.kind, tab.cols, tab.rows], ['slots', 12, 5]);
+  assert.equal(tab.cells['0,1'], 's2');
+  assert.equal(tab.cells['4,3'], 's3');
+  assert.equal(tab.shape, 'x 0-40, y 0-0');
 });
 
 test('a look-up reads every result ten at a time and waits when the site asks', async () => {

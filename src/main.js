@@ -2165,7 +2165,7 @@ async function ultimatumAction(a) {
     const items = ultimatum.sortByWorth(r.items.map((u) => ({ ...u, value: ultimatum.valueOf(u, chaosOf), find: ultimatum.searchFor(u), listedChaos: u.listed ? chaosOfPrice(u.listed.amount, u.listed.currency) : null })));
     ultimatumLast = { at: Date.now(), account: r.account, league: r.league, total: r.total, items, tabs: ultimatum.tabsOf(items) };
     const unknown = items.filter((u) => u.value.chaos === null).length;
-    if (trouble) trouble.event('ultimatum', { found: r.total, read: items.length, noValue: unknown, tabs: ultimatumLast.tabs.length });
+    if (trouble) trouble.event('ultimatum', { found: r.total, read: items.length, noValue: unknown, tabs: ultimatumLast.tabs.map((t) => `${t.name}: ${t.count} as ${t.kind} ${t.cols}x${t.rows} (${t.shape})`) });
     return { last: ultimatumLast, busy: false, league: config.league };
   } catch (e) {
     if (trouble) trouble.event('ultimatum', { failed: String(e && e.message) });

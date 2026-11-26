@@ -373,9 +373,15 @@
     <label class="ul-field" for="ul-keep" title="Ultimatums worth at least this much are lit up">Light up from <input id="ul-keep" class="num" inputmode="decimal" size="4"> c</label>
     <span class="ul-status" id="ul-status" aria-live="polite"></span>
   </div>
-  <div class="ul-body">
-    <section class="panel ul-list" id="ul-list" aria-label="Your Inscribed Ultimatums, most valuable first"></section>
-    <section class="panel ul-tabs" id="ul-tabs" aria-label="Where they lie in your stash"></section>
+  <div class="ul-body" id="ul-body">
+    <div class="ul-left">
+      <div id="ul-tabs" aria-label="Your stash tab, as it lies in game"></div>
+      <div class="ul-stats" id="ul-stats"></div>
+    </div>
+    <section class="panel ul-side">
+      <div id="ul-detail" aria-live="polite"></div>
+      <div class="ul-list" id="ul-list" aria-label="Your Inscribed Ultimatums, most valuable first"></div>
+    </section>
   </div>
 </main>
 

@@ -95,19 +95,32 @@ function sortByWorth(list) {
   return list.slice().sort((a, b) => v(b) - v(a) || a.tab.localeCompare(b.tab) || (a.x - b.x) || (a.y - b.y));
 }
 
-// The tabs they lie in, each as a grid: 12 cells a side, or 24 for a quad tab (known only
-// from an item lying beyond the twelfth cell). cells: "x,y" -> the item there.
+// The tabs they lie in, each as the grid it is in game. kind 'grid': a normal tab, 12 cells a
+// side, or 24 for a quad tab (known only from an item lying beyond the twelfth cell). kind
+// 'slots': a tab made for one thing (the Ultimatum tab), where the site numbers the slots in
+// one line (every y is 0); they are drawn twelve to a row, as the game shows them, at least
+// five rows. cells: "column,row" -> the item there. shape: the positions as the site gave
+// them, for finding out why a tab is drawn wrong.
 function tabsOf(list) {
   const tabs = new Map();
   for (const u of list) {
     if (u.x === null) continue;
     let t = tabs.get(u.tab);
-    if (!t) tabs.set(u.tab, t = { name: u.tab, size: 12, cells: {}, count: 0 });
-    if (u.x >= 12 || u.y >= 12) t.size = 24;
-    t.cells[`${u.x},${u.y}`] = u.id;
+    if (!t) tabs.set(u.tab, t = { name: u.tab, at: [], count: 0 });
+    t.at.push(u);
     t.count += 1;
   }
-  return [...tabs.values()].sort((a, b) => b.count - a.count);
+  const out = [];
+  for (const t of tabs.values()) {
+    const xs = t.at.map((u) => u.x), ys = t.at.map((u) => u.y);
+    const maxX = Math.max(...xs), maxY = Math.max(...ys);
+    const slots = maxY === 0 && maxX >= 12;
+    const side = maxX >= 12 || maxY >= 12 ? 24 : 12;
+    const tab = { name: t.name, kind: slots ? 'slots' : 'grid', cols: slots ? 12 : side, rows: slots ? Math.max(5, Math.ceil((maxX + 1) / 12)) : side, cells: {}, count: t.count, shape: `x ${Math.min(...xs)}-${maxX}, y ${Math.min(...ys)}-${maxY}` };
+    for (const u of t.at) tab.cells[slots ? `${u.x % 12},${Math.floor(u.x / 12)}` : `${u.x},${u.y}`] = u.id;
+    out.push(tab);
+  }
+  return out.sort((a, b) => b.count - a.count);
 }
 
 // Reads every Inscribed Ultimatum of an account: one search, then ten results at a time,
