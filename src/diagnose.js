@@ -130,7 +130,27 @@ function start({ sampled, sizes, dir } = {}) {
     'Started': new Date(Date.now() - process.uptime() * 1000).toISOString(),
     'Screens': screensNow(),
   });
-  try { const g = app.getGPUFeatureStatus(); diag.facts['Graphics'] = `drawing ${g.gpu_compositing || '?'}, video ${g.video_decode || '?'} / ${g.video_encode || '?'}`; } catch (_) { /* not told */ }
+  // Read again whenever Chromium learns more: asked at start, before the graphics card has
+  // answered, it says "disabled" for everything, which is not how the app ends up drawing.
+  const graphics = async () => {
+    try {
+      const g = app.getGPUFeatureStatus();
+      diag.facts['Graphics'] = `drawing ${g.gpu_compositing || '?'}, pages ${g.rasterization || '?'}, video ${g.video_decode || '?'} / ${g.video_encode || '?'} (read ${Math.round(process.uptime())} s after the start)`;
+    } catch (_) { /* not told */ }
+    try {
+      const info = await app.getGPUInfo('basic');
+      const cards = (info.gpuDevice || []).map((d) => `${d.active ? 'in use: ' : ''}${d.deviceString || `${d.vendorId}:${d.deviceId}`}${d.driverVersion ? ` (driver ${d.driverVersion})` : ''}`);
+      if (cards.length) diag.facts['Graphics cards'] = cards.join('; ');
+      const aux = info.auxAttributes || {};
+      const bits = ['glRenderer', 'softwareRendering', 'inProcessGpu', 'sandboxed', 'directComposition', 'supportsOverlays'].filter((k) => aux[k] !== undefined).map((k) => `${k} ${aux[k]}`);
+      if (bits.length) diag.facts['Graphics, in detail'] = bits.join(', ');
+    } catch (_) { /* not told */ }
+  };
+  graphics();
+  app.on('gpu-info-update', () => { graphics(); });
+  setTimeout(graphics, 20000);
+  const flags = process.argv.slice(1).filter((a) => /^--/.test(a) && !/^--(after-pid|type|user-data-dir)/.test(a));
+  if (flags.length) diag.facts['Started with'] = flags.join(' ');
   const cpus = os.cpus();
   diag.pc = `${cpus.length} threads (${(cpus[0] && cpus[0].model.trim()) || 'unknown processor'}), ${Math.round(os.totalmem() / 1073741824)} GB memory, ${os.type()} ${os.release()}`;
   pcCpu();
