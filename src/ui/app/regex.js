@@ -41,20 +41,25 @@ function rxLenHtml(text) {
 function rxBarHtml(name) {
   return `<section class="panel rx-bar" aria-label="Your search">
     <input type="text" id="rx-name" class="rx-name" maxlength="60" placeholder="${esc(name)}" aria-label="Name to save it under">
-    <code class="rx-code" id="rx-code"></code>
+    <input type="text" class="rx-code" id="rx-code" spellcheck="false" autocomplete="off" aria-label="The search: paste one you have, or edit it here">
     <span class="rx-n" id="rx-n"></span>
     <button type="button" class="primary" data-rx-do="copy" data-rx-need>Copy</button>
     <button type="button" data-rx-do="send" data-rx-need title="Brings the game to the front and puts the search in the stash search box">Put in game</button>
     <button type="button" data-rx-do="save" data-rx-need title="Adds it to My searches, under the name on the left">Save</button>
     <button type="button" class="link" data-rx-do="reset" title="Clears everything picked here">Reset</button>
-  </section>`;
+  </section>
+  <p class="rx-kept" id="rx-kept" hidden></p>`;
 }
 function rxOut() {
   const code = $('rx-code');
   if (!code) return;
   const r = rxBuilt(), probs = r.text ? RX.problems(r.text) : [], n = r.text.length;
-  code.textContent = r.text || (rxTab === 'maps' ? 'Pick mods below or set the numbers a map must have.' : 'Tick what to look for below.');
-  code.classList.toggle('empty', !r.text);
+  // Not while you type in it: what you typed is read when you press Enter or leave the field.
+  if (document.activeElement !== code) code.value = r.text;
+  code.placeholder = rxTab === 'maps' ? 'Paste a search you have, or pick mods below' : 'Paste a search you have, or tick what to look for below';
+  const kept = rxTab === 'maps' ? rxB.map.kept : [];
+  $('rx-kept').hidden = !kept.length;
+  if (kept.length) setHtml($('rx-kept'), `Kept as you wrote ${kept.length > 1 ? 'them' : 'it'}, at the end: ${kept.map((k) => `<code>${esc(k)}</code>`).join(' ')} <button type="button" class="link" data-rx-do="unkeep">Take ${kept.length > 1 ? 'them' : 'it'} out</button>`);
   code.title = r.parts.map((x) => `${x.text}   ${x.what}`).concat(probs).join('\n');
   $('rx-n').textContent = `${n} / ${RX.GAME_LIMIT}`;
   $('rx-n').classList.toggle('over', n > RX.GAME_LIMIT);
@@ -252,6 +257,19 @@ function rxSet(path, value, redraw) {
   }
   rxOut();
 }
+// A search pasted or typed in the bar: read back into the ticks, numbers and lists.
+function rxRead(text) {
+  if (rxTab === 'maps') rxB = { ...rxB, map: RX.readMapSearch(text) };
+  else {
+    // Vendor: what is pasted becomes your own words (one per part of the search).
+    const t = RX.parseSearch(text).map((x) => x.body).join('|');
+    rxB = RX.cleanBuilders({ ...rxB, vendor: { extra: t.split('|').map((x) => x.trim()).filter(Boolean).join(', ') } });
+  }
+  clearTimeout(rxSaveTimer); api.setConfig({ regex: rxB });
+  const at = document.activeElement;
+  rxDrawn = ''; renderRegex();
+  if (at && at.id === 'rx-code') { const c = $('rx-code'); c.focus(); c.value = rxBuilt().text; }
+}
 const rxFlash = (b, text) => { const was = b.textContent; b.textContent = text; b.disabled = true; setTimeout(() => { b.textContent = was; b.disabled = false; }, 1200); };
 
 $('rx-tabs').addEventListener('click', (e) => {
@@ -274,6 +292,7 @@ $('rx-body').addEventListener('click', (e) => {
   if (d) {
     const what = d.dataset.rxDo, text = rxB && rxDrawn !== 'saved' && rxDrawn !== 'test' ? rxBuilt().text : '';
     if (what === 'fromRules') rxSet('map.avoid', [...new Set([...rxB.map.avoid, ...RX.modsFromRules(state.config.mapRules)])]);
+    else if (what === 'unkeep') rxSet('map.kept', []);
     else if (what === 'reset') {
       rxB = RX.cleanBuilders({ ...rxB, [rxTab === 'maps' ? 'map' : 'vendor']: {} });
       rxFind = { avoid: '', wantMods: '' };
@@ -314,6 +333,7 @@ $('rx-body').addEventListener('click', (e) => {
 });
 $('rx-body').addEventListener('change', (e) => {
   const t = e.target;
+  if (t.id === 'rx-code') { if (t.value.trim() !== rxBuilt().text) rxRead(t.value); return; }
   if (t.dataset.rxF) { rxSet(t.dataset.rxF, t.checked, true); return; }
   if (t.dataset.rxField && (t.type === 'checkbox' || t.tagName === 'SELECT')) { rxSet(t.dataset.rxField, t.type === 'checkbox' ? t.checked : (/^-?\d+$/.test(t.value) ? Number(t.value) : t.value)); return; }
   const ss = t.closest('[data-ss]');
@@ -334,6 +354,13 @@ $('rx-body').addEventListener('input', (e) => {
   if (t.id === 'rx-filter') { rxFilter = t.value; renderSearches(); return; }
   if (t.id === 'rx-item') { rxTry.item = t.value; rxTestOut(); return; }
   if (t.id === 'rx-try') { rxTry.search = t.value; rxTestOut(); }
+});
+// A paste is read at once; Escape puts the search back as it was.
+$('rx-body').addEventListener('paste', (e) => { if (e.target.id === 'rx-code') setTimeout(() => rxRead(e.target.value), 0); });
+$('rx-body').addEventListener('keydown', (e) => {
+  if (e.target.id !== 'rx-code') return;
+  if (e.key === 'Enter') { e.preventDefault(); rxRead(e.target.value); }
+  else if (e.key === 'Escape') { e.target.value = rxBuilt().text; e.target.blur(); }
 });
 // Leaving the list draws it again, so the length and any problem show.
 $('rx-body').addEventListener('focusout', (e) => {

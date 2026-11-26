@@ -168,6 +168,7 @@ const MAP_DEFAULT = {
   rarity: { normal: true, magic: true, rare: true }, rarityMode: 'include',
   corruptedOn: false, corruptedMode: 'include', unidOn: false, unidMode: 'exclude',
   typesOn: false, typeOn: {}, typeMode: {},
+  kept: [], // parts of a pasted search the builder does not know, kept as they were written
 };
 // "Shorter": rounded down to tens, which makes a shorter pattern (as poe.re's Optimized).
 const numPat = (n, short) => atLeast(short && n >= 10 ? Math.floor(n / 10) * 10 : n);
@@ -205,8 +206,84 @@ function mapSearch(o) {
     if (out.length) parts.push({ what: `not ${out.map((t) => t.label).join(', ')}`, text: `"!${out.map((t) => t.tok).join('|')}"` });
     if (inn.length) parts.push({ what: `${inn.map((t) => t.label).join(' or ')} only`, text: `"${inn.map((t) => t.tok).join('|')}"` });
   }
+  for (const k of o.kept || []) parts.push({ what: 'kept as you wrote it', text: k });
   return { text: parts.map((p) => p.text).join(' '), parts };
 }
+// A search written elsewhere (pasted, or typed in the bar) read back into the builder's choices.
+// What it does not know stays in the search as it was written (kept). Returns the map choices.
+const quoted = (t) => (/[\s"]/.test(t) ? `"${t.replace(/"/g, '')}"` : t);
+function splitTop(body) { // "a|(b|c)|d" -> a, (b|c), d
+  const out = [];
+  let depth = 0, cur = '';
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '\\') { cur += ch + (body[i + 1] || ''); i++; continue; }
+    if (ch === '(' || ch === '[') depth++;
+    else if ((ch === ')' || ch === ']') && depth) depth--;
+    if (ch === '|' && !depth) { out.push(cur); cur = ''; } else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+// The smallest number a number pattern finds (as "at least" means), or 0 when none up to 999.
+function leastOf(pat) {
+  let re;
+  try { re = new RegExp(`^(?:${pat})$`); } catch (_) { return 0; }
+  for (let x = 1; x <= 999; x++) if (re.test(String(x))) return x;
+  return 0;
+}
+function readMapSearch(text) {
+  const m = { ...MAP_DEFAULT, avoid: [], wantMods: [], yields: {}, quality: {}, kept: [], rarity: { normal: true, magic: true, rare: true }, typeOn: {}, typeMode: {} };
+  const lower = (x) => x.toLowerCase();
+  const modOf = (a) => MAP_MODS.find((x) => lower(x.tok) === lower(a));
+  const typeOf = (a) => MAP_TYPES.find((x) => lower(x.tok) === lower(a));
+  const numOf = (a) => {
+    const g = /^(.*?)\.\*(.+)%$/.exec(a);
+    if (!g) return null;
+    for (const [list, kind] of [[YIELDS, 'yields'], [QUALITY, 'quality']]) {
+      const x = list.find((y) => y.tok === g[1] || lower(y.tok) === lower(g[1]));
+      const n = x && leastOf(g[2]);
+      if (n) return { kind, id: x.id, n };
+    }
+    return null;
+  };
+  const seen = { yields: 0, quality: 0, want: 0 };
+  for (const t of parseSearch(text)) {
+    const alts = splitTop(t.body), b = lower(t.body);
+    const mods = alts.map(modOf), types = alts.map(typeOf), nums = alts.map(numOf);
+    // "none of these": the known mods go to Don't want, the rest stays as its own "none of" part.
+    if (t.neg && mods.some(Boolean) && !m.avoid.length) {
+      m.avoid = mods.filter(Boolean).map((x) => x.id);
+      const other = alts.filter((x, i) => !mods[i]);
+      if (other.length) m.kept.push(quoted(`!${other.join('|')}`));
+    }
+    else if (mods.every(Boolean) && !t.neg && (alts.length === 1 ? seen.want !== 'any' : !seen.want)) {
+      m.wantMods.push(...mods.map((x) => x.id));
+      seen.want = alts.length > 1 ? 'any' : 'all';
+      m.wantAll = seen.want === 'all' && m.wantMods.length > 1;
+    } else if (!t.neg && nums.every(Boolean) && nums.every((x) => x.kind === nums[0].kind) && !seen[nums[0].kind]) {
+      const k = nums[0].kind;
+      for (const x of nums) m[k][x.id] = x.n;
+      seen[k] = alts.length > 1 ? 'any' : 'one';
+      if (k === 'yields') m.yieldAny = alts.length > 1; else m.qualAny = alts.length > 1 || m.qualAny;
+    } else if (!t.neg && nums.every(Boolean) && seen[nums[0].kind] === 'one' && alts.length === 1) {
+      m[nums[0].kind][nums[0].id] = nums[0].n; // one more number, every one needed
+      if (nums[0].kind === 'quality') m.qualAny = false;
+    } else if (/^y: (\(([nmr]\|?)+\)|[nmr])$/.test(b)) {
+      const letters = b.slice(3).replace(/[^nmr]/g, '');
+      for (const r of RARITIES) m.rarity[r.id] = letters.includes(r.l);
+      m.rarityMode = t.neg ? 'exclude' : 'include';
+    } else if (b === 'pte' || b === 'corrupted') { m.corruptedOn = true; m.corruptedMode = t.neg ? 'exclude' : 'include'; }
+    else if (b === 'tified' || b === 'unidentified') { m.unidOn = true; m.unidMode = t.neg ? 'exclude' : 'include'; }
+    else if (types.every(Boolean)) {
+      m.typesOn = true;
+      for (const x of types) { m.typeOn[x.id] = true; m.typeMode[x.id] = t.neg ? 'exclude' : 'include'; }
+      for (const x of MAP_TYPES) if (!(x.id in m.typeOn)) m.typeOn[x.id] = false;
+    } else m.kept.push(t.neg ? quoted(`!${t.body}`) : quoted(t.body));
+  }
+  return cleanBuilders({ map: m }).map;
+}
+
 // How many characters a mod adds to the search (or takes away, when it is picked), in one list.
 function modCost(o, id, list) {
   o = cleanBuilders({ map: o }).map;
@@ -299,6 +376,7 @@ function cleanBuilders(r) {
       corruptedOn: !!m.corruptedOn || m.corrupted === 'only' || m.corrupted === 'not', corruptedMode: m.corrupted === 'not' ? 'exclude' : inOut(m.corruptedMode, 'include'),
       unidOn: !!m.unidOn || m.unidentified === 'not', unidMode: inOut(m.unidMode, 'exclude'),
       typesOn: !!m.typesOn, typeOn, typeMode,
+      kept: (Array.isArray(m.kept) ? m.kept : []).map((x) => String(x).slice(0, 250)).filter(Boolean).slice(0, 20),
     },
     vendor: {
       rgb: !!v.rgb, links: LINKS[v.links] ? Number(v.links) : 0, sockets: [5, 6].includes(Number(v.sockets)) ? Number(v.sockets) : 0,
@@ -307,7 +385,7 @@ function cleanBuilders(r) {
   };
 }
 
-const api = { GAME_LIMIT, atLeast, MAP_MODS, MAP_LINES, YIELDS, QUALITY, MAP_TYPES, RARITIES, RULE_MODS, modsFromRules, mapSearch, modCost, vendorSearch, parseSearch, testSearch, problems, cleanBuilders, MAP_DEFAULT, VENDOR_DEFAULT };
+const api = { GAME_LIMIT, atLeast, MAP_MODS, MAP_LINES, YIELDS, QUALITY, MAP_TYPES, RARITIES, RULE_MODS, modsFromRules, mapSearch, modCost, readMapSearch, vendorSearch, parseSearch, testSearch, problems, cleanBuilders, MAP_DEFAULT, VENDOR_DEFAULT };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 if (typeof window !== 'undefined') window.PoeRegex = api;
 })();

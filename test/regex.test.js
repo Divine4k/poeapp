@@ -135,6 +135,29 @@ test('the tester reads a search as the stash box does', () => {
   assert.equal(R.problems('x'.repeat(R.GAME_LIMIT + 1)).length, 1);
 });
 
+test('a pasted search is read back into the builder, and what is not known is kept', () => {
+  const o = { avoid: ['reflect-phys', 'no-regen'], wantMods: ['blind', 'maim'], yields: { pack: 25, rarity: 60 }, yieldAny: true, quality: { currency: 20 },
+    rarity: { normal: false, magic: true, rare: true }, corruptedOn: true, corruptedMode: 'exclude', unidOn: true, typesOn: true, typeMode: { shaper: 'include' } };
+  const text = R.mapSearch(R.cleanBuilders({ map: o }).map).text;
+  const back = R.readMapSearch(text);
+  assert.equal(R.mapSearch(back).text, text); // the same search comes out again
+  assert.deepEqual(back.avoid, ['reflect-phys', 'no-regen']);
+  assert.deepEqual(back.yields, { pack: 25, rarity: 60 });
+  assert.equal(back.yieldAny, true);
+  assert.deepEqual(back.kept, []);
+  // every number needed: separate parts
+  const all = R.mapSearch({ yields: { pack: 25, rarity: 60 } }).text;
+  assert.equal(R.mapSearch(R.readMapSearch(all)).text, all);
+  // poe.re's own way of writing numbers is read too
+  assert.deepEqual(R.readMapSearch('"r pa.*(8[5-9]|9.|\\d..)%"').yields, { pack: 85 });
+  // parts it does not know stay as they were, at the end
+  const own = R.readMapSearch('"!f phys|abomin" "m q.*1[6-9]" ghosts');
+  assert.deepEqual(own.avoid, ['reflect-phys']);
+  assert.deepEqual(own.kept, ['!abomin', '"m q.*1[6-9]"', 'ghosts']);
+  assert.equal(R.mapSearch(own).text, '"!f phys" !abomin "m q.*1[6-9]" ghosts');
+  assert.deepEqual(R.readMapSearch('').kept, []);
+});
+
 test('builder choices are tidied for config.json, and old ones carried over', () => {
   const c = R.cleanBuilders({ map: { avoid: ['regen-typo', 'no-regen'], want: { quantity: 80, pack: '25', rarity: 0 }, corrupted: 'not', unidentified: 'not', tierMin: 14 }, vendor: { links: 7, sockets: 6, moveMin: 'a' } });
   assert.deepEqual(c.map.avoid, ['no-regen']);
