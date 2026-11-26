@@ -378,6 +378,9 @@ const MAP_PICTURES = {
   Strand: ['maps/strand.jpg', 0.2],
   Dunes: ['maps/dunes.jpg', 0.6],
 };
+// Behind the card while no map is being run: a band through the eyes of the owner's chosen art
+// (animated: her eyes glow, 12 frames).
+const IDLE_PICTURE = ['maps/between-maps.webp', 0.35];
 const mapPicture = (name) => MAP_PICTURES[String(name || '').replace(/ Map$/, '')] || null;
 
 // How long a map usually takes you: that map in every saved session, and the ones already
@@ -451,7 +454,7 @@ function renderNow() {
   toggle.classList.toggle('primary', !!run);
 
   // The map's picture behind the card (set through the style object: no inline style attributes).
-  const pic = run && mapPicture(run.name), ph = $('mc-photo');
+  const pic = run ? mapPicture(run.name) : IDLE_PICTURE, ph = $('mc-photo');
   $('mapcard').classList.toggle('has-photo', !!pic);
   $('mapcard').classList.toggle('idle', !run);
   if (ph.dataset.pic !== (pic ? pic[0] : '')) {

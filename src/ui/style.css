@@ -176,34 +176,12 @@ button.chip.bad:hover { box-shadow: inset 0 0 0 1px var(--blood); }
 .mc-photo::after { content: ""; position: absolute; inset: 0;
   /* --shade: how bright the picture is (set by mapping.js); bright ones get a darker veil */
   background: linear-gradient(90deg, rgb(12 13 15 / calc(0.86 + var(--shade, 0) * 0.06)) 0%, rgb(12 13 15 / calc(0.45 + var(--shade, 0) * 0.3)) 28%, rgb(12 13 15 / calc(0.08 + var(--shade, 0) * 0.5)) 52%, rgb(12 13 15 / calc(0.14 + var(--shade, 0) * 0.45)) 75%, rgb(12 13 15 / calc(0.62 + var(--shade, 0) * 0.25)) 100%), linear-gradient(0deg, rgba(12, 13, 15, 0.38), transparent 52%); }
-/* No map being run: an atlas-like sigil turns slowly behind the empty middle of the card, its
-   heart glows and a few embers drift up, all in the theme's accent. Only whole elements turn, fade or
-   rise (transform, opacity), so the graphics card moves them and nothing is redrawn per frame (see
-   "Performance" in CLAUDE.md). Turning and rising stop when animations are off (Settings) or Windows
-   asks for less motion; the glow only fades, so it stays. */
-.mc-idle { position: absolute; inset: 0; pointer-events: none; color: var(--gold); opacity: 0; transition: opacity 0.8s ease;
-  -webkit-mask-image: linear-gradient(90deg, transparent 24%, black 46%, black 72%, transparent 90%); mask-image: linear-gradient(90deg, transparent 24%, black 46%, black 72%, transparent 90%); }
-.mapcard.idle .mc-idle { opacity: 1; }
-.mapcard:not(.idle) .mc-idle * { animation: none; }
-.mc-idle svg { position: absolute; left: 58%; top: 50%; width: 380px; height: 380px; margin: -190px 0 0 -190px; fill: none; stroke: currentColor; stroke-width: 1; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--gold) 45%, transparent)); }
-.mc-idle .r0 { stroke-opacity: 0.08; }
-.mc-idle .r1 { stroke-opacity: 0.16; }
-.mc-idle .core { stroke-opacity: 0.35; fill: color-mix(in srgb, var(--gold) 10%, transparent); }
-.mc-idle .ticks { stroke-opacity: 0.3; stroke-width: 7; stroke-dasharray: 1 12.1; }
-.mc-idle .dash { stroke-opacity: 0.22; stroke-dasharray: 18 7 2 7; }
-.mc-idle .web { stroke-opacity: 0.2; stroke-linejoin: round; }
-.mc-idle .stars { stroke: none; fill: currentColor; fill-opacity: 0.75; }
-.mc-idle .slow, .mc-idle .back { will-change: transform; animation: idle-spin 120s linear infinite; }
-.mc-idle .back { animation-duration: 200s; animation-direction: reverse; }
-.mc-idle b { position: absolute; left: 58%; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor, 0 0 26px color-mix(in srgb, var(--gold) 55%, transparent); will-change: opacity; animation: idle-glow 3.2s ease-in-out infinite; }
-.mc-idle i { position: absolute; bottom: -4px; left: var(--x); width: 3px; height: 3px; border-radius: 50%; background: currentColor; box-shadow: 0 0 6px currentColor; opacity: 0; will-change: transform, opacity; animation: idle-ember var(--d, 9s) linear var(--at, 0s) infinite; }
-.mc-idle i:nth-of-type(1) { --x: 44%; --at: -1s; } .mc-idle i:nth-of-type(2) { --x: 49%; --at: -5s; --d: 11s; } .mc-idle i:nth-of-type(3) { --x: 53%; --at: -2.5s; }
-.mc-idle i:nth-of-type(4) { --x: 57%; --at: -7s; --d: 12s; } .mc-idle i:nth-of-type(5) { --x: 61%; --at: -3.5s; --d: 8s; } .mc-idle i:nth-of-type(6) { --x: 64%; --at: -6s; }
-.mc-idle i:nth-of-type(7) { --x: 67%; --at: -0.5s; --d: 10s; } .mc-idle i:nth-of-type(8) { --x: 70%; --at: -8s; --d: 13s; } .mc-idle i:nth-of-type(9) { --x: 51%; --at: -4.2s; --d: 10s; } .mc-idle i:nth-of-type(10) { --x: 59%; --at: -9s; --d: 11s; }
-@keyframes idle-spin { to { transform: rotate(360deg); } }
-@keyframes idle-glow { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
-@keyframes idle-ember { 0% { opacity: 0; transform: translate(0, 0); } 15% { opacity: 0.7; } 100% { opacity: 0; transform: translate(14px, -150px); } }
-@media (prefers-reduced-motion: reduce) { .mc-idle .slow, .mc-idle .back, .mc-idle i { animation: none; } }
+/* No map being run: a band through the eyes of the art in maps/between-maps.webp (her eyes are
+   animated in the picture itself), pushing in very slowly. Only the picture's layer is scaled, so the graphics card does it;
+   it stands still when animations are off (Settings) or Windows asks for less motion. */
+.mapcard.idle .mc-photo { background-position: 50% 47%; transform-origin: 50% 47%; will-change: transform; animation: idle-drift 48s ease-in-out infinite alternate; }
+@keyframes idle-drift { from { transform: scale(1); } to { transform: scale(1.07); } }
+@media (prefers-reduced-motion: reduce) { .mapcard.idle .mc-photo { animation: none; } }
 .mapcard.has-photo { --bone: #f4f1ea; --soft: #ddd8ce; --ash: #c9c4b9; background: #121317; }
 .mapcard.has-photo .mc-photo { display: block; }
 .mapcard.has-photo .map-name, .mapcard.has-photo .clock, .mapcard.has-photo .money b { text-shadow: 0 2px 24px rgba(0, 0, 0, 0.65); }

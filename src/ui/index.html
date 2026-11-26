@@ -71,18 +71,6 @@
        map sits behind it when there is one (src/ui/maps). -->
   <section class="mapcard" id="mapcard" aria-label="Current map">
     <div class="mc-photo" id="mc-photo" aria-hidden="true"></div>
-    <!-- While no map is being run: an atlas-like sigil turning slowly, and a few embers (style.css .mc-idle).
-         Each moving part is its own element so the graphics card moves it without redrawing. -->
-    <div class="mc-idle" aria-hidden="true">
-      <svg class="base" viewBox="0 0 400 400"><circle class="r0" cx="200" cy="200" r="190"/><circle class="r1" cx="200" cy="200" r="168"/><circle class="core" cx="200" cy="200" r="22"/></svg>
-      <svg class="slow" viewBox="0 0 400 400"><circle class="ticks" cx="200" cy="200" r="150"/><circle class="dash" cx="200" cy="200" r="138"/></svg>
-      <svg class="back" viewBox="0 0 400 400">
-        <path class="web" d="M200 72L298 128L316 236L238 312L120 296L86 188L142 108ZM142 108L200 200L298 128M238 312L200 200L86 188M200 72L200 200L316 236"/>
-        <g class="stars"><circle cx="200" cy="72" r="4"/><circle cx="298" cy="128" r="3.2"/><circle cx="316" cy="236" r="4"/><circle cx="238" cy="312" r="3"/><circle cx="120" cy="296" r="3.6"/><circle cx="86" cy="188" r="3"/><circle cx="142" cy="108" r="3.4"/></g>
-      </svg>
-      <b></b>
-      <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-    </div>
     <div class="mc-name" id="now-name"></div>
     <div class="mc-time" id="now-time"></div>
     <div class="mc-net" id="now-net"></div>
