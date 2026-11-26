@@ -1,14 +1,14 @@
 {
   "name": "poeapp",
-  "version": "0.53.1",
+  "version": "0.53.2",
   "description": "Second-screen mapping companion for Path of Exile 1: map timer, loot value, map mod check, costs, prices, trade site search for gear, and trade offers with an in-game overlay.",
   "main": "src/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js test/jewels.test.js test/stashSearch.test.js test/diag.test.js test/regex.test.js",
-    "t": "node --test --test-reporter=dot test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js test/jewels.test.js test/stashSearch.test.js test/diag.test.js test/regex.test.js",
-    "test:core": "node --test test/core.test.js",
+    "test": "node --test test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js test/jewels.test.js test/stashSearch.test.js test/diag.test.js test/regex.test.js test/window.test.js",
+    "t": "node --test --test-reporter=dot test/core.test.js test/inventory.test.js test/tar.test.js test/shared.test.js test/store.test.js test/trade.test.js test/backlog.test.js test/checkMessage.test.js test/leftovers.test.js test/tradeSearch.test.js test/cloud.test.js test/keys.test.js test/recording.test.js test/tracker.test.js test/jewels.test.js test/stashSearch.test.js test/diag.test.js test/regex.test.js test/window.test.js",
+    "test:core": "node --test test/core.test.js test/window.test.js",
     "test:inventory": "node --test test/inventory.test.js test/backlog.test.js test/shared.test.js",
     "test:trade": "node --test test/trade.test.js test/tradeSearch.test.js test/checkMessage.test.js",
     "test:keys": "node --test test/keys.test.js",

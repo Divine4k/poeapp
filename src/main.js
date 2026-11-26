@@ -38,6 +38,7 @@ const { cleanBuilders, GAME_LIMIT: SEARCH_LIMIT } = require('./core/regex');
 const { GameWatch } = require('./gamewin');
 const { closeLeftovers, waitForExit, afterPid } = require('./leftovers');
 const { checkPanelBounds } = require('./core/checkPanel');
+const { placeWindow } = require('./core/windowPlace');
 const { StatIndex } = require('./core/tradeStats');
 const { searchable, buildFilters, applyEdits, isNarrow, buildQuery, summarize, compareSpec, markBait } = require('./core/tradeQuery');
 const { TradeClient, readListing, readOffer, searchUrl, exchangeUrl, currencyName } = require('./core/tradeApi');
@@ -2083,17 +2084,28 @@ async function jewelAction(a) {
 }
 
 // ---- window --------------------------------------------------------------------
+// Opens where it was last (window.json: its place when not maximised, and whether it was
+// maximised), see core/windowPlace.js. Saved a moment after every move or resize, not at
+// closing: a restart for an update destroys the window without a 'close'.
 function createWindow() {
-  const primary = screen.getPrimaryDisplay();
-  const second = screen.getAllDisplays().find((d) => d.id !== primary.id);
-  const target = second || primary;
+  const place = placeWindow(readJson('window.json', null), screen.getAllDisplays(), screen.getPrimaryDisplay().id);
+  const { maximized, from, ...bounds } = place;
+  diag.facts['Window opened'] = `${from}: ${bounds.width}x${bounds.height} at ${bounds.x},${bounds.y}${maximized ? ', maximised' : ''}`;
   win = new BrowserWindow({
-    x: target.workArea.x + 40, y: target.workArea.y + 40,
-    width: Math.min(1500, target.workArea.width - 80), height: Math.min(950, target.workArea.height - 80),
+    ...bounds,
     backgroundColor: '#1b1f24', title: 'Map Companion', autoHideMenuBar: true, icon: path.join(__dirname, 'ui', 'icon.png'), show: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
-  win.once('ready-to-show', () => { if (second) win.maximize(); win.show(); diag.time('start: from opening the app to its window', process.uptime() * 1000); });
+  win.setBounds(bounds); // again: across screens with different scaling the first placing can land off
+  win.once('ready-to-show', () => {
+    if (maximized) win.maximize();
+    win.show();
+    diag.time('start: from opening the app to its window', process.uptime() * 1000);
+    // Read now, not when it is written: by then the window can be gone.
+    let last = null;
+    const keep = () => { if (!win || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return; last = { bounds: win.getNormalBounds(), maximized: win.isMaximized() }; writeJsonSoon('window.json', () => last); };
+    for (const ev of ['move', 'resize', 'maximize', 'unmaximize']) win.on(ev, keep);
+  });
   win.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
   win.on('closed', () => { win = null; if (overlay) overlay.destroy(); if (layoutWin) layoutWin.destroy(); if (toast) toast.destroy(); if (checkPanel) checkPanel.destroy(); if (searchMenu) searchMenu.destroy(); });
