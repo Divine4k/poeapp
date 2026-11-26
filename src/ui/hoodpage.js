@@ -25,5 +25,11 @@
   const bad = (text) => { if (errors.length < 20) errors.push(String(text).slice(0, 600)); soon(); };
   window.addEventListener('error', (e) => bad(`${e.message || 'error'}${e.filename ? ` (${String(e.filename).split('/').pop()}:${e.lineno})` : ''}`));
   window.addEventListener('unhandledrejection', (e) => bad(`a job failed and nothing caught it: ${(e.reason && (e.reason.stack || e.reason.message)) || e.reason}`));
+  // Every half minute: how much this window holds in memory and how much is on its page.
+  setInterval(() => {
+    if (!bridge) return;
+    const m = performance.memory;
+    bridge.hoodPage({ sizes: { heap: m ? Math.round(m.usedJSHeapSize / 1048576) : null, nodes: document.getElementsByTagName('*').length } });
+  }, 30000);
   window.Hood = { note, run };
 })();

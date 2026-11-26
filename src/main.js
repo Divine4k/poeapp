@@ -49,7 +49,7 @@ const { movedDefault } = require('./ui/keys');
 const { DEFAULT_CONFIG, mergeTrade } = require('./config');
 const { thumbnail, gridPicture, cellsOfPicture, pixelsOfThumb, printPicture } = require('./pictures');
 const { ScreenRecorder } = require('./recorder');
-const { Troubleshoot } = require('./troubleshoot');
+const { Troubleshoot, scrub } = require('./troubleshoot');
 const diagnose = require('./diagnose');
 const { diag } = diagnose; // times and counts for the Under the hood page (src/core/diag.js)
 const { report: hoodReport } = require('./core/diag');
@@ -310,7 +310,7 @@ function pushNow() {
   const s = open || recording ? buildState(!!recording) : null;
   built();
   if (open) { const sent = diag.start('state update: sent to the window'); win.webContents.send('state', s); sent(); }
-  if (recording) trouble.state(s);
+  if (trouble && s) trouble.state(s); // what changed: a line under the hood, and in a recording
   const over = diag.start('state update: overlay and price check window');
   syncOverlay();
   if (checkPanel && checkPanel.visible && tradeCheck) checkPanel.update(checkPanelData());
@@ -757,9 +757,10 @@ function bestGuess(print) {
 }
 
 async function readInventory(force) {
-  if (invBusy) return;
-  if (force !== true && watch.otherInFront()) return;
+  if (invBusy) { diag.count('inventory: not read, the reading before was still going'); return; }
+  if (force !== true && watch.otherInFront()) { diag.count('inventory: not read, another program was in front'); return; }
   invBusy = true;
+  diag.count(force === true ? 'inventory: reading asked for by hand or key' : 'inventory: reading by itself');
   const inv = status.inventory, was = `${inv.open}|${inv.error}|${inv.lastReadAt}`;
   try {
     const t0 = performance.now();
@@ -774,14 +775,14 @@ async function readInventory(force) {
     // the window goes too. Only on that change, so a screen the reader cannot make out never
     // closes it.
     if (wasOpen && !status.inventory.open && checkPanel && checkPanel.visible) closeCheckPanel();
-    if (!status.inventory.open) { stopFollow(); return; }
+    if (!status.inventory.open) { diag.count('inventory: looked, and the inventory was not open'); stopFollow(); return; }
     // A tooltip (or the mouse pointer) may cover some slots; the reader finds them, keeps what
     // it knew about those and reads the rest.
     const t1 = performance.now();
     const result = reader.read(frame, { cursor: cursorCell(cursorInFrame(frame), rect) });
     // How long a reading takes on this PC, for troubleshooting recordings: whether the reading
     // should move to a worker, or the capture be made smaller.
-    diag.time('inventory: reading the slots', performance.now() - t1, result ? `${result.recognised} recognised${result.hidden ? `, ${result.hidden} covered` : ''}${follow ? ', follow-up' : ''}` : 'nothing read');
+    diag.time('inventory: reading the slots', performance.now() - t1, result ? `${result.recognised} recognised${result.unknown && result.unknown.length ? `, ${result.unknown.length} not known` : ''}${result.hidden ? `, ${result.hidden} covered` : ''}${result.warm != null ? `, ${typeof result.warm === 'number' ? result.warm : JSON.stringify(result.warm)} kept from before` : ''}${follow ? ', follow-up' : ''}` : 'nothing read');
     if (trouble && trouble.recording) trouble.event('inventoryRead', { captureMs: Math.round(captureMs), readMs: Math.round(performance.now() - t1), hidden: result ? result.hidden : null, follow: !!follow });
     if (!result) return;
     status.inventory.lastReadAt = Date.now();
@@ -1607,7 +1608,7 @@ function startTradeCheck(item, { always = false } = {}) {
 // announce: say the outcome in game, as the check key's own message does.
 async function runTradeSearch(announce) {
   const tc = tradeCheck;
-  if (!tc || !tc.filters.ok || tc.state === 'searching') return;
+  if (!tc || !tc.filters.ok || tc.state === 'searching') { diag.count(`price check: search not started (${!tc ? 'no item' : !tc.filters.ok ? 'nothing to search by' : 'one was still going'})`); return; }
   tc.state = 'searching'; tc.error = ''; tc.rev = ++tradeRev;
   push();
   const timed = diag.start('price check: search (waiting included)');
@@ -2099,6 +2100,22 @@ function createWindow() {
 }
 
 // ---- IPC -----------------------------------------------------------------------
+// What Under the hood knows about how the app is set up: the settings without anything
+// private or long, and what the status chips say.
+function hoodFacts() {
+  const { shareToken, trackerLayout, customPrices, stashSearches, regex, strategies, mapRules, ignoredItems, navOrder, ...rest } = config || {};
+  diag.facts.settings = scrub({ ...rest, strategies: (strategies || []).length, stashSearches: (stashSearches || []).length, customPrices: Object.keys(customPrices || {}).length, ignoredItems: (ignoredItems || []).length, mapRulesOff: (mapRules || []).filter((r) => r.enabled === false).map((r) => r.id) });
+}
+// How big the app's own lists are, read every half minute: something that only ever grows shows here.
+function hoodSizes() {
+  hoodFacts();
+  diag.facts['Game'] = `${watch.running ? 'running' : 'not seen'}${watch.gameInFront() ? ', in front' : ''}; log ${status.log.ok ? 'read' : `not read (${status.log.error})`}; keys helper ${status.inventory.keyHook}; signed in: ${cloud && cloud.signedIn ? `yes (${cloud.role || 'user'})` : 'no'}`;
+  return {
+    'Maps in this session': session.summary(prices).runs.length, 'Items named on this PC': learned.length, 'Shared item pictures': index.shared.length, 'Item pictures from poe.ninja': index.art.length,
+    'Prices known': prices.size || status.prices.count, 'Items waiting for a name': backlog.items.length, 'Trade offers kept': (tradeState().offers || []).length,
+    'Slots in the last reading': lastInventory.cells.length, 'Saved sessions': archive ? archive.list().length : 0, 'Files waiting to be written': savesWaiting.size + savesRunning.size,
+  };
+}
 function applyConfig(patch) {
   if (trouble) trouble.event('setting', patch);
   if (patch.stashSearches) patch = { ...patch, stashSearches: cleanSearches(patch.stashSearches) };
@@ -2550,7 +2567,16 @@ function setupIpc() {
     const op = a && a.op;
     if (op === 'reset') diag.reset();
     if (op === 'copy') { clipboard.writeText(hoodReport(diag.snapshot(), { title: 'Map Companion, under the hood', version: (trouble && trouble.version) || '' })); return true; }
-    return { ...diag.snapshot(), every: diagnose.SAMPLE_MS };
+    // The run before this one, kept on disk: what the app was doing before it was closed, or crashed.
+    if (op === 'copyLast') {
+      const last = diagnose.lastRun();
+      if (!last) return false;
+      clipboard.writeText(hoodReport(last, { title: `Map Companion, under the hood: the run before this one (${last.ended || 'it did not close normally: a crash, or the PC went off'})` }));
+      return true;
+    }
+    // The page gets the latest lines only; the rest is in the copy.
+    const snap = diag.snapshot();
+    return { ...snap, log: snap.log.slice(-400), logAll: snap.log.length + snap.logDropped, every: diagnose.SAMPLE_MS, lastRun: diagnose.hasLastRun() };
   });
   // What a window measured about itself: its drawing times, its own freezes and errors.
   ipcMain.on('hood-page', (e, d) => diagnose.pageNews(e.sender, d));
@@ -2570,7 +2596,7 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   if (!firstCopy) return;
-  diagnose.start({ sampled: (u) => { if (trouble && trouble.recording) trouble.event('usage', { cpu: Math.round(u.cpu * 10) / 10, mem: Math.round(u.mem), pcCpu: u.pcCpu == null ? null : Math.round(u.pcCpu), pcFree: Math.round(u.pcFree) }); } });
+  diagnose.start({ dir: path.join(app.getPath('userData'), 'diagnostics'), sizes: hoodSizes, sampled: (u) => { if (trouble && trouble.recording) trouble.event('usage', { cpu: Math.round(u.cpu * 10) / 10, mem: Math.round(u.mem), pcCpu: u.pcCpu == null ? null : Math.round(u.pcCpu), pcFree: Math.round(u.pcFree) }); } });
   loadConfig();
   prices.setCustom(config.customPrices);
   session.restore(readJson('session.json', null));

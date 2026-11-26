@@ -12,12 +12,16 @@ async function webFetch(url, options = {}) {
   const what = `${(options && options.method) || 'GET'} ${path}`;
   try {
     const res = await net.fetch(url, options);
-    done(`${what} -> ${res.status}`);
-    if (res.status >= 400) diag.error(name, `${what} answered ${res.status}${res.status === 429 ? ' (too many requests: the site asks the app to slow down)' : ''}`);
+    // With the answer's size and, for the trade site, how close its limits are.
+    const h = res.headers, size = Number(h.get('content-length')) || 0;
+    const limit = h.get('x-rate-limit-ip-state') || h.get('x-rate-limit-account-state') || '';
+    const retry = h.get('retry-after') || '';
+    done(`${what} -> ${res.status}${size ? `, ${size >= 10240 ? `${Math.round(size / 1024)} KB` : `${size} bytes`}` : ''}${limit ? `, limits used ${limit}` : ''}${retry ? `, asked to wait ${retry} s` : ''}`, false, res.status >= 400);
+    if (res.status >= 400) diag.error(name, `${what} answered ${res.status}${res.status === 429 ? ' (too many requests: the site asks the app to slow down)' : ''}`, false);
     return res;
   } catch (e) {
-    done(`${what} -> failed`);
-    diag.error(name, `${what}: ${e.message || e}`);
+    done(`${what} -> failed: ${e.message || e}`, false, true);
+    diag.error(name, `${what}: ${e.message || e}`, false);
     const cause = e && e.cause ? (e.cause.code || e.cause.message) : '';
     let host = '';
     try { host = new URL(url).host; } catch (_) { /* keep empty */ }

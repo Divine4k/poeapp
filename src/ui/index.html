@@ -293,10 +293,11 @@
   <div class="hd-head">
     <h2 class="pagetitle">Under the hood</h2>
     <span class="dim" id="hd-since"></span>
-    <span class="row hd-btns"><button type="button" id="hd-copy" title="Everything on this page as text on the clipboard, to paste into a chat with Claude">Copy for Claude</button><button type="button" class="link" id="hd-reset" title="Forget the numbers so far and count from now">Start over</button></span>
+    <span class="row hd-btns"><button type="button" id="hd-copy" title="Everything on this page as text on the clipboard, to paste into a chat with Claude">Copy for Claude</button><button type="button" id="hd-copylast" hidden title="The same for the run before this one: what the app was doing before it was closed, or before it crashed">Copy the run before</button><button type="button" class="link" id="hd-reset" title="Forget the numbers so far and count from now">Start over</button></span>
   </div>
-  <p class="fine hd-what">What the app is doing in the background: how hard it works the PC, how long each job takes, and every moment it was slow or stood still. Counted all the time, kept only until the app closes, and sent nowhere by itself. Each recording and report takes these numbers along.</p>
+  <p class="fine hd-what">What the app is doing in the background: how hard it works the PC, how long each job takes, and every moment it was slow or stood still. Everything the app does gets a line under What happened. Counted all the time and sent nowhere by itself; the last run is kept on this PC, so after a crash you can still copy what led up to it. Each recording and report takes these numbers along.</p>
   <section class="panel statbar hd-tiles" id="hd-tiles" aria-label="Right now"></section>
+  <p class="hd-running" id="hd-running" hidden></p>
   <div class="hd-grid">
     <section class="panel hd-box" aria-label="Processor and memory">
       <h3 class="hd-h">Processor and memory</h3>
@@ -312,10 +313,22 @@
     <div class="hd-jobhead"><h3 class="hd-h">Every job, timed</h3><input type="search" id="hd-filter" placeholder="Find a job" aria-label="Find a job"></div>
     <div id="hd-jobs"></div>
   </section>
-  <section class="panel hd-box" aria-label="Errors">
-    <h3 class="hd-h">Errors</h3>
-    <ul class="hd-list" id="hd-errors"></ul>
+  <section class="panel hd-box" aria-label="What happened">
+    <div class="hd-jobhead"><h3 class="hd-h">What happened <span class="dim" id="hd-lognote">newest first</span></h3><label class="hd-check"><input type="checkbox" id="hd-logbad"> Only problems</label><input type="search" id="hd-logfilter" placeholder="Find in what happened" aria-label="Find in what happened"></div>
+    <ul class="hd-log" id="hd-log"></ul>
   </section>
+  <div class="hd-grid">
+    <section class="panel hd-box" aria-label="Counts and sizes">
+      <h3 class="hd-h">Counts and sizes</h3>
+      <div id="hd-counts"></div>
+    </section>
+    <section class="panel hd-box" aria-label="Errors and facts">
+      <h3 class="hd-h">Errors</h3>
+      <ul class="hd-list" id="hd-errors"></ul>
+      <h3 class="hd-h hd-h2">This PC and the app</h3>
+      <ul class="hd-facts" id="hd-facts"></ul>
+    </section>
+  </div>
 </main>
 
 <main class="view rx" id="tab-regex" role="tabpanel" hidden>

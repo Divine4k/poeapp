@@ -258,10 +258,15 @@
           if (i === 300) d.error('web: trade site, search', 'POST /api/trade/search/Standard answered 429 (too many requests: the site asks the app to slow down)');
         }
         d.gauge('One state update', 184, 'KB');
+        d.facts = { App: '0.53.0, installed', 'Built on': 'Electron 33, Chrome 130', Screens: '2560x1440 at scale 1, 144 Hz; 1920x1080 at scale 1', Game: 'running, in front; log read; keys helper on' };
+        d.count('inventory: reading by itself', 118); d.count('inventory: not read, another program was in front', 41); d.count('inventory: looked, and the inventory was not open', 63);
+        d.gauge('Main process: its own data', 61, 'MB'); d.gauge('Items named on this PC', 412, ''); d.gauge('Maps in this session', 14, '');
+        d.note('hotkey', 'App key Ctrl+D (priceCheck)'); d.note('state', 'Changed: map Strand running, 12 loot (84c)'); d.note('notice', 'No item under the mouse in game.', true);
         d.now = () => Date.now();
       }
       if (q && q.op === 'copy') { try { await navigator.clipboard.writeText(D.report(window.demoHood.snapshot())); } catch (_) { return false; } return true; }
-      return { ...window.demoHood.snapshot(), every: 5000 };
+      const snap = window.demoHood.snapshot();
+      return { ...snap, log: snap.log.slice(-400), logAll: snap.log.length, every: 5000, lastRun: true };
     },
     dev: async (q) => {
       if (q.type === 'github') return { repo: 'Divine4k/poeapp-reports', hasToken: true, tokenEnd: 'x9Qa', by: 'Divine4k', at: now - 86400000 };

@@ -14,7 +14,7 @@
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const { Trace, keyNames, keyLabel, buttonName, stateBrief, briefChanges, readme, recordingId, ID } = require('./core/recording');
+const { Trace, keyNames, keyLabel, buttonName, stateBrief, briefChanges, readme, recordingId, eventText, small, ID } = require('./core/recording');
 const { uploadFolder, readFile, latestTree, readBlob } = require('./github');
 const { report: hoodReport, brief: hoodBrief } = require('./core/diag');
 
@@ -36,6 +36,17 @@ const MAX_IMAGES = 10;        // pictures in one written report
 const MAX_IMAGE = 8 * 1024 * 1024;
 const IMAGE = /^image-[0-9]{1,2}\.(png|jpg|gif|webp)$/;
 const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+
+// Not noted in Under the hood: your own input, and what Under the hood told the recording itself.
+const NOT_NOTED = new Set(['key', 'mouse', 'wheel', 'timing', 'slow', 'freeze', 'usage', 'start', 'stop']);
+const SECRET = /token|password|secret|session/i;
+function scrub(v, depth = 0) {
+  if (!v || typeof v !== 'object' || depth > 4) return v;
+  if (Array.isArray(v)) return v.map((x) => scrub(x, depth + 1));
+  const out = {};
+  for (const [k, x] of Object.entries(v)) out[k] = SECRET.test(k) && x ? '(hidden)' : scrub(x, depth + 1);
+  return out;
+}
 
 class Troubleshoot {
   // dir: where recordings are kept. recorder: a ScreenRecorder. displayId(): the game's screen.
@@ -77,11 +88,21 @@ class Troubleshoot {
     };
   }
 
-  // Something happened. Only kept while recording.
-  event(kind, data) { if (this.current && this.busy !== 'starting') this.trace.add(kind, data); }
+  // Something happened. Kept in full while recording. Recording or not, what the app did also
+  // goes to Under the hood's "what happened" as one line. Not your keys and clicks, and of the
+  // game's log only the lines the app acted on (not chat): those are for a recording you chose
+  // to make. Anything that looks like a password or token is left out.
+  event(kind, data) {
+    if (this.diag && !NOT_NOTED.has(kind) && (kind !== 'log' || (data && data.ev))) {
+      let text = '';
+      try { text = kind === 'log' ? `${data.ev.type}${data.ev.kind ? ` ${data.ev.kind}` : ''}${data.ev.code ? ` ${data.ev.code}` : ''}${data.ev.name ? ` ${data.ev.name}` : ''}` : eventText({ t: 0, kind, ...small(scrub(data)) }); } catch (_) { text = kind; }
+      if (text) this.diag.note(kind, text.slice(0, 500), !!(data && data.bad) || (kind === 'console' && data && data.level === 'error'));
+    }
+    if (this.current && this.busy !== 'starting') this.trace.add(kind, data);
+  }
   // The app's state was sent to the window: what changed in it is noted.
   state(s) {
-    if (!this.current) return;
+    if (!this.current && !this.diag) return;
     const brief = stateBrief(s);
     const diff = briefChanges(this.lastBrief, brief);
     this.lastBrief = brief;
@@ -537,4 +558,4 @@ class Troubleshoot {
   }
 }
 
-module.exports = { Troubleshoot, MAX_MS, STATES, TYPES };
+module.exports = { Troubleshoot, MAX_MS, STATES, TYPES, scrub };

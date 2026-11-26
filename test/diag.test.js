@@ -128,9 +128,9 @@ test('the report and the brief say the worst in words', () => {
   const text = report(snap, { title: 'Under the hood, during the recording', t0: 1000000 });
   assert.match(text, /^## Under the hood, during the recording/);
   assert.match(text, /PC: 16 threads, 32 GB memory/);
-  assert.match(text, /\| Main process \| 2% \| 2% \| 400 MB \| 400 MB \|/);
+  assert.match(text, /\| Main process \| 2% \| 2% \| 400 MB at 00:00\.0 \| 400 MB \| 400 MB \|/);
   assert.match(text, /- main process: 1 time, 320 ms in all, the longest 320 ms at 00:02\.0\./);
-  assert.match(text, /\| price check: from the key to the answer \| 1 \| 3100 ms \| 3100 ms \| 3100 ms \| 1 \| 2500 ms \|/);
+  assert.match(text, /\| price check: from the key to the answer \| 1 \| 3100 ms \| 3100 ms \| 3100 ms \| 1 \| 2500 ms \| - \| gear \|/);
   assert.match(text, /00:00\.0 {2}slow {3}price check: from the key to the answer took 3100 ms \(limit 2500 ms\) {2}gear/);
   assert.match(text, /00:02\.0 {2}FROZE {2}main process for 320 ms/);
   assert.match(text, /web: trade site, search: answered 429/);
@@ -203,4 +203,103 @@ test('a recording takes its own numbers along: only what happened while it ran, 
   assert.ok(t.details(rid).hood.slowest.some((j) => j.name === 'after the recording'));
   assert.match(t.hoodText(rid), /## Under the hood, from the start of the app to this report/);
   assert.strictEqual(t.hoodText('20260101-000000-nobody'), '');
+});
+
+test('what happened: a line for each job worth one, with its outcome; quick routine ones are only counted', async () => {
+  const { d, go } = clocked();
+  d.time('state update: put together', 0.4);                 // quick and routine: no line
+  d.time('main process: heartbeat came late by', 30);        // never a line
+  d.time('price check: search (waiting included)', 0.4, 'failed: the trade site asked for a pause'); // set off by you: always a line
+  d.time('inventory: capture of the screen', 510, '1920x1080');
+  await assert.rejects(d.run('web: poe.ninja', async () => { go(40); throw new Error('no answer'); }));
+  d.note('hotkey', 'App key Ctrl+D (priceCheck)');
+  d.note('notice', 'No item under the mouse', true);
+  d.error('main window', 'x is not defined');
+  const s = d.snapshot();
+  assert.deepStrictEqual(s.log.map((l) => [l.kind, l.text, l.detail || '', !!l.bad]), [
+    ['job', 'price check: search (waiting included)', 'failed: the trade site asked for a pause', false],
+    ['slow', 'inventory: capture of the screen', '1920x1080', true],
+    ['failed', 'web: poe.ninja', 'failed: no answer', true],
+    ['hotkey', 'App key Ctrl+D (priceCheck)', '', false],
+    ['notice', 'No item under the mouse', '', true],
+    ['error', 'main window: x is not defined', '', true],
+  ]);
+  const web = s.jobs.find((j) => j.name === 'web: poe.ninja');
+  assert.deepStrictEqual([web.failed, web.lastDetail], [1, 'failed: no answer']);
+  assert.strictEqual(s.jobs.find((j) => j.name === 'state update: put together').n, 1);
+  const text = report(s);
+  assert.match(text, /### What happened, newest last/);
+  assert.match(text, /failed {2}web: poe\.ninja {2}40 ms {2}failed: no answer/);
+  assert.match(text, /\| web: poe\.ninja \| 1 \| 40 ms \| 40 ms \| 40 ms \| - \| 2000 ms \| 1 \| failed: no answer \|/);
+});
+
+test('a freeze names the job the app was in the middle of, and a job still going is listed as running', () => {
+  const { d, go } = clocked();
+  const done = d.start('inventory: asking Windows for the screen', '1920x1080');
+  go(300);
+  d.stall('main process', 280);
+  const s = d.snapshot();
+  assert.strictEqual(s.slow[0].detail, 'in the middle of: inventory: asking Windows for the screen (started 300 ms before)');
+  assert.deepStrictEqual(s.running.map((r) => [r.name, r.ms, r.detail]), [['inventory: asking Windows for the screen', 300, '1920x1080']]);
+  assert.match(report(s), /### Running when this was written\n\n- inventory: asking Windows for the screen: started 300 ms ago \(1920x1080\)/);
+  go(200);
+  assert.strictEqual(done('1 picture came back'), 500);
+  assert.strictEqual(done('again'), 0); // told twice: counted once
+  assert.strictEqual(d.snapshot().running.length, 0);
+  assert.strictEqual(d.snapshot().jobs[0].n, 1);
+});
+
+test('the longest freezes are kept however many follow; counts, sizes and facts are in the report', () => {
+  const { d, go } = clocked();
+  d.stall('main process', 1859);
+  for (let i = 0; i < 600; i++) { go(100); d.stall('main process', 100 + (i % 50)); }
+  d.count('inventory: not read, another program was in front'); d.count('inventory: not read, another program was in front');
+  d.gauge('Items named on this PC', 400); d.gauge('Items named on this PC', 412);
+  d.facts.Screens = '1920x1080 at scale 1'; d.facts.settings = { league: 'Standard' };
+  d.sample({ cpu: 1, mem: 300, parts: [{ name: 'Main process', cpu: 1, mem: 200 }] }); go(5000);
+  d.sample({ cpu: 1, mem: 340, parts: [{ name: 'Main process', cpu: 1, mem: 240 }] }); go(5000);
+  d.sample({ cpu: 1, mem: 380, parts: [{ name: 'Main process', cpu: 1, mem: 280 }] });
+  const s = d.snapshot();
+  assert.strictEqual(s.worst[0].ms, 1859);
+  assert.strictEqual(s.worst.length, 8);
+  assert.strictEqual(s.slow.length, 400);
+  const text = report(s);
+  assert.match(text, /The longest:\n\n```\n\d\d:\d\d:\d\d {2}main process for 1859 ms/);
+  assert.match(text, /- inventory: not read, another program was in front: 2 \(last at/);
+  assert.match(text, /- Items named on this PC: 412 now, 400 when first measured, 412 at most\./);
+  assert.match(text, /- Screens: 1920x1080 at scale 1/);
+  assert.match(text, /### Settings\n\n```json\n\{"league":"Standard"\}/);
+  assert.match(text, /Memory over time, MB:[\s\S]*\| 300 \| 200 \|[\s\S]*\| 380 \| 280 \|/);
+  assert.match(text, /\| Main process \| 1% \| 1% \| 200 MB at/);
+  d.reset();
+  assert.strictEqual(d.facts.Screens, '1920x1080 at scale 1'); // what PC this is survives starting over
+});
+
+test('what the app does goes to "what happened" recording or not; your keys, chat and anything secret do not', () => {
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const { Troubleshoot, scrub } = require('../src/troubleshoot');
+  const d = new Diag();
+  const t = new Troubleshoot({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'poeapp-note-')), recorder: {}, displayId: () => null, version: 'x', cloud: {}, fetchImpl: null, snapshot: async () => ({}), who: () => ({}), diag: d });
+  t.event('key', { dir: 'down', key: 'A' });
+  t.event('mouse', { dir: 'down', button: 'left', x: 1, y: 2 });
+  t.event('log', { line: '2026/11/26 01:00:00 1 a [INFO] @From Someone: hi there' });                 // chat: not kept
+  t.event('log', { line: '2026/11/26 01:00:01 1 a [INFO] : You have entered Strand.', ev: { type: 'area', kind: 'map', code: 'MapWorldsStrand' } });
+  t.event('hotkey', { job: 'priceCheck', key: 'Ctrl+D' });
+  t.event('action', { type: 'endRun' });
+  t.event('setting', { league: 'Standard', shareToken: 'abc123' });
+  t.event('notice', { text: 'Could not read the log', bad: true });
+  t.state({ status: { log: { ok: true } }, summary: { runs: [] } });
+  t.state({ status: { log: { ok: true } }, summary: { runs: [] } }); // nothing changed: no line
+  const log = d.snapshot().log;
+  assert.deepStrictEqual(log.slice(0, 5).map((l) => [l.kind, l.text, !!l.bad]), [
+    ['log', 'area map MapWorldsStrand', false],
+    ['hotkey', 'App key Ctrl+D (priceCheck)', false],
+    ['action', 'Pressed in the app: endRun', false],
+    ['setting', 'Setting changed: {"league":"Standard","shareToken":"(hidden)"}', false],
+    ['notice', 'Could not read the log', true],
+  ]);
+  assert.strictEqual(log.length, 6);
+  assert.strictEqual(log[5].kind, 'state');
+  assert.ok(!JSON.stringify(log).includes('abc123') && !JSON.stringify(log).includes('hi there'));
+  assert.deepStrictEqual(scrub({ a: { password: 'p', name: 'n' }, list: [{ token: 't' }] }), { a: { password: '(hidden)', name: 'n' }, list: [{ token: '(hidden)' }] });
 });

@@ -4,7 +4,10 @@
 // part of the app, and of the PC), a freeze meter for the main process, what the windows report
 // about themselves, and errors nobody was told about. See "Under the hood" in CLAUDE.md.
 const os = require('os');
-const { app, webContents } = require('electron');
+const fs = require('fs');
+const path = require('path');
+const zlib = require('zlib');
+const { app, webContents, screen } = require('electron');
 const { performance } = require('perf_hooks');
 const { Diag } = require('./core/diag');
 
@@ -14,6 +17,8 @@ const SAMPLE_MS = 5000;
 const BEAT_MS = 250;      // the freeze meter looks this often
 const FREEZE_MS = 60;     // later than this counts as a freeze
 const ASLEEP_MS = 30000;  // later than this was the PC sleeping, not the app
+const SIZES_EVERY = 6;    // the app's list sizes: every sixth usage reading (half a minute)
+const KEEP_EVERY = 12;    // written to disk: every twelfth (a minute)
 
 // The windows, by the page they show.
 const PAGES = {
@@ -55,21 +60,77 @@ function pcCpu() {
 }
 
 let sampleTimer = null, beatTimer = null;
-let onSample = null;
+let onSample = null, sizesOf = null, keepDir = '', readings = 0;
 function sampleNow() {
   const done = diag.start('under the hood: usage reading');
   try {
     const parts = partsNow();
     const s = { cpu: parts.reduce((n, p) => n + p.cpu, 0), mem: parts.reduce((n, p) => n + p.mem, 0), pcCpu: pcCpu(), pcFree: os.freemem() / 1048576, parts };
     diag.sample(s);
+    // Inside the main process: what its own code holds (heap), and what it holds outside it
+    // (pictures, files read). Memory that only ever grows shows here first.
+    const m = process.memoryUsage(), mb = (n) => Math.round(n / 1048576);
+    diag.gauge('Main process: its own data', mb(m.heapUsed), 'MB');
+    diag.gauge('Main process: pictures and file data', mb(m.external), 'MB');
+    if (process.getActiveResourcesInfo) diag.gauge('Main process: timers and open connections', process.getActiveResourcesInfo().length, '');
+    diag.gauge('Windows open', webContents.getAllWebContents().length, '');
+    if (readings % SIZES_EVERY === 0) {
+      if (sizesOf) for (const [name, n] of Object.entries(sizesOf() || {})) diag.gauge(name, Number(n) || 0, '');
+      diag.facts['Screens'] = screensNow();
+      diag.facts['Running for'] = `${Math.round(process.uptime() / 60)} min`;
+    }
+    if (readings % KEEP_EVERY === KEEP_EVERY - 1) keep();
+    readings++;
     if (onSample) onSample(s);
   } catch (e) { diag.error('under the hood', e.message || String(e)); }
   done();
 }
-// sampled(s): told about each usage reading (a recording keeps them).
-function start({ sampled } = {}) {
+function screensNow() {
+  try { return screen.getAllDisplays().map((d) => `${d.size.width}x${d.size.height} at scale ${d.scaleFactor}${d.displayFrequency ? `, ${Math.round(d.displayFrequency)} Hz` : ''}`).join('; '); } catch (_) { return ''; }
+}
+
+// ---- kept on disk, for after a crash ----
+// The numbers of this run are written once a minute (in the background) and when the app
+// closes. At the next start that file becomes "the run before": what the app was doing before
+// it closed, or before it crashed (then the file has no "closed normally" in it).
+const fileNow = () => path.join(keepDir, 'this-run.json.gz');
+const fileLast = () => path.join(keepDir, 'the-run-before.json.gz');
+let keeping = false;
+function keep() {
+  if (!keepDir || keeping) return;
+  keeping = true;
+  const done = diag.start('under the hood: kept on disk');
+  zlib.gzip(Buffer.from(JSON.stringify(diag.snapshot())), (err, data) => {
+    if (err) { keeping = false; done('failed', false, true); return; }
+    fs.promises.writeFile(`${fileNow()}.tmp`, data).then(() => fs.promises.rename(`${fileNow()}.tmp`, fileNow())).then(() => done(`${Math.round(data.length / 1024)} KB`, false), () => done('failed', false, true)).finally(() => { keeping = false; });
+  });
+}
+function keepAtQuit() {
+  if (!keepDir) return;
+  try { fs.writeFileSync(fileNow(), zlib.gzipSync(Buffer.from(JSON.stringify({ ...diag.snapshot(), ended: 'closed normally' })))); } catch (_) { /* closing anyway */ }
+}
+const hasLastRun = () => { try { return !!keepDir && fs.existsSync(fileLast()); } catch (_) { return false; } };
+function lastRun() {
+  try { return JSON.parse(zlib.gunzipSync(fs.readFileSync(fileLast()))); } catch (_) { return null; }
+}
+// sampled(s): told about each usage reading (a recording keeps them). sizes(): the app's own
+// list sizes, asked for every half minute. dir: where the run's numbers are kept on disk.
+function start({ sampled, sizes, dir } = {}) {
   if (sampleTimer) return;
   onSample = sampled || null;
+  sizesOf = sizes || null;
+  keepDir = dir || '';
+  if (keepDir) {
+    try { fs.mkdirSync(keepDir, { recursive: true }); if (fs.existsSync(fileNow())) fs.renameSync(fileNow(), fileLast()); } catch (_) { keepDir = ''; }
+  }
+  const v = process.versions;
+  Object.assign(diag.facts, {
+    'App': `${require('../package.json').version}${app.isPackaged ? ', installed' : ', run from its folder'}`,
+    'Built on': `Electron ${v.electron}, Chrome ${v.chrome}, Node ${v.node}`,
+    'Started': new Date(Date.now() - process.uptime() * 1000).toISOString(),
+    'Screens': screensNow(),
+  });
+  try { const g = app.getGPUFeatureStatus(); diag.facts['Graphics'] = `drawing ${g.gpu_compositing || '?'}, video ${g.video_decode || '?'} / ${g.video_encode || '?'}`; } catch (_) { /* not told */ }
   const cpus = os.cpus();
   diag.pc = `${cpus.length} threads (${(cpus[0] && cpus[0].model.trim()) || 'unknown processor'}), ${Math.round(os.totalmem() / 1073741824)} GB memory, ${os.type()} ${os.release()}`;
   pcCpu();
@@ -82,7 +143,9 @@ function start({ sampled } = {}) {
   beatTimer = setInterval(() => {
     const now = performance.now(), late = now - due;
     due = now + BEAT_MS;
-    if (late >= FREEZE_MS && late < ASLEEP_MS) diag.stall('main process', late);
+    if (late >= ASLEEP_MS) { diag.note('pc', `The PC slept, or the app was held, for ${Math.round(late / 1000)} s`); return; }
+    diag.time('main process: heartbeat came late by', Math.max(0, late)); // every beat: shows how smooth it is between freezes
+    if (late >= FREEZE_MS) diag.stall('main process', late);
   }, BEAT_MS);
   for (const t of [sampleTimer, beatTimer]) if (t.unref) t.unref();
   // Errors that would otherwise only be in a console nobody sees. Only watched, never swallowed.
@@ -91,7 +154,7 @@ function start({ sampled } = {}) {
   app.on('render-process-gone', (_e, wc, d) => diag.error(`${pageOf(wc)} stopped`, `${d.reason}${d.exitCode ? ` (code ${d.exitCode})` : ''}`));
   app.on('child-process-gone', (_e, d) => diag.error(`${d.name || d.serviceName || d.type} stopped`, `${d.reason}${d.exitCode ? ` (code ${d.exitCode})` : ''}`));
 }
-function stop() { clearInterval(sampleTimer); clearInterval(beatTimer); sampleTimer = beatTimer = null; }
+function stop() { clearInterval(sampleTimer); clearInterval(beatTimer); sampleTimer = beatTimer = null; keepAtQuit(); }
 
 // What a window says about itself (preload: api.hood): { times: [[name, ms]], long: [ms], errors: [text] }.
 // Nothing in it is trusted further than a number and a short name.
@@ -106,6 +169,10 @@ function pageNews(wc, d) {
   }
   for (const v of Array.isArray(d.long) ? d.long.slice(0, 100) : []) { const ms = Number(v); if (ms >= FREEZE_MS && ms < ASLEEP_MS) diag.stall(where, ms); }
   for (const e of Array.isArray(d.errors) ? d.errors.slice(0, 20) : []) diag.error(where, String(e));
+  if (d.sizes && typeof d.sizes === 'object') {
+    if (Number(d.sizes.heap) >= 0 && d.sizes.heap !== null) diag.gauge(`${page}: its own data`, Math.round(Number(d.sizes.heap)), 'MB');
+    if (Number(d.sizes.nodes) >= 0) diag.gauge(`${page}: things on the page`, Math.round(Number(d.sizes.nodes)), '');
+  }
 }
 
 // A web request, for http.js: named by where it goes, so the table reads "web: trade site, search".
@@ -122,4 +189,4 @@ function webName(url) {
   return { name: `web: ${name}`, path: p.length > 80 ? `${p.slice(0, 80)}…` : p };
 }
 
-module.exports = { diag, start, stop, pageNews, webName, SAMPLE_MS };
+module.exports = { diag, start, stop, pageNews, webName, lastRun, hasLastRun, SAMPLE_MS };

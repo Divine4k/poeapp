@@ -84,12 +84,27 @@ function hoodDraw() {
     : '<li class="empty">Nothing was slow and nothing froze.</li>');
   // ---- every job ----
   const q = $('hd-filter').value.trim().toLowerCase();
-  const by = { total: (j) => j.total, max: (j) => j.max, n: (j) => j.n, usual: (j) => j.usual, last: (j) => j.lastAt, over: (j) => j.over }[hdSort];
+  const by = { total: (j) => j.total, max: (j) => j.max, n: (j) => j.n, usual: (j) => j.usual, last: (j) => j.lastAt, over: (j) => j.over, failed: (j) => j.failed || 0 }[hdSort];
   const jobs = s.jobs.filter((j) => !q || j.name.toLowerCase().includes(q)).sort((a, b) => by(b) - by(a));
   const th = (key, label, tip) => `<th class="num"><button type="button" class="link${hdSort === key ? ' on' : ''}" data-hdsort="${key}" title="${esc(tip)}">${label}</button></th>`;
-  setHtml($('hd-jobs'), jobs.length ? `<table class="hd-table hd-jobtable"><thead><tr><th>Job</th>${th('n', 'Times', 'How often it ran')}${th('usual', 'Usual', 'Half of the runs were quicker than this')}<th class="num" title="19 of 20 runs were quicker than this">Slow end</th>${th('max', 'Worst', 'The slowest run')}${th('last', 'Last', 'The latest run')}${th('total', 'In all', 'All runs added up')}${th('over', 'Slow', 'Runs that went over the limit')}</tr></thead><tbody>${
-    jobs.map((j) => `<tr class="${j.over ? 'slow' : ''}"><td>${esc(j.name)}</td><td class="num">${j.n}</td><td class="num">${hdMs(j.usual)}</td><td class="num dim">${hdMs(j.slowEnd)}</td><td class="num${j.max >= j.limit ? ' over' : ''}" title="at ${hdClock(j.maxAt)}">${hdMs(j.max)}</td><td class="num dim" title="${hdAgo(j.lastAt, now)}">${hdMs(j.last)}</td><td class="num dim">${hdMs(j.total)}</td><td class="num${j.over ? ' over' : ' dim'}" title="Slow from ${hdMs(j.limit)}">${j.over || '–'}</td></tr>`).join('')
+  setHtml($('hd-jobs'), jobs.length ? `<table class="hd-table hd-jobtable"><thead><tr><th>Job</th>${th('n', 'Times', 'How often it ran')}${th('usual', 'Usual', 'Half of the runs were quicker than this')}<th class="num" title="19 of 20 runs were quicker than this">Slow end</th>${th('max', 'Worst', 'The slowest run')}${th('last', 'Last', 'The latest run')}${th('total', 'In all', 'All runs added up')}${th('over', 'Slow', 'Runs that went over the limit')}${th('failed', 'Failed', 'Runs that ended in an error')}<th>Last outcome</th></tr></thead><tbody>${
+    jobs.map((j) => `<tr class="${j.over ? 'slow' : ''}"><td>${esc(j.name)}</td><td class="num">${j.n}</td><td class="num">${hdMs(j.usual)}</td><td class="num dim">${hdMs(j.slowEnd)}</td><td class="num${j.max >= j.limit ? ' over' : ''}" title="at ${hdClock(j.maxAt)}">${hdMs(j.max)}</td><td class="num dim" title="${hdAgo(j.lastAt, now)}">${hdMs(j.last)}</td><td class="num dim">${hdMs(j.total)}</td><td class="num${j.over ? ' over' : ' dim'}" title="${j.limit >= 1e9 ? 'No limit of its own: a late one counts as a freeze' : `Slow from ${hdMs(j.limit)}`}">${j.over || '–'}</td><td class="num${j.failed ? ' over' : ' dim'}">${j.failed || '–'}</td><td class="hd-last dim">${esc(j.lastDetail || '')}</td></tr>`).join('')
   }</tbody></table>` : `<p class="dim">${q ? 'No job with that in its name.' : 'Nothing has been timed yet.'}</p>`);
+  // ---- running right now ----
+  const run = (s.running || []).filter((r) => r.ms >= 300);
+  $('hd-running').hidden = !run.length;
+  $('hd-running').textContent = run.length ? `Under way right now: ${run.map((r) => `${r.name} (for ${hdMs(r.ms)})`).join(', ')}` : '';
+  $('hd-copylast').hidden = !s.lastRun;
+  // ---- what happened ----
+  const lq = $('hd-logfilter').value.trim().toLowerCase(), onlyBad = $('hd-logbad').checked;
+  const log = (s.log || []).filter((l) => (!onlyBad || l.bad) && (!lq || `${l.kind} ${l.text} ${l.detail || ''}`.toLowerCase().includes(lq))).slice(-250).reverse();
+  $('hd-lognote').textContent = `newest first · ${s.logAll || (s.log || []).length} lines so far, all of them in the copy`;
+  setHtml($('hd-log'), log.length ? log.map((l) => `<li class="${l.bad ? 'bad' : ''}"><time>${hdClock(l.at)}</time><i>${esc(l.kind)}</i><span>${esc(l.text)}${l.detail ? ` <small>${esc(l.detail)}</small>` : ''}</span><b>${l.ms != null ? hdMs(l.ms) : ''}</b></li>`).join('') : `<li class="empty">${lq || onlyBad ? 'Nothing like that.' : 'Nothing yet.'}</li>`);
+  // ---- counts and sizes ----
+  setHtml($('hd-counts'), `<table class="hd-table"><tbody>${
+    (s.counts || []).map((c) => `<tr><td>${esc(c.name)}</td><td class="num">${c.n}</td><td class="num dim">${hdAgo(c.at, now)}</td></tr>`).join('')
+  }${s.gauges.map((g) => `<tr><td>${esc(g.name)}</td><td class="num">${g.value}${g.unit ? ` ${esc(g.unit)}` : ''}</td><td class="num dim" title="When first measured, and the most">${g.first != null && g.first !== g.value ? `was ${g.first}` : ''}${g.peak > g.value ? ` · most ${g.peak}` : ''}</td></tr>`).join('')}</tbody></table>`);
+  setHtml($('hd-facts'), [['PC', s.pc], ...Object.entries(s.facts || {}).filter(([k]) => k !== 'settings')].filter(([, v]) => v).map(([k, v]) => `<li><b>${esc(k)}</b><span>${esc(typeof v === 'string' ? v : JSON.stringify(v))}</span></li>`).join(''));
   // ---- errors ----
   setHtml($('hd-errors'), s.errors.length ? s.errors.slice().reverse().map((e) => `<li><time>${hdClock(e.at)}</time><span><b>${esc(e.where)}${e.n > 1 ? ` ×${e.n}` : ''}</b><small>${esc(e.text)}</small></span></li>`).join('') : '<li class="empty">No errors.</li>');
 }
@@ -98,11 +113,14 @@ $('tab-hood').addEventListener('click', async (e) => {
   const sort = e.target.closest('[data-hdsort]');
   if (sort) { hdSort = sort.dataset.hdsort; hoodDraw(); return; }
   if (e.target.closest('#hd-reset')) { hdBusy = false; hoodLoad('reset'); return; }
-  const copy = e.target.closest('#hd-copy');
+  const copy = e.target.closest('#hd-copy, #hd-copylast');
   if (copy) {
-    const ok = await api.hood({ op: 'copy' });
+    const was = copy.textContent;
+    const ok = await api.hood({ op: copy.id === 'hd-copylast' ? 'copyLast' : 'copy' });
     copy.textContent = ok ? 'Copied' : 'Could not copy';
-    setTimeout(() => { copy.textContent = 'Copy for Claude'; }, 1800);
+    setTimeout(() => { copy.textContent = was; }, 1800);
   }
 });
 $('hd-filter').addEventListener('input', hoodDraw);
+$('hd-logfilter').addEventListener('input', hoodDraw);
+$('hd-logbad').addEventListener('change', hoodDraw);
