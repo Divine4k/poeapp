@@ -197,7 +197,7 @@
       items.sort((p, q) => (q.value.chaos === null ? -1 : q.value.chaos) - (p.value.chaos === null ? -1 : p.value.chaos));
       const cells = {}; for (const u of items) cells[`${u.x},${u.y}`] = u.id;
       await new Promise((r) => setTimeout(r, 600));
-      return { last: { at: Date.now(), account: a.account || 'Name#1234', league: 'Keepers', total: items.length, items, tabs: [{ name: 'Ultimatum', kind: 'slots', cols: 12, rows: 5, cells, count: items.length, shape: 'x 0-59, y 0-0' }] }, busy: false, league: 'Keepers' };
+      return { last: { at: Date.now(), account: a.account || 'Name#1234', league: 'Keepers', total: items.length, items, tabs: [{ name: 'Ultimatum', kind: 'slots', cols: 12, rows: 5, cells, count: items.length, shape: 'x 0-59, y 0-0' }, { name: 'MAPS', kind: 'grid', cols: 12, rows: 12, cells: { '0,0': 'u1', '1,0': 'u2', '0,1': 'u3', '5,7': 'u4' }, count: 4, shape: 'x 0-5, y 0-7' }] }, busy: false, league: 'Keepers' };
     },
     setConfig: async (patch) => { merge(state.config, patch); listener(state); return true; },
     action: async (a) => {

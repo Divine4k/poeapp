@@ -3,7 +3,7 @@
 // the trade site by account name, valued by what it gives and shown where it lies in the tab.
 // Part of the main window script: all files in src/ui/app/ share one scope, loaded in the order of index.html.
 
-const ul = { account: '', keep: 20, last: null, busy: false, progress: null, error: '', asked: false, hot: '', found: '', tab: 0, byId: new Map(), byIdOf: null };
+const ul = { account: '', keep: 20, last: null, busy: false, progress: null, error: '', asked: false, hot: '', found: '', byId: new Map(), byIdOf: null };
 // The account name and the light-up value are kept in this window, like the Jewels page's choices.
 try {
   const kept = JSON.parse(localStorage.getItem('ultimatum') || 'null') || {};
@@ -82,24 +82,23 @@ function ulDetailHtml() {
   </div>`;
 }
 
-// The catalyst slots above the Ultimatums in the game's Ultimatum tab: only there to make the
-// picture look like the tab, they hold nothing.
-const UL_CATS = '<div class="ul-cats" aria-hidden="true"><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i><i></i></div><div><i></i><i></i><i></i><i class="gap"></i><i></i><i></i></div></div>';
+// Every stash tab that holds Ultimatums is drawn on its own, one under the other, the fullest
+// first. A tab without any is never drawn (the site only tells of the tabs they lie in), and
+// of the game's Ultimatum tab only the slots for Ultimatums are drawn, not its catalyst slots.
 function ulTabsHtml() {
   const r = ul.last;
   if (!r || !r.items.length) return '';
   if (!r.tabs.length) return '<p class="empty">The trade site did not say where they lie in the tab.</p>';
-  const t = r.tabs[Math.min(ul.tab, r.tabs.length - 1)];
-  const pick = r.tabs.length > 1 ? `<div class="ul-pick">${r.tabs.map((x, i) => `<button type="button" class="small" data-ul-tab="${i}" aria-pressed="${x === t}">${esc(x.name || 'Stash tab')} <small>${x.count}</small></button>`).join('')}</div>` : '';
-  let cells = '';
-  for (let y = 0; y < t.rows; y++) for (let x = 0; x < t.cols; x++) {
-    const u = ul.byId.get(t.cells[`${x},${y}`]);
-    if (!u) { cells += '<i></i>'; continue; }
-    const w = ulWorth(u);
-    cells += `<i class="has${ulKept(u) ? ' keep' : ''}${w === null ? ' blind' : ''}${u.id === ul.found ? ' found' : ''}" data-id="${esc(u.id)}"><b></b><span>${ulShort(w)}</span></i>`;
-  }
-  const special = t.kind === 'slots';
-  return `${pick}<div class="ul-stash"><div class="ul-stash-top"><b>${esc(t.name || 'Stash tab')}</b><span>${t.count} here, as they lie in game</span></div>${special ? UL_CATS : ''}<div class="ul-grid c${t.cols}">${cells}</div></div>`;
+  return r.tabs.map((t) => {
+    let cells = '';
+    for (let y = 0; y < t.rows; y++) for (let x = 0; x < t.cols; x++) {
+      const u = ul.byId.get(t.cells[`${x},${y}`]);
+      if (!u) { cells += '<i></i>'; continue; }
+      const w = ulWorth(u);
+      cells += `<i class="has${ulKept(u) ? ' keep' : ''}${w === null ? ' blind' : ''}${u.id === ul.found ? ' found' : ''}" data-id="${esc(u.id)}"><b></b><span>${ulShort(w)}</span></i>`;
+    }
+    return `<div class="ul-stash"><div class="ul-stash-top"><b>${esc(t.name || 'Stash tab')}</b><span>${t.count} here, as they lie in game</span></div><div class="ul-grid c${t.cols}">${cells}</div></div>`;
+  }).join('');
 }
 function ulStatsHtml() {
   const r = ul.last;
@@ -179,8 +178,6 @@ $('ul-body').addEventListener('pointerleave', () => ulHot(''));
 // to the game and types the search for it into the stash's search box (the stash must be
 // open). The one click is the user's; the one last asked for stays marked on the page.
 $('tab-ultimatum').addEventListener('click', (e) => {
-  const tab = e.target.closest('[data-ul-tab]');
-  if (tab) { ul.tab = Number(tab.dataset.ulTab); ulDraw(); return; }
   const btn = e.target.closest('[data-ul-find]');
   const el = btn || e.target.closest('.ul-row[data-id], i[data-id]');
   const u = el && ulById(btn ? btn.dataset.ulFind : el.dataset.id);
