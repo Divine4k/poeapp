@@ -80,6 +80,8 @@ function readFilters(json) {
   const groups = [];
   for (const g of (json && Array.isArray(json.result) ? json.result : [])) {
     if (!g || typeof g.id !== 'string' || !/^[a-z_]+$/.test(g.id) || !Array.isArray(g.filters)) continue;
+    // Who sells is the choice beside the item name (the query's own `status`), not a group.
+    if (g.id === 'status_filters') continue;
     const filters = [];
     for (const f of g.filters) {
       if (!f || typeof f.id !== 'string' || !/^[a-z0-9_.]+$/i.test(f.id)) continue;
@@ -92,7 +94,9 @@ function readFilters(json) {
       else if (f.minMax) filters.push({ ...base, kind: 'range' });
       else filters.push({ ...base, kind: 'text' });
     }
-    groups.push({ id: g.id, title: text(g.title || g.id), filters, open: g.id === 'type_filters' });
+    // A group the site sends without a title gets one from its id: misc_filters -> Misc Filters.
+    const title = text(g.title) || g.id.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    groups.push({ id: g.id, title, filters, open: g.id === 'type_filters' });
   }
   return groups.length ? groups : null;
 }

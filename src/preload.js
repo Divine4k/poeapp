@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('api', {
   // the Trade page's Search: { op: 'get' | 'items' | 'stats' | 'search' | 'more' | 'whisper' | 'travel' | 'want' | 'open' | 'save' | 'unsave' | 'signin' | 'signout' }
   tradeFind: (a) => ipcRenderer.invoke('trade-find', a),
   onTradeFindNews: (cb) => ipcRenderer.on('trade-find-news', () => cb()),
+  // a search to open on the Trade page, Search (from the price check window)
+  onTradeFindOpen: (cb) => ipcRenderer.on('trade-find-open', (_e, form) => cb(form)),
   savedSession: (id) => ipcRenderer.invoke('saved-session', id),
   priceCategories: () => ipcRenderer.invoke('price-categories'),
   priceList: (a) => ipcRenderer.invoke('price-list', a),

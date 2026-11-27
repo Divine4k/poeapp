@@ -262,3 +262,26 @@ test('why a live connection closed is said plainly', () => {
   assert.equal(L.closeWords(4000, 'Too many live searches'), 'Too many live searches');
   assert.match(L.closeWords(1008, ''), /refused/);
 });
+
+test('the site\'s status group is left out, and a group without a title gets one', () => {
+  const g = F.readFilters({ result: [{ id: 'status_filters', filters: [{ id: 'status', option: { options: [{ id: 'online', text: 'Online' }] } }] }, { id: 'misc_filters', filters: [{ id: 'ilvl', minMax: true }] }] });
+  assert.deepEqual(g.map((x) => [x.id, x.title]), [['misc_filters', 'Misc Filters']]);
+});
+
+test('the price check\'s search opens as a Search form with every filter filled in', () => {
+  const life = index.byRef.get(LIFE).ids;
+  const body = { query: { status: { option: 'securable' }, name: 'Nimis', type: 'Topaz Ring',
+    filters: { type_filters: { filters: { category: { option: 'accessory.ring' }, rarity: { option: 'unique' } } }, misc_filters: { filters: { ilvl: { min: 84 }, corrupted: { option: false } } }, trade_filters: { disabled: true, filters: { price: { max: 5 } } } },
+    stats: [{ type: 'and', filters: [{ id: life.explicit[0], value: { min: 70 } }, { id: life.crafted[0], disabled: true }, { id: 'explicit.stat_nope' }] }, { type: 'count', value: { min: 1 }, filters: [{ id: life.implicit[0] }] }] }, sort: { price: 'asc' } };
+  const { form, unknown } = T.formFromQuery(body, index);
+  assert.equal(unknown, 1);
+  assert.equal(form.seller, 'securable');
+  assert.deepEqual(form.item, { label: 'Nimis Topaz Ring', name: 'Nimis', type: 'Topaz Ring', disc: '' });
+  assert.deepEqual(form.filters, { type_filters: { category: { option: 'accessory.ring' }, rarity: { option: 'unique' } }, misc_filters: { ilvl: { min: 84 }, corrupted: { option: 'false' } } });
+  assert.deepEqual(form.groups.map((g) => [g.type, g.min, g.stats.map((s) => [s.ref, s.kind, s.min, s.off])]), [['and', '', [[LIFE, 'explicit', 70, false], [LIFE, 'crafted', '', true]]], ['count', 1, [[LIFE, 'implicit', '', false]]]]);
+  // Built again, it asks the site the same things.
+  const again = T.buildFind(form, index).body.query;
+  assert.deepEqual(again.stats[0].filters[0], { id: life.explicit[0], value: { min: 70 } });
+  assert.deepEqual(again.filters.misc_filters, { filters: { ilvl: { min: 84 }, corrupted: { option: 'false' } } });
+  assert.equal(T.formFromQuery({ query: { term: 'Headhunter' } }, index).form.text, 'Headhunter');
+});

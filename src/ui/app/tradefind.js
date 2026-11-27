@@ -4,7 +4,7 @@
 // group of the trade site as a folding bar with one row per filter (name left, value right),
 // stat filters last ("+ Add stat filter", "+ Add stat group"), and the buttons in a bar that
 // stays at the bottom. Two tabs as in game: Search and Bulk exchange.
-// What the game's market does not have: **live search** (as on the website, signed in): any
+// What the game's market does not have: **Live search** (as on the website, signed in): any
 // search is watched, each new listing comes into a feed with a sound and a toast over the game,
 // several at once. The right side shows the feed or the last search.
 // The search, its answer, the filter list, live searches and the sign-in live in the main
@@ -156,7 +156,7 @@ function tfDrawFoot() {
   const full = live && live.searches.length >= live.max;
   const html = `<div class="tf-go">
       <button type="submit" form="tf-form" class="primary" id="tf-search"${tf.busy ? ' disabled' : ''}>${tf.busy === 'search' ? 'Searching…' : 'Search'}</button>
-      ${items ? `<button type="button" class="tf-golive" data-tfact="live"${tf.busy || full ? ' disabled' : ''} title="${signed ? 'Watch this search: every new listing that matches comes in at once, with a sound and a note over the game' : 'Live search needs the sign-in to the trade site, as on the website'}"><i></i>${tf.busy === 'live' ? 'Starting…' : 'Go live'}</button>` : ''}
+      ${items ? `<button type="button" class="tf-golive" data-tfact="live"${tf.busy || full ? ' disabled' : ''} title="${signed ? 'Watch this search: every new listing that matches comes in at once, with a sound and a note over the game' : 'Live search needs the sign-in to the trade site, as on the website'}"><i></i>${tf.busy === 'live' ? 'Starting…' : 'Live search'}</button>` : ''}
       <button type="button" data-tfact="save" title="Save this search">Save</button>
       <button type="button" data-tfact="reset" title="Clear every filter">Clear</button>
     </div>
@@ -288,7 +288,7 @@ function tfDrawResults() {
   const l = v && v.last;
   if (!l) {
     setHtml(box, `${err}<div class="tf-hello"><h3>Search the trade site</h3><p>Fill in the filters on the left and press Search. The site allows only a few searches a minute, so nothing is sent while you type.</p>
-      <p><b>Go live</b> watches a search for you: every new listing that matches comes in at once, with a sound and a note over the game, for up to ${(v && v.live && v.live.max) || 10} searches at a time. It needs the sign-in, as on the website.</p></div>`);
+      <p><b>Live search</b> watches a search for you: every new listing that matches comes in at once, with a sound and a note over the game, for up to ${(v && v.live && v.live.max) || 10} searches at a time. It needs the sign-in, as on the website.</p></div>`);
     return;
   }
   const bulk = l.mode === 'bulk';
@@ -310,6 +310,7 @@ function renderFind() {
       // A form kept from an older version (or a saved one) is read into the new shape once.
       try { const c = await api.tradeFind({ op: 'clean', form: tf.form }); if (c && c.form) { tf.form = c.form; tfKeep(); } } catch (_) { /* keep as is */ }
       tfDrawForm(true); renderFind();
+      if (tf.searchSoon) { tf.searchSoon = false; tfSearch(); }
     }).catch(() => {});
     tfAsk({ op: 'get' });
   }
@@ -411,3 +412,13 @@ $('trade-find').addEventListener('click', async (e) => {
 });
 // News from the main process (a live listing, a connection, the sign-in window): ask again.
 if (api.onTradeFindNews) api.onTradeFindNews(() => { if (tf.asked) tfAsk({ op: 'get' }); });
+// The price check window's "Trade search": its search opens here with every filter filled in,
+// and is searched at once.
+if (api.onTradeFindOpen) api.onTradeFindOpen((form) => {
+  if (!form || typeof form !== 'object') return;
+  tf.form = { ...TF_BLANK(), ...form };
+  tfKeep();
+  showTab('trade');
+  openTradePart('search');
+  if (tf.lists) { tfDrawForm(true); tfSearch(); } else tf.searchSoon = true; // searched once the filter list is in
+});

@@ -261,7 +261,7 @@
         <div class="pc-meta"><h1>${esc(d.title)}</h1><p class="pc-about">${esc([d.about, d.qty > 1 ? `stack of ${d.qty.toLocaleString()}` : ''].filter(Boolean).join(' · '))}</p><div class="pc-answer">${headlineHtml(d)}</div></div>
         ${headTools(false)}</div>
       ${d.want ? `<div class="pc-go"><button type="button" class="primary" data-search ${d.state === 'searching' ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search the bulk exchange'}</button>
-        ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>${listHtml(d)}` : '<div class="pc-gap"></div>'}
+        <button type="button" class="pc-site" data-inapp title="Open this search on the Trade page in the app, with every filter filled in: change it there, or watch it with Live search">Trade search</button>${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>${listHtml(d)}` : '<div class="pc-gap"></div>'}
       ${footHtml(d)}`;
   }
 
@@ -424,7 +424,7 @@
         ${stats ? `<ul class="pc-rows">${stats}</ul>` : ''}
         ${f.unknown.length ? `<p class="pc-note">Not on the trade site: ${f.unknown.map(esc).join('; ')}</p>` : ''}${c}</div>
       <div class="pc-go"><button type="button" class="primary" data-search ${busy ? 'disabled' : ''}>${d.state === 'done' ? 'Search again' : 'Search'}</button>
-        ${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
+        <button type="button" class="pc-site" data-inapp title="Open this search on the Trade page in the app, with every filter filled in: change it there, or watch it with Live search">Trade search</button>${d.url ? '<button type="button" class="pc-site" data-open>Trade site ↗</button>' : ''}</div>
       ${listHtml(d)}
       ${footHtml(d)}`;
     // Compared without the stats: a click on one changes it in place (setOn, setNum), so what is
@@ -597,6 +597,7 @@
     if (e.target.closest('[data-close]')) { api.action({ type: 'checkPanelClose' }); return; }
     if (e.target.closest('[data-search]')) { api.action({ type: 'tradeSearch', edits: edits() }); return; }
     if (e.target.closest('[data-open]')) { api.action({ type: 'tradeOpen' }); return; }
+    if (e.target.closest('[data-inapp]')) { api.action({ type: 'tradeInApp' }); return; }
     if (e.target.closest('[data-adv-open]')) { api.action({ type: 'advancedOpen' }); return; }
     const mark = e.target.closest('[data-adv-say]');
     if (mark) { api.action({ type: 'advancedSay', say: mark.dataset.advSay }); return; }

@@ -238,4 +238,58 @@ function cleanSaved(list) {
     .map((s) => ({ name: String(s.name || '').trim().slice(0, 80) || nameOf(s.form), form: cleanForm(s.form) }));
 }
 
-module.exports = { KIND_WORDS, readItems, readStatic, findItems, findStatic, statList, findStats, cleanForm, isEmpty, needsSignIn, buildFind, buildBulk, nameOf, cleanSaved };
+
+// The stat ids of the stat list, read the other way: id -> { ref, kind, kinds }. Built once per index.
+const byId = new WeakMap();
+function idIndex(index) {
+  if (!index) return new Map();
+  if (byId.has(index)) return byId.get(index);
+  const out = new Map();
+  for (const [ref, stat] of index.byRef) {
+    const kinds = Object.keys(stat.ids || {});
+    for (const k of kinds) for (const id of stat.ids[k]) if (!out.has(id)) out.set(id, { ref, kind: k, kinds });
+  }
+  byId.set(index, out);
+  return out;
+}
+
+// A search as the trade site takes it (the price check's own, `buildQuery`) -> the Search form,
+// so a checked item opens on the Trade page with every filter filled in (tracker #98).
+// Returns { form, unknown }: unknown counts stat ids the list does not know (left out).
+function formFromQuery(body, index) {
+  const q = (body && body.query) || {};
+  const form = { mode: 'items', item: null, text: '', seller: 'available', filters: {}, groups: [], sort: { by: 'price', dir: 'asc' }, bulk: { want: [], have: [], minimum: '', seller: 'online' } };
+  const status = q.status && q.status.option;
+  if (status && require('./tradeFilters').SELLERS.some(([id]) => id === status)) form.seller = status;
+  const type = typeof q.type === 'string' ? q.type : q.type && typeof q.type === 'object' ? String(q.type.option || '') : '';
+  const disc = q.type && typeof q.type === 'object' ? String(q.type.discriminator || '') : '';
+  if (type) form.item = { label: [q.name, type].filter(Boolean).join(' '), name: typeof q.name === 'string' ? q.name : '', type, disc };
+  else if (typeof q.term === 'string') form.text = q.term;
+  else if (typeof q.name === 'string') form.text = q.name;
+  for (const [g, grp] of Object.entries(q.filters || {})) {
+    if (!grp || grp.disabled || !grp.filters || typeof grp.filters !== 'object') continue;
+    for (const [id, v] of Object.entries(grp.filters)) {
+      if (!v || typeof v !== 'object') continue;
+      let val;
+      if ('input' in v) val = String(v.input || '');
+      else { val = {}; for (const k of ['min', 'max', 'option', 'r', 'g', 'b', 'w']) if (v[k] !== undefined && v[k] !== null && v[k] !== '') val[k] = typeof v[k] === 'boolean' ? String(v[k]) : v[k]; }
+      if (typeof val === 'string' ? val : Object.keys(val).length) (form.filters[g] = form.filters[g] || {})[id] = val;
+    }
+  }
+  const ids = idIndex(index);
+  let unknown = 0;
+  for (const sg of Array.isArray(q.stats) ? q.stats : []) {
+    if (!sg || !Array.isArray(sg.filters) || !sg.filters.length) continue;
+    const g = { type: sg.type || 'and', min: sg.value && sg.value.min !== undefined ? sg.value.min : '', max: sg.value && sg.value.max !== undefined ? sg.value.max : '', off: !!sg.disabled, stats: [] };
+    for (const f of sg.filters) {
+      const hit = f && ids.get(f.id);
+      if (!hit) { unknown += 1; continue; }
+      const v = f.value || {};
+      g.stats.push({ ref: hit.ref, kind: hit.kind, kinds: hit.kinds, min: v.min ?? '', max: v.max ?? '', weight: v.weight ?? '', off: !!f.disabled });
+    }
+    if (g.stats.length) form.groups.push(g);
+  }
+  return { form: cleanForm(form), unknown };
+}
+
+module.exports = { formFromQuery, KIND_WORDS, readItems, readStatic, findItems, findStatic, statList, findStats, cleanForm, isEmpty, needsSignIn, buildFind, buildBulk, nameOf, cleanSaved };

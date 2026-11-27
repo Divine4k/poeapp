@@ -2189,6 +2189,27 @@ async function tradeMarket(id) {
 
 // ---- the buying list (Trade page, Buying) ----
 // The item of the last price check goes on the list with its search and the sellers found.
+// The price check's search opened on the Trade page, Search, with every filter as the check had
+// it (crafts ticked included), and searched there (tracker #98). A bulk check opens as a bulk
+// exchange search for the same thing.
+function checkToSearch() {
+  const tc = tradeCheck;
+  let form = null, unknown = 0;
+  if (tc && tc.kind === 'bulk' && tc.want) {
+    form = tradeFind.cleanForm({ mode: 'bulk', bulk: { want: [{ id: tc.want, label: tc.title, image: tc.icon || '' }], have: tc.have ? [{ id: tc.have, label: tc.have === 'divine' ? 'Divine Orb' : 'Chaos Orb' }] : [], seller: 'online' } });
+  } else if (tc && !tc.kind && tc.filters && tc.filters.ok) {
+    statIndex = statIndex || StatIndex.load();
+    ({ form, unknown } = tradeFind.formFromQuery(buildQuery(withCrafts(tc.filters, craftsOn(tc))), statIndex));
+  }
+  if (!form) { diag.count('trade search: price check not opened in the app (nothing to take)'); say('Price check an item first; its search can then open on the Trade page.', true); return; }
+  if (trouble) trouble.event('tradeFind', { fromCheck: tradeFind.nameOf(form), unknown: unknown || undefined });
+  if (unknown) diag.count('trade search: price check stats the stat list does not know (left out)');
+  closeCheckPanel();
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus();
+  win.webContents.send('trade-find-open', form);
+}
 function wantAdd() {
   const tc = tradeCheck, f = tc && tc.filters;
   if (!tc || tc.kind || !f || !f.ok) { diag.count('trade: nothing added to the buying list (no gear search to take)'); say('Price check an item first (gear, a jewel or a unique); it can then go on the buying list.', true); return; }
@@ -3350,6 +3371,7 @@ const actions = {
   // the socket button on the price check window: shown or hidden on every item picture there
   checkSockets: () => { applyConfig({ priceSearch: { sockets: config.priceSearch.sockets === false } }); push(); },
   tradeOpen: () => { if (tradeCheck && /^https:\/\/www\.pathofexile\.com\//.test(tradeCheck.url)) shell.openExternal(tradeCheck.url); },
+  tradeInApp: () => checkToSearch(),
   // the advanced check's band: its own search on the trade site, and a mark on its price
   advancedOpen: () => { const url = tradeCheck && tradeCheck.adv && tradeCheck.adv.url; if (url && /^https:\/\/www\.pathofexile\.com\//.test(url)) shell.openExternal(url); },
   advancedSay: (a) => advancedSay(String(a.say || '')),
