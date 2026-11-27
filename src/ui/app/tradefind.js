@@ -225,13 +225,48 @@ function tfDrawLive() {
   box.hidden = !html;
 }
 
-const TF_KIND = { enchant: 'enchant', implicit: 'implicit', fractured: 'fractured', crafted: 'crafted' };
+// The whole item, unfolded under its listing (0.70): on the left what the item is (marks,
+// sockets, every property with the raised ones lit, damage per second, requirements); on the
+// right every modifier in the game's order with its tier, the range it rolls in and its name,
+// then how many prefixes and suffixes it has and the seller's note.
+const TF_GROUP = { enchant: 'Enchant', scourge: 'Scourge', implicit: 'Implicit', fractured: 'Modifiers', explicit: 'Modifiers', crafted: 'Modifiers', crucible: 'Crucible', veiled: 'Veiled' };
+const TF_SOCK = { R: 'r', G: 'g', B: 'b', W: 'w', A: 'a', D: 'd' };
+function tfSocketsHtml(text) {
+  if (!text) return '';
+  return `<span class="tf-socks" title="Sockets ${esc(text)}">${text.split(' ').map((grp) => `<span class="grp">${grp.split('-').map((c) => `<i class="s-${TF_SOCK[c] || 'w'}"></i>`).join('<b></b>')}</span>`).join('')}</span>`;
+}
+function tfTierHtml(m) {
+  if (m.tier === undefined || m.tier === null || m.tier === '') return '<span class="tf-tier none"></span>';
+  const n = typeof m.tier === 'number' ? m.tier : null;
+  const label = m.side ? `${m.side === 'prefix' ? 'P' : 'S'}${m.tier}` : `T${m.tier}`;
+  const tip = `${m.side ? `${m.side === 'prefix' ? 'Prefix' : 'Suffix'}, tier ${m.tier}` : `Tier ${m.tier}`}${m.parts ? ` (two modifiers: ${m.parts.map((x) => `${x.side ? x.side[0].toUpperCase() : 'T'}${x.tier} ${x.name}`).join(' and ')})` : ''}${m.level ? `, from item level ${m.level}` : ''}`;
+  return `<span class="tf-tier${n === 1 ? ' t1' : n === 2 ? ' t2' : ''}" title="${esc(tip)}">${esc(label)}</span>`;
+}
 function tfDetailHtml(l) {
   const d = l.detail || {};
-  const props = (d.props || []).map(([k, v]) => `<span>${esc(k)} <b>${esc(v)}</b></span>`).join('');
-  const mods = (d.mods || []).map((m) => `<li class="${TF_KIND[m.kind] ? `tf-${TF_KIND[m.kind]}` : ''}"${m.raw ? ` title="${esc(m.raw)}"` : ''}>${esc(m.text)}</li>`).join('');
-  const marks = [d.ilvl ? `Item level ${d.ilvl}` : '', l.sockets ? `Sockets ${l.sockets}` : '', d.corrupted ? 'Corrupted' : '', d.mirrored ? 'Mirrored' : '', d.split ? 'Split' : ''].filter(Boolean).join(' · ');
-  return `<div class="tf-detail">${marks ? `<p class="quiet">${esc(marks)}</p>` : ''}${props ? `<p class="tf-props">${props}</p>` : ''}${mods ? `<ul>${mods}</ul>` : '<p class="quiet">No modifiers.</p>'}</div>`;
+  const marks = (d.influences || []).map((x) => `<span class="tf-mark infl">${esc(x)}</span>`).concat((d.flags || []).map((x) => `<span class="tf-mark${x === 'Corrupted' ? ' bad' : x === 'Fractured' || x === 'Synthesised' ? ' gold' : ''}">${esc(x)}</span>`)).join('');
+  const props = (d.props || []).map(([k, v, up]) => `<div class="tf-pr"><span>${esc(k)}</span><b class="${up ? 'up' : ''}"${up ? ' title="Raised by the item\'s own modifiers"' : ''}>${esc(v)}</b></div>`).join('');
+  const dps = d.dps ? `<div class="tf-pr dps"><span>Damage per second</span><b>${esc(d.dps.dps)}</b></div><div class="tf-pr sub"><span>Physical · Elemental${d.dps.cdps ? ' · Chaos' : ''}</span><b>${esc(d.dps.pdps)} · ${esc(d.dps.edps)}${d.dps.cdps ? ` · ${esc(d.dps.cdps)}` : ''}</b></div>` : '';
+  const reqs = (d.reqs || []).length ? `<p class="tf-req">Requires ${d.reqs.map(([k, v]) => `${esc(k)} <b>${esc(v)}</b>`).join(', ')}</p>` : '';
+  let group = '';
+  const mods = (d.mods || []).map((m) => {
+    const g = TF_GROUP[m.kind] || 'Modifiers';
+    const head = g !== group ? `<p class="tf-mh">${esc(g)}</p>` : '';
+    group = g;
+    const tag = m.kind === 'crafted' ? 'crafted' : m.kind === 'fractured' ? 'fractured' : '';
+    return `${head}<div class="tf-mod k-${esc(m.kind)}${m.cont ? ' cont' : ''}"${m.raw ? ` title="${esc(m.raw)}"` : ''}>${m.cont ? '<span class="tf-tier none"></span>' : tfTierHtml(m)}<span class="tf-mt">${esc(m.text)}${tag ? ` <small>${tag}</small>` : ''}</span><span class="tf-mr">${m.range ? esc(m.range) : ''}</span><span class="tf-mn">${m.name ? esc(m.name) : ''}</span></div>`;
+  }).join('');
+  const a = d.affixes;
+  const affix = a ? `<p class="tf-aff">Prefixes <b>${a.prefixes} of ${a.max}</b> · Suffixes <b>${a.suffixes} of ${a.max}</b>${a.prefixes < a.max || a.suffixes < a.max ? ` <span class="open">· open: ${[a.prefixes < a.max ? `${a.max - a.prefixes} prefix${a.max - a.prefixes > 1 ? 'es' : ''}` : '', a.suffixes < a.max ? `${a.max - a.suffixes} suffix${a.max - a.suffixes > 1 ? 'es' : ''}` : ''].filter(Boolean).join(', ')}</span>` : ''}</p>` : '';
+  return `<div class="tf-detail">
+    <div class="tf-dl">
+      <p class="tf-dn">${d.name ? `<b>${esc(d.name)}</b>` : ''}<span>${esc(d.base || '')}</span></p>
+      <p class="tf-ds">${esc([d.rarity ? d.rarity.charAt(0).toUpperCase() + d.rarity.slice(1) : '', d.ilvl ? `item level ${d.ilvl}` : '', d.stack ? `stack of ${d.stack}` : ''].filter(Boolean).join(' · '))}${tfSocketsHtml(d.sockets || l.sockets)}</p>
+      ${marks ? `<p class="tf-marks">${marks}</p>` : ''}
+      ${props || dps ? `<div class="tf-props">${props}${dps}</div>` : ''}${reqs}
+    </div>
+    <div class="tf-dr">${mods || '<p class="quiet">No modifiers.</p>'}${affix}${d.note ? `<p class="tf-note">Seller's note: <b>${esc(d.note)}</b></p>` : ''}</div>
+  </div>`;
 }
 function tfButtonHtml(l, v, instant) {
   const live = l.live ? ` data-live="${esc(l.live)}"` : '';

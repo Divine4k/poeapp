@@ -285,3 +285,46 @@ test('the price check\'s search opens as a Search form with every filter filled 
   assert.deepEqual(again.filters.misc_filters, { filters: { ilvl: { min: 84 }, corrupted: { option: 'false' } } });
   assert.equal(T.formFromQuery({ query: { term: 'Headhunter' } }, index).form.text, 'Headhunter');
 });
+
+// ---- the whole item when a listing is unfolded (0.70) ----
+const { itemDetail } = require('../src/core/tradeApi');
+
+test('a listed item is read whole: tiers, ranges, names, prefixes and suffixes', () => {
+  const boots = require('./fixtures/trade-boots.json')[0].item;
+  const d = itemDetail(boots);
+  assert.deepEqual(d.mods[0], { text: '+116 to Armour', kind: 'explicit', side: 'prefix', tier: 2, name: 'Carapaced', level: 35, range: '102-120' });
+  assert.deepEqual(d.affixes, { prefixes: 3, suffixes: 2, max: 3 });
+});
+
+test('the older way the site sent tiers (apart from the lines) is read too', () => {
+  const it = { frameType: 2, name: 'Doom Guardian', typeLine: 'Blood Raiment', ilvl: 85, identified: true, corrupted: true, fractured: true, influences: { shaper: true, hunter: true },
+    note: '~price 2 divine', sockets: [{ group: 0, sColour: 'R' }, { group: 0, sColour: 'G' }, { group: 1, sColour: 'B' }],
+    properties: [{ name: 'Quality', values: [['+20%', 1]] }, { name: 'Evasion Rating', values: [['837', 1]] }, { name: 'Energy Shield', values: [['140', 0]] }],
+    requirements: [{ name: 'Level', values: [['65', 0]] }, { name: '[Intelligence|Int]', values: [['94', 0]] }],
+    implicitMods: ['+1 to Level of Socketed Gems'], fracturedMods: ['+49 to Dexterity'], explicitMods: ['69% increased Evasion and Energy Shield', 'Regenerate 35 Life per second\nSecond line'], craftedMods: ['+25 to maximum Life'],
+    extended: {
+      mods: { explicit: [{ name: 'Seraphim\'s', tier: 'P4', level: 46, magnitudes: [{ hash: 'x', min: 56, max: 67 }] }, { name: 'of the Phoenix', tier: 'S6', level: 1, magnitudes: [{ min: 1, max: 2 }, { min: 3, max: 4 }] }],
+        fractured: [{ name: 'of the Jaguar', tier: 'S2', level: 55, magnitudes: [{ min: 43, max: 50 }] }], crafted: [{ name: '', tier: 'P', magnitudes: [] }] },
+      hashes: { explicit: [['a', [0]], ['b', [1]]], fractured: [['c', [0]]], crafted: [['d', [0]]] },
+    } };
+  const d = itemDetail(it);
+  assert.deepEqual(d.props[0], ['Quality', '+20%', true]);
+  assert.deepEqual(d.props[2], ['Energy Shield', '140', false]);
+  assert.deepEqual(d.reqs, [['Level', '65'], ['Int', '94']]);
+  assert.equal(d.sockets, 'R-G B');
+  assert.deepEqual(d.influences, ['Shaper', 'Hunter']);
+  assert.deepEqual(d.flags, ['Fractured', 'Corrupted']);
+  assert.equal(d.note, '~price 2 divine');
+  const ev = d.mods.find((m) => m.text.startsWith('69%'));
+  assert.deepEqual([ev.side, ev.tier, ev.name, ev.range], ['prefix', 4, 'Seraphim\'s', '56-67']);
+  const regen = d.mods.filter((m) => m.text.startsWith('Regenerate') || m.text === 'Second line');
+  assert.deepEqual([regen[0].range, regen[1].cont, regen[1].tier], ['1-2 / 3-4', true, undefined]);
+  assert.deepEqual([d.mods.find((m) => m.kind === 'fractured').tier, d.mods.find((m) => m.kind === 'implicit').tier], [2, undefined]);
+  assert.deepEqual(d.affixes, { prefixes: 1, suffixes: 2, max: 3 }, 'the crafted line has no tier the site names, so it is not counted');
+});
+
+test('a weapon gets its damage per second worked out', () => {
+  const d = itemDetail({ frameType: 2, typeLine: 'Jewelled Foil', properties: [{ name: 'Physical Damage', values: [['50-100', 1]] }, { name: 'Elemental Damage', values: [['10-20', 4], ['5-15', 5]] }, { name: 'Attacks per Second', values: [['1.60', 1]] }] });
+  assert.deepEqual(d.dps, { pdps: 120, edps: 40, cdps: 0, dps: 160 });
+  assert.equal(itemDetail({ typeLine: 'Ring' }).dps, null);
+});

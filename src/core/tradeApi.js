@@ -312,30 +312,116 @@ function modText(t) {
 // The site writes some words as links: "[Life|maximum Life]" or "[Armour]". Only the words shown.
 const plainText = (t) => String(t || '').replace(/\[(?:[^\]|]*\|)?([^\]]*)\]/g, '$1');
 const RARITY = ['normal', 'magic', 'rare', 'unique'];
-// What a listed item is, as the game shows it when you hover it: its name, base, item level,
-// properties (quality, armour, damage...) and every modifier with its kind, in the game's order.
-function itemDetail(it) {
-  const props = [];
-  for (const p of it.properties || []) {
-    const name = plainText(p.name);
-    const v = (p.values || []).map((x) => x && x[0]).filter((x) => x !== undefined && x !== null).join(', ');
+// What a listed item is, as the game shows it when you hover it, and more (0.70, the owner: "I
+// want to see way more information about the item ... tiers of the mods, quality and everything
+// we can see"): name, base, rarity, item level, every property (quality, defences, damage; a
+// number the item's modifiers raised is marked), the damage per second of a weapon, requirements,
+// sockets, influences and the other marks, every modifier with its kind and, where the site sends
+// them, its tier (prefix or suffix), its name, the range it rolls in and its level, how many
+// prefixes and suffixes it has, and the seller's note.
+// The site has sent modifiers two ways: as plain lines with their tiers kept apart in
+// `extended.mods` and `extended.hashes`, and (seen in 2026-11) as objects { description, domain,
+// hash, mods: [{ name, tier, level, magnitudes }] }. Both are read.
+const KINDS = [['enchantMods', 'enchant'], ['scourgeMods', 'scourge'], ['implicitMods', 'implicit'], ['fracturedMods', 'fractured'],
+  ['explicitMods', 'explicit'], ['craftedMods', 'crafted'], ['crucibleMods', 'crucible'], ['veiledMods', 'veiled']];
+const INFLUENCES = { shaper: 'Shaper', elder: 'Elder', crusader: 'Crusader', redeemer: 'Redeemer', hunter: 'Hunter', warlord: 'Warlord' };
+// "P2" -> a prefix of tier 2; "S1" -> a suffix of tier 1; anything else is kept as the site wrote it.
+function tierOf(t) {
+  const m = /^([PS])(\d+)$/.exec(String(t || ''));
+  if (m) return { side: m[1] === 'P' ? 'prefix' : 'suffix', tier: Number(m[2]) };
+  return t ? { side: '', tier: String(t) } : { side: '', tier: null };
+}
+// The range one modifier rolls in, as the game's advanced copy writes it: "102-120", or each
+// number's range for a modifier with two ("1-2 / 3-4"). Empty when the site sent none.
+function rangeOf(mags) {
+  const parts = (Array.isArray(mags) ? mags : []).map((g) => {
+    if (!g || g.min === undefined) return '';
+    const a = String(g.min), b = String(g.max ?? g.min);
+    return a === b ? a : `${a}-${b}`;
+  }).filter(Boolean);
+  return parts.join(' / ');
+}
+// The site's own facts of one modifier ({ name, tier, level, magnitudes }) -> what is shown.
+function modFacts(list) {
+  const mods = (Array.isArray(list) ? list : []).filter((m) => m && typeof m === 'object');
+  if (!mods.length) return {};
+  const t = tierOf(mods[0].tier);
+  const out = {
+    side: t.side, tier: t.tier, name: mods.map((m) => plainText(m.name)).filter(Boolean).join(' + '),
+    level: Number(mods[0].level) || null, range: mods.map((m) => rangeOf(m.magnitudes)).filter(Boolean).join('; '),
+  };
+  // a hybrid line made of two modifiers says so
+  if (mods.length > 1) out.parts = mods.map((m) => ({ ...tierOf(m.tier), name: plainText(m.name) }));
+  return out;
+}
+// The average of a damage line: "50-100" -> 75. Several ranges (elemental) are added up.
+const avgOf = (v) => String(v).split(/,\s*/).reduce((sum, r) => { const m = /(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)/.exec(r); return m ? sum + (Number(m[1]) + Number(m[2])) / 2 : sum; }, 0);
+function dpsOf(props) {
+  const get = (name) => { const p = props.find(([n]) => n === name); return p ? p[1] : ''; };
+  const aps = Number(String(get('Attacks per Second')).replace(/[^\d.]/g, ''));
+  if (!(aps > 0)) return null;
+  const r = (x) => Math.round(x * 10) / 10;
+  const pdps = avgOf(get('Physical Damage')) * aps, edps = avgOf(get('Elemental Damage')) * aps, cdps = avgOf(get('Chaos Damage')) * aps;
+  return { pdps: r(pdps), edps: r(edps), cdps: r(cdps), dps: r(pdps + edps + cdps) };
+}
+function propsOf(list) {
+  const out = [];
+  for (const p of Array.isArray(list) ? list : []) {
+    const name = plainText(p && p.name);
+    const vals = (p && Array.isArray(p.values) ? p.values : []).filter((x) => Array.isArray(x) && x[0] !== undefined && x[0] !== null);
+    const v = vals.map((x) => x[0]).join(', ');
     if (!name || /\{\d\}/.test(name) || !v) continue; // the shape of a weapon's class line, not a number
-    props.push([name, plainText(v)]);
+    // a value of display type 1 is one the item's own modifiers raised (blue in game)
+    out.push([name, plainText(v), vals.some((x) => x[1] === 1)]);
   }
+  return out;
+}
+function itemDetail(it) {
+  it = it || {};
+  const ext = it.extended || {};
   const mods = [];
-  const add = (list, kind) => {
-    for (const t of Array.isArray(list) ? list : []) {
+  for (const [key, kind] of KINDS) {
+    const list = Array.isArray(it[key]) ? it[key] : [];
+    const hashes = ext.hashes && Array.isArray(ext.hashes[kind]) ? ext.hashes[kind] : [];
+    const extMods = ext.mods && Array.isArray(ext.mods[kind]) ? ext.mods[kind] : [];
+    list.forEach((t, i) => {
       const text = plainText(modText(t));
       // nothing readable: the raw shape is kept for the line's hover text, so it can be reported
-      if (!text) { mods.push({ text: '(a modifier the app could not read)', kind, raw: JSON.stringify(t).slice(0, 300) }); continue; }
-      for (const line of text.split('\n')) if (line.trim()) mods.push({ text: line, kind });
+      if (!text) { mods.push({ text: '(a modifier the app could not read)', kind, raw: JSON.stringify(t).slice(0, 300) }); return; }
+      let facts = {};
+      if (t && typeof t === 'object' && Array.isArray(t.mods)) facts = modFacts(t.mods);
+      else if (hashes[i] && Array.isArray(hashes[i][1])) facts = modFacts(hashes[i][1].map((n) => extMods[n]));
+      const lines = text.split('\n').filter((l) => l.trim());
+      lines.forEach((line, n) => mods.push(n ? { text: line, kind, cont: true } : { text: line, kind, ...facts }));
+    });
+  }
+  const props = propsOf(it.properties);
+  const rarity = RARITY[it.frameType] || (it.frameType === 9 ? 'relic' : 'rare');
+  // How many prefixes and suffixes it has, from the modifiers whose tier is known (hybrids counted once).
+  let affixes = null;
+  if (rarity === 'rare' || rarity === 'magic') {
+    const seen = new Set(), count = { prefix: 0, suffix: 0 };
+    for (const m of mods) {
+      if (m.cont || !m.side || !['explicit', 'fractured', 'crafted'].includes(m.kind)) continue;
+      const key = `${m.kind}|${m.name || m.text}|${m.side}`;
+      if (seen.has(key)) continue;
+      seen.add(key); count[m.side] += 1;
     }
-  };
-  add(it.enchantMods, 'enchant'); add(it.implicitMods, 'implicit'); add(it.fracturedMods, 'fractured');
-  add(it.explicitMods, 'explicit'); add(it.craftedMods, 'crafted');
+    if (seen.size) affixes = { prefixes: count.prefix, suffixes: count.suffix, max: rarity === 'magic' ? 1 : 3 };
+  }
+  const infl = it.influences && typeof it.influences === 'object' ? Object.keys(it.influences).filter((k) => it.influences[k]).map((k) => INFLUENCES[k] || k) : [];
+  const flags = [
+    it.identified === false ? 'Unidentified' : '', it.fractured ? 'Fractured' : '', it.synthesised ? 'Synthesised' : '',
+    it.searing ? 'Searing Exarch' : '', it.tangled ? 'Eater of Worlds' : '', it.veiled ? 'Veiled' : '',
+    it.duplicated ? 'Mirrored' : '', it.split ? 'Split' : '', it.corrupted ? 'Corrupted' : '',
+  ].filter(Boolean);
   return {
-    name: plainText(it.name), base: plainText(it.typeLine), rarity: RARITY[it.frameType] || (it.frameType === 9 ? 'relic' : 'rare'),
-    ilvl: it.ilvl || null, props, mods, corrupted: !!it.corrupted, mirrored: !!it.duplicated, split: !!it.split,
+    name: plainText(it.name), base: plainText(it.typeLine), rarity, ilvl: it.ilvl || null,
+    props, reqs: propsOf(it.requirements).map(([n, v]) => [n, v]), dps: dpsOf(props),
+    sockets: socketText(it.sockets), influences: infl, flags, mods, affixes,
+    note: typeof it.note === 'string' ? plainText(it.note).slice(0, 120) : '',
+    stack: Number(it.stackSize) > 1 ? Number(it.stackSize) : null,
+    corrupted: !!it.corrupted, mirrored: !!it.duplicated, split: !!it.split,
   };
 }
 

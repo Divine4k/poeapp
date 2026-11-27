@@ -217,6 +217,8 @@ body.check { display: block; overflow: hidden; user-select: none; font-size: 13p
 .pd-mods hr { margin: 5px 18%; border: 0; border-top: 1px solid var(--line); }
 .pd-mod { margin: 0; }
 .pd-mod small { margin-left: 6px; font-size: 10px; opacity: 0.7; }
+.pd-tier { font-style: normal; font-size: 9.5px; font-weight: 700; margin-right: 5px; padding: 0 4px; border-radius: 4px; color: var(--soft); background: color-mix(in srgb, var(--bone) 10%, transparent); vertical-align: 1px; }
+.pd-tier.t1 { color: var(--ink); background: var(--gold); }
 .pd-mod.m-explicit, .pd-mod.m-implicit { color: #9a9cff; }
 .pd-mod.m-crafted, .pd-mod.m-enchant { color: #b8c4ff; }
 .pd-mod.m-fractured { color: #c2ad78; }
