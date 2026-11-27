@@ -235,12 +235,12 @@ function tfSocketsHtml(text) {
   if (!text) return '';
   return `<span class="tf-socks" title="Sockets ${esc(text)}">${text.split(' ').map((grp) => `<span class="grp">${grp.split('-').map((c) => `<i class="s-${TF_SOCK[c] || 'w'}"></i>`).join('<b></b>')}</span>`).join('')}</span>`;
 }
+// The tier and the kind of affix, each in a column of its own, in plain words (the owner: tiers
+// shown separately, not with colour).
 function tfTierHtml(m) {
-  if (m.tier === undefined || m.tier === null || m.tier === '') return '<span class="tf-tier none"></span>';
-  const n = typeof m.tier === 'number' ? m.tier : null;
-  const label = m.side ? `${m.side === 'prefix' ? 'P' : 'S'}${m.tier}` : `T${m.tier}`;
-  const tip = `${m.side ? `${m.side === 'prefix' ? 'Prefix' : 'Suffix'}, tier ${m.tier}` : `Tier ${m.tier}`}${m.parts ? ` (two modifiers: ${m.parts.map((x) => `${x.side ? x.side[0].toUpperCase() : 'T'}${x.tier} ${x.name}`).join(' and ')})` : ''}${m.level ? `, from item level ${m.level}` : ''}`;
-  return `<span class="tf-tier${n === 1 ? ' t1' : n === 2 ? ' t2' : ''}" title="${esc(tip)}">${esc(label)}</span>`;
+  const has = m.tier !== undefined && m.tier !== null && m.tier !== '';
+  const tip = has ? `${m.parts ? `Two modifiers: ${m.parts.map((x) => `${x.side || 'tier'} ${x.tier} ${x.name}`).join(' and ')}` : ''}${m.level ? `${m.parts ? '; ' : ''}from item level ${m.level}` : ''}` : '';
+  return `<span class="tf-side">${m.side ? (m.side === 'prefix' ? 'Prefix' : 'Suffix') : ''}</span><span class="tf-tier${has && +m.tier <= 2 ? ` t${+m.tier}` : ''}"${tip ? ` title="${esc(tip)}"` : ''}>${has ? `Tier ${esc(m.tier)}` : ''}</span>`;
 }
 function tfDetailHtml(l) {
   const d = l.detail || {};
@@ -254,7 +254,7 @@ function tfDetailHtml(l) {
     const head = g !== group ? `<p class="tf-mh">${esc(g)}</p>` : '';
     group = g;
     const tag = m.kind === 'crafted' ? 'crafted' : m.kind === 'fractured' ? 'fractured' : '';
-    return `${head}<div class="tf-mod k-${esc(m.kind)}${m.cont ? ' cont' : ''}"${m.raw ? ` title="${esc(m.raw)}"` : ''}>${m.cont ? '<span class="tf-tier none"></span>' : tfTierHtml(m)}<span class="tf-mt">${esc(m.text)}${tag ? ` <small>${tag}</small>` : ''}</span><span class="tf-mr">${m.range ? esc(m.range) : ''}</span><span class="tf-mn">${m.name ? esc(m.name) : ''}</span></div>`;
+    return `${head}<div class="tf-mod k-${esc(m.kind)}${m.cont ? ' cont' : ''}"${m.raw ? ` title="${esc(m.raw)}"` : ''}>${m.cont ? '<span class="tf-side"></span><span class="tf-tier"></span>' : tfTierHtml(m)}<span class="tf-mt">${esc(m.text)}${tag ? ` <small>${tag}</small>` : ''}</span><span class="tf-mr">${m.range ? esc(m.range) : ''}</span><span class="tf-mn">${m.name ? esc(m.name) : ''}</span></div>`;
   }).join('');
   const a = d.affixes;
   const affix = a ? `<p class="tf-aff">Prefixes <b>${a.prefixes} of ${a.max}</b> · Suffixes <b>${a.suffixes} of ${a.max}</b>${a.prefixes < a.max || a.suffixes < a.max ? ` <span class="open">· open: ${[a.prefixes < a.max ? `${a.max - a.prefixes} prefix${a.max - a.prefixes > 1 ? 'es' : ''}` : '', a.suffixes < a.max ? `${a.max - a.suffixes} suffix${a.max - a.suffixes > 1 ? 'es' : ''}` : ''].filter(Boolean).join(', ')}</span>` : ''}</p>` : '';

@@ -194,8 +194,8 @@
       // a line between the implicits and the rest, as in game
       const sep = last && (last === 'implicit' || last === 'enchant') !== (m.kind === 'implicit' || m.kind === 'enchant') ? '<hr>' : '';
       last = m.kind;
-      const tier = m.tier !== undefined && m.tier !== null && m.tier !== '' ? `${m.side ? (m.side === 'prefix' ? 'P' : 'S') : 'T'}${m.tier}` : '';
-      return `${sep}<p class="pd-mod m-${esc(m.kind)}"${m.raw ? ` title="${esc(m.raw)}"` : m.name ? ` title="${esc(`${m.name}${m.range ? `, rolls ${m.range}` : ''}`)}"` : ''}>${tier ? `<em class="pd-tier${m.tier === 1 ? ' t1' : ''}">${esc(tier)}</em>` : ''}${esc(m.text)}${m.kind === 'crafted' || m.kind === 'fractured' || m.kind === 'enchant' ? `<small>${m.kind}</small>` : ''}</p>`;
+      const tier = m.tier !== undefined && m.tier !== null && m.tier !== '' ? `${m.side ? `${m.side === 'prefix' ? 'Prefix' : 'Suffix'} · ` : ''}Tier ${m.tier}` : '';
+      return `${sep}<p class="pd-mod m-${esc(m.kind)}"${m.raw ? ` title="${esc(m.raw)}"` : m.name ? ` title="${esc(`${m.name}${m.range ? `, rolls ${m.range}` : ''}`)}"` : ''}>${esc(m.text)}${tier ? `<em class="pd-tier${+m.tier <= 2 ? ` t${+m.tier}` : ''}">${esc(tier)}</em>` : ''}${m.kind === 'crafted' || m.kind === 'fractured' || m.kind === 'enchant' ? `<small>${m.kind}</small>` : ''}</p>`;
     }).join('');
     const flags = [x.corrupted ? '<p class="pd-flag corrupted">Corrupted</p>' : '', x.mirrored ? '<p class="pd-flag">Mirrored</p>' : '', x.split ? '<p class="pd-flag">Split</p>' : ''].join('');
     return `<li class="pc-detail">${art(l.icon, l.sockets, l.w, l.h, 'big')}<div class="pd-text r-${esc(x.rarity)}">

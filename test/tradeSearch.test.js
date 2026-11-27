@@ -730,7 +730,7 @@ test('a listing unfolds to the item as the game shows it: name, base, properties
     implicitMods: ['+1 to Level of Socketed Gems'], explicitMods: ['+160 to maximum [Life|Life]'], craftedMods: ['13% increased Stun and Block Recovery'], fracturedMods: ['+394 to [Armour]'],
   });
   assert.deepEqual([d.name, d.base, d.rarity, d.ilvl, d.corrupted], ['Rapture Shroud', 'Royal Plate', 'rare', 85, true]);
-  assert.deepEqual(d.props, [['Quality', '+20%'], ['Armour', '2548']]);
+  assert.deepEqual(d.props, [['Quality', '+20%', true], ['Armour', '2548', true]]);
   // a modifier sent as an object instead of a line: its text is found all the same
   const o = itemDetail({ typeLine: 'Lion Pelt', explicitMods: [{ description: '+80 to maximum [Life|Life]', hash: 'x' }, { weird: 1 }] });
   assert.deepEqual(o.mods.map((m) => m.text), ['+80 to maximum Life', '(a modifier the app could not read)']);
